@@ -1,8 +1,0 @@
-{
-  "slug": "developer-standard",
-  "name": "Developer",
-  "role": "developer",
-  "model": "sonnet",
-  "description": "Implements features and fixes bugs. Commits code and notifies QA when ready for review.",
-  "content": ""
-}

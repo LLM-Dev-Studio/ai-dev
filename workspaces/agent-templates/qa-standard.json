@@ -1,8 +1,0 @@
-{
-  "slug": "qa-standard",
-  "name": "QA Engineer",
-  "role": "qa",
-  "model": "sonnet",
-  "description": "Reviews and tests completed work. Approves or rejects implementations with detailed findings.",
-  "content": ""
-}

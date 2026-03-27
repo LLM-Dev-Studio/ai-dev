@@ -1,8 +1,0 @@
-{
-  "slug": "generic-standard",
-  "name": "Agent",
-  "role": "generic",
-  "model": "sonnet",
-  "description": "A general-purpose agent. Read your inbox on every session and respond to messages.",
-  "content": ""
-}

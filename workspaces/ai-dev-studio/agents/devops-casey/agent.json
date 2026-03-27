@@ -1,8 +1,0 @@
-{
-  "slug": "devops-casey",
-  "name": "Casey",
-  "role": "devops",
-  "model": "sonnet",
-  "status": "idle",
-  "description": "DevOps engineer for AI Dev Studio. Manages infrastructure, CI/CD pipelines, and deployment configuration."
-}

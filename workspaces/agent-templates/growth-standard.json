@@ -1,8 +1,0 @@
-{
-  "slug": "growth-standard",
-  "name": "Growth",
-  "role": "growth",
-  "model": "opus",
-  "description": "Reads agent journals and decisions to find friction, then proposes concrete improvements to workflows and instructions.",
-  "content": ""
-}
