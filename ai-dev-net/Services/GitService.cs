@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace AiDevNet.Services;
 
@@ -21,17 +22,21 @@ public class GitCommitDetail
 
 public class GitService
 {
+    // Only allow hex commit hashes (4–64 chars). Rejects any flag injection.
+    private static readonly Regex ValidHashRegex =
+        new(@"^[0-9a-f]{4,64}$", RegexOptions.Compiled);
+
     public bool IsGitRepo(string repoPath)
     {
         if (!Directory.Exists(repoPath)) return false;
-        var result = Run(repoPath, "rev-parse --is-inside-work-tree");
+        var result = Run(repoPath, "rev-parse", "--is-inside-work-tree");
         return result.ExitCode == 0 && result.Output.Trim() == "true";
     }
 
     public List<GitCommit> GetLog(string repoPath, int count = 50)
     {
         var sep = "\x1f";
-        var result = Run(repoPath, $"log --format=%H{sep}%h{sep}%s{sep}%an{sep}%ae{sep}%aI -{count}");
+        var result = Run(repoPath, "log", $"--format=%H{sep}%h{sep}%s{sep}%an{sep}%ae{sep}%aI", $"-{count}");
         if (result.ExitCode != 0) return [];
 
         var commits = new List<GitCommit>();
@@ -54,8 +59,10 @@ public class GitService
 
     public GitCommitDetail? GetCommit(string repoPath, string hash)
     {
+        if (!ValidHashRegex.IsMatch(hash)) return null;
+
         var sep = "\x1f";
-        var logResult = Run(repoPath, $"log -1 --format=%H{sep}%h{sep}%s{sep}%an{sep}%ae{sep}%aI{sep}%b {hash}");
+        var logResult = Run(repoPath, "log", "-1", $"--format=%H{sep}%h{sep}%s{sep}%an{sep}%ae{sep}%aI{sep}%b", hash);
         if (logResult.ExitCode != 0) return null;
 
         var parts = logResult.Output.Trim().Split(sep, 7);
@@ -73,13 +80,13 @@ public class GitService
 
         var body = parts.Length > 6 ? parts[6].Trim() : string.Empty;
 
-        var diffResult = Run(repoPath, $"show {hash} --stat --patch --no-color");
+        var diffResult = Run(repoPath, "show", hash, "--stat", "--patch", "--no-color");
         var diff = diffResult.ExitCode == 0 ? diffResult.Output : string.Empty;
 
         return new GitCommitDetail { Commit = commit, Body = body, Diff = diff };
     }
 
-    private static (int ExitCode, string Output) Run(string workingDir, string arguments)
+    private static (int ExitCode, string Output) Run(string workingDir, params string[] args)
     {
         try
         {
@@ -87,13 +94,15 @@ public class GitService
             proc.StartInfo = new ProcessStartInfo
             {
                 FileName = "git",
-                Arguments = arguments,
                 WorkingDirectory = workingDir,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
+            foreach (var arg in args)
+                proc.StartInfo.ArgumentList.Add(arg);
+
             proc.Start();
             var output = proc.StandardOutput.ReadToEnd();
             proc.WaitForExit(10_000);

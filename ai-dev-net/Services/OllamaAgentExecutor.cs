@@ -22,7 +22,19 @@ public class OllamaAgentExecutor(
         // reportPid is not applicable — no OS process
 
         var systemPrompt = BuildSystemPrompt(workingDir);
-        var baseUrl = settingsService.GetSettings().OllamaBaseUrl.TrimEnd('/');
+        var rawBaseUrl = settingsService.GetSettings().OllamaBaseUrl.TrimEnd('/');
+
+        // Validate the configured URL is http/https to prevent SSRF via arbitrary schemes.
+        if (!Uri.TryCreate(rawBaseUrl, UriKind.Absolute, out var parsedUri)
+            || (parsedUri.Scheme != Uri.UriSchemeHttp && parsedUri.Scheme != Uri.UriSchemeHttps))
+        {
+            var msg = $"OllamaBaseUrl '{rawBaseUrl}' is not a valid http/https URL. Aborting.";
+            logger.LogError("[ollama] {Message}", msg);
+            output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
+            return 1;
+        }
+
+        var baseUrl = rawBaseUrl;
         var requestUri = $"{baseUrl}/api/chat";
 
         logger.LogInformation("[ollama] Starting session — model={Model} endpoint={Uri}", modelId, requestUri);

@@ -23,9 +23,20 @@ public class MessagesService(WorkspaceService workspace)
 
         if (!Directory.Exists(agentsDir)) return results;
 
-        var agentDirs = agentSlug != null
-            ? [Path.Combine(agentsDir, agentSlug)]
-            : Directory.GetDirectories(agentsDir);
+        string[] agentDirs;
+        if (agentSlug != null)
+        {
+            var canonicalAgentsDir = Path.GetFullPath(agentsDir);
+            var resolvedAgentDir = Path.GetFullPath(Path.Combine(agentsDir, agentSlug));
+            if (!resolvedAgentDir.StartsWith(canonicalAgentsDir + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase))
+                return results;
+            agentDirs = [resolvedAgentDir];
+        }
+        else
+        {
+            agentDirs = Directory.GetDirectories(agentsDir);
+        }
 
         foreach (var agentDir in agentDirs)
         {

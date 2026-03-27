@@ -62,7 +62,8 @@ public partial class AgentService(WorkspaceService workspace, StudioSettingsServ
 
     public string? SaveAgentMeta(string projectSlug, string agentSlug, string name, string description, string model)
     {
-        var jsonPath = Path.Combine(workspace.GetProjectPath(projectSlug), "agents", agentSlug, "agent.json");
+        if (!IsWithinAgentsDir(projectSlug, agentSlug, out var agentDir)) return "Invalid agent slug.";
+        var jsonPath = Path.Combine(agentDir, "agent.json");
         if (!File.Exists(jsonPath)) return "Agent not found.";
 
         try
@@ -81,15 +82,17 @@ public partial class AgentService(WorkspaceService workspace, StudioSettingsServ
 
     public string GetClaudeMd(string projectSlug, string agentSlug)
     {
-        var path = Path.Combine(workspace.GetProjectPath(projectSlug), "agents", agentSlug, "CLAUDE.md");
+        if (!IsWithinAgentsDir(projectSlug, agentSlug, out var agentDir)) return string.Empty;
+        var path = Path.Combine(agentDir, "CLAUDE.md");
         return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
     }
 
     public string? SaveClaudeMd(string projectSlug, string agentSlug, string content)
     {
+        if (!IsWithinAgentsDir(projectSlug, agentSlug, out var agentDir)) return "Invalid agent slug.";
         try
         {
-            var path = Path.Combine(workspace.GetProjectPath(projectSlug), "agents", agentSlug, "CLAUDE.md");
+            var path = Path.Combine(agentDir, "CLAUDE.md");
             File.WriteAllText(path, content);
             return null;
         }
@@ -166,12 +169,31 @@ public partial class AgentService(WorkspaceService workspace, StudioSettingsServ
     public string ReadTranscript(string projectSlug, string agentSlug, string date)
     {
         if (string.IsNullOrWhiteSpace(date)) return string.Empty;
-        var path = Path.Combine(workspace.GetProjectPath(projectSlug), "agents", agentSlug, "transcripts", $"{date}.md");
+        if (!IsWithinAgentsDir(projectSlug, agentSlug, out var agentDir)) return string.Empty;
+        var transcriptsDir = Path.GetFullPath(Path.Combine(agentDir, "transcripts"));
+        var path = Path.GetFullPath(Path.Combine(transcriptsDir, $"{date}.md"));
+        if (!path.StartsWith(transcriptsDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return string.Empty;
         try { return File.Exists(path) ? File.ReadAllText(path) : string.Empty; }
         catch { return string.Empty; }
     }
 
     public List<string> GetModelAliases() => [.. settings.GetSettings().Models.Keys];
+
+    /// <summary>
+    /// Verifies that <paramref name="agentSlug"/> resolves inside the project's agents directory.
+    /// Returns true and sets <paramref name="agentDir"/> on success; returns false on invalid input.
+    /// </summary>
+    private bool IsWithinAgentsDir(string projectSlug, string agentSlug, out string agentDir)
+    {
+        agentDir = string.Empty;
+        var agentsDir = Path.GetFullPath(Path.Combine(workspace.GetProjectPath(projectSlug), "agents"));
+        var resolved = Path.GetFullPath(Path.Combine(agentsDir, agentSlug));
+        if (!resolved.StartsWith(agentsDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return false;
+        agentDir = resolved;
+        return true;
+    }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"^[a-z0-9][a-z0-9\-]*[a-z0-9]$")]
     private static partial System.Text.RegularExpressions.Regex AgentSlugString();

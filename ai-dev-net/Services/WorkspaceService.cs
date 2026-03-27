@@ -10,7 +10,14 @@ public class WorkspaceService(IWebHostEnvironment env)
     public string GetWorkspaceRoot()
     {
         var envVar = Environment.GetEnvironmentVariable("WORKSPACE_ROOT");
-        if (!string.IsNullOrEmpty(envVar)) return envVar;
+        if (!string.IsNullOrEmpty(envVar))
+        {
+            // Reject relative paths and UNC paths (\\server\share) — must be an absolute local path.
+            if (!Path.IsPathFullyQualified(envVar) || envVar.StartsWith(@"\\"))
+                throw new InvalidOperationException(
+                    $"WORKSPACE_ROOT must be an absolute local path, got: '{envVar}'");
+            return envVar;
+        }
         return Path.GetFullPath(Path.Combine(env.ContentRootPath, "..", "workspaces"));
     }
 
@@ -23,8 +30,17 @@ public class WorkspaceService(IWebHostEnvironment env)
     public string GetRegistryPath() =>
         Path.Combine(GetWorkspaceRoot(), "workspaces.json");
 
-    public string GetProjectPath(string projectPath) =>
-        Path.Combine(GetWorkspaceRoot(), projectPath);
+    public string GetProjectPath(string projectSlug)
+    {
+        var baseDir = GetWorkspaceRoot();
+        var resolved = Path.GetFullPath(Path.Combine(baseDir, projectSlug));
+        var canonicalBase = Path.GetFullPath(baseDir);
+        // Reject any slug that resolves outside the workspace root (e.g. "../../etc/passwd").
+        if (!resolved.StartsWith(canonicalBase + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(resolved, canonicalBase, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException($"Invalid project slug: '{projectSlug}'", nameof(projectSlug));
+        return resolved;
+    }
 
     public List<WorkspaceProject> ListProjects()
     {

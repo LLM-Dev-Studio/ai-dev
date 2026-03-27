@@ -11,6 +11,18 @@ public class KbService(WorkspaceService workspace)
     private string KbDir(string projectSlug) =>
         Path.Combine(workspace.GetProjectPath(projectSlug), "kb");
 
+    /// <summary>
+    /// Returns the canonical .md path for a KB article slug, or null if it would escape the kb directory.
+    /// </summary>
+    private string? SafeArticlePath(string projectSlug, string slug)
+    {
+        if (string.IsNullOrWhiteSpace(slug)) return null;
+        var dir = Path.GetFullPath(KbDir(projectSlug));
+        var resolved = Path.GetFullPath(Path.Combine(dir, $"{slug}.md"));
+        return resolved.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            ? resolved : null;
+    }
+
     public List<KbArticle> ListArticles(string projectSlug)
     {
         var dir = KbDir(projectSlug);
@@ -29,17 +41,18 @@ public class KbService(WorkspaceService workspace)
 
     public string GetContent(string projectSlug, string slug)
     {
-        var path = Path.Combine(KbDir(projectSlug), $"{slug}.md");
-        return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+        var path = SafeArticlePath(projectSlug, slug);
+        return path != null && File.Exists(path) ? File.ReadAllText(path) : string.Empty;
     }
 
     public string? Save(string projectSlug, string slug, string content)
     {
+        var path = SafeArticlePath(projectSlug, slug);
+        if (path == null) return "Invalid article slug.";
         try
         {
-            var dir = KbDir(projectSlug);
-            Directory.CreateDirectory(dir);
-            File.WriteAllText(Path.Combine(dir, $"{slug}.md"), content);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, content);
             return null;
         }
         catch (Exception ex) { return ex.Message; }
@@ -58,8 +71,8 @@ public class KbService(WorkspaceService workspace)
 
     public void Delete(string projectSlug, string slug)
     {
-        var path = Path.Combine(KbDir(projectSlug), $"{slug}.md");
-        if (File.Exists(path)) File.Delete(path);
+        var path = SafeArticlePath(projectSlug, slug);
+        if (path != null && File.Exists(path)) File.Delete(path);
     }
 
     private static string? ExtractTitle(string content)

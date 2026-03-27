@@ -76,7 +76,12 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         psi.ArgumentList.Add(prompt);
         psi.ArgumentList.Add("--model");
         psi.ArgumentList.Add(modelId);
-        psi.ArgumentList.Add("--dangerously-skip-permissions");
+
+        // SECURITY: --dangerously-skip-permissions grants unrestricted filesystem/shell access.
+        // Enabled only when CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=1 is explicitly set.
+        // Set this env var in development; leave it unset in restricted or multi-tenant deployments.
+        if (Environment.GetEnvironmentVariable("CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS") == "1")
+            psi.ArgumentList.Add("--dangerously-skip-permissions");
 
         return psi;
     }

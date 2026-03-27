@@ -8,6 +8,28 @@ public class AgentTemplatesService(WorkspaceService workspace)
         WriteIndented = true,
     };
 
+    // Same slug rules as AgentService/WorkspaceService: lowercase letters, digits, hyphens only.
+    private static readonly System.Text.RegularExpressions.Regex SlugRegex =
+        new(@"^[a-z0-9][a-z0-9\-]*[a-z0-9]$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static bool IsValidSlug(string? slug) =>
+        !string.IsNullOrWhiteSpace(slug) &&
+        SlugRegex.IsMatch(slug) &&
+        !slug.Contains("..") && !slug.Contains('/') && !slug.Contains('\\');
+
+    /// <summary>
+    /// Returns the canonical path for a template file, or null if the slug would escape the templates directory.
+    /// </summary>
+    private string? SafeTemplatePath(string slug, string extension)
+    {
+        if (!IsValidSlug(slug)) return null;
+        var dir = workspace.GetAgentTemplatesDir();
+        var resolved = Path.GetFullPath(Path.Combine(dir, $"{slug}{extension}"));
+        var canonicalDir = Path.GetFullPath(dir) + Path.DirectorySeparatorChar;
+        return resolved.StartsWith(canonicalDir, StringComparison.OrdinalIgnoreCase) ? resolved : null;
+    }
+
     public List<AgentTemplate> ListTemplates()
     {
         var dir = workspace.GetAgentTemplatesDir();
@@ -39,18 +61,19 @@ public class AgentTemplatesService(WorkspaceService workspace)
 
     public AgentTemplate? GetTemplate(string slug)
     {
-        var dir = workspace.GetAgentTemplatesDir();
-        var jsonPath = Path.Combine(dir, $"{slug}.json");
-        return File.Exists(jsonPath) ? LoadTemplateFile(jsonPath) : null;
+        var jsonPath = SafeTemplatePath(slug, ".json");
+        return jsonPath != null && File.Exists(jsonPath) ? LoadTemplateFile(jsonPath) : null;
     }
 
     public void SaveTemplate(AgentTemplate template)
     {
+        var jsonPath = SafeTemplatePath(template.Slug, ".json");
+        var mdPath = SafeTemplatePath(template.Slug, ".md");
+        if (jsonPath == null || mdPath == null)
+            throw new ArgumentException($"Invalid template slug: '{template.Slug}'");
+
         var dir = workspace.GetAgentTemplatesDir();
         Directory.CreateDirectory(dir);
-
-        var jsonPath = Path.Combine(dir, $"{template.Slug}.json");
-        var mdPath = Path.Combine(dir, $"{template.Slug}.md");
 
         if (!string.IsNullOrEmpty(template.Content))
             File.WriteAllText(mdPath, template.Content);
@@ -79,11 +102,10 @@ public class AgentTemplatesService(WorkspaceService workspace)
 
     public void DeleteTemplate(string slug)
     {
-        var dir = workspace.GetAgentTemplatesDir();
-        var jsonPath = Path.Combine(dir, $"{slug}.json");
-        var mdPath = Path.Combine(dir, $"{slug}.md");
+        var jsonPath = SafeTemplatePath(slug, ".json");
+        var mdPath = SafeTemplatePath(slug, ".md");
 
-        if (File.Exists(jsonPath)) File.Delete(jsonPath);
-        if (File.Exists(mdPath)) File.Delete(mdPath);
+        if (jsonPath != null && File.Exists(jsonPath)) File.Delete(jsonPath);
+        if (mdPath != null && File.Exists(mdPath)) File.Delete(mdPath);
     }
 }
