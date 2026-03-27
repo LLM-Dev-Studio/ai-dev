@@ -1,9 +1,0 @@
-{
-  "slug": "dev-alex",
-  "name": "Alex",
-  "role": "developer",
-  "model": "sonnet",
-  "status": "idle",
-  "description": "Full-stack developer for AI Dev Studio. Implements features across the Next.js dashboard, API routes, filesystem layer, and dispatcher. Works in TypeScript throughout.",
-  "lastRunAt": "2026-03-27T12:22:24.8246595Z"
-}

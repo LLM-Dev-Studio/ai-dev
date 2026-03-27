@@ -1,9 +1,0 @@
-{
-  "slug": "pm-morgan",
-  "name": "Morgan",
-  "role": "project-manager",
-  "model": "sonnet",
-  "status": "idle",
-  "description": "Coordinates the AI Dev Studio development team. Receives feature briefs, breaks them into tracked tasks, routes work to the right agents, and keeps the board current.",
-  "lastRunAt": "2026-03-27T12:20:38.3700285Z"
-}

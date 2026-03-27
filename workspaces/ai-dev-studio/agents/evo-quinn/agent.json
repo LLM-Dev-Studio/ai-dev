@@ -1,8 +1,0 @@
-{
-  "slug": "evo-quinn",
-  "name": "Quinn",
-  "role": "process-evo",
-  "model": "opus",
-  "status": "idle",
-  "description": "Process evolution specialist. Reads agent journals and decisions to identify friction points, then proposes concrete improvements to workflows and agent instructions."
-}
