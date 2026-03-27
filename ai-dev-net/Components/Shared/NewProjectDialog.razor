@@ -99,7 +99,7 @@
 </div>
 
 @code {
-    [Parameter, EditorRequired] public EventCallback<NewProjectRequest> OnCreated { get; set; }
+    [Parameter, EditorRequired] public Func<NewProjectRequest, Task<string?>> OnCreated { get; set; } = null!;
     [Parameter, EditorRequired] public EventCallback OnClose { get; set; }
 
     private string name = string.Empty;
@@ -150,10 +150,12 @@
         saving = true;
         try
         {
-            await OnCreated.InvokeAsync(new NewProjectRequest(
+            var serverError = await OnCreated(new NewProjectRequest(
                 slug, name, description,
                 string.IsNullOrWhiteSpace(codebasePath) ? null : codebasePath,
                 new Dictionary<string, string>(selectedTemplates)));
+            if (serverError != null)
+                error = serverError;
         }
         finally
         {

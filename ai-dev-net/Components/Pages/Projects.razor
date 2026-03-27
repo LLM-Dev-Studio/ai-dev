@@ -53,13 +53,6 @@ else
     </div>
 }
 
-@if (!string.IsNullOrEmpty(createError))
-{
-    <div class="mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-xs text-destructive">
-        @createError
-    </div>
-}
-
 @if (showNew)
 {
     <NewProjectDialog OnCreated="OnProjectCreated" OnClose="() => showNew = false" />
@@ -68,22 +61,17 @@ else
 @code {
     private List<WorkspaceProject>? projects;
     private bool showNew;
-    private string createError = string.Empty;
 
     protected override void OnInitialized()
     {
         projects = WorkspaceService.ListProjects();
     }
 
-    private void OnProjectCreated(NewProjectDialog.NewProjectRequest req)
+    private Task<string?> OnProjectCreated(NewProjectDialog.NewProjectRequest req)
     {
-        createError = string.Empty;
         var error = WorkspaceService.CreateProject(req.Slug, req.Name, req.Description, req.CodebasePath);
         if (error != null)
-        {
-            createError = error;
-            return;
-        }
+            return Task.FromResult<string?>(error);
 
         // Create agents from selected templates (slug → display name)
         foreach (var (templateSlug, agentName) in req.SelectedTemplates)
@@ -94,5 +82,6 @@ else
         showNew = false;
         projects = WorkspaceService.ListProjects();
         NavigationManager.NavigateTo($"/projects/{req.Slug}");
+        return Task.FromResult<string?>(null);
     }
 }
