@@ -20,7 +20,7 @@
             <div>
                 <label class="block text-xs text-muted-foreground mb-1">Slug</label>
                 <input value="@slug"
-                       @oninput="e => slug = e.Value?.ToString() ?? string.Empty"
+                       @oninput="OnSlugInput"
                        placeholder="my-project"
                        class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
                 <p class="text-xs text-muted-foreground/60 mt-1">Used as the folder name. Lowercase letters, digits, and hyphens only.</p>
@@ -109,6 +109,7 @@
     private readonly HashSet<string> selectedTemplateSlugs = [];
     private List<AgentTemplate> templates = [];
     private bool saving;
+    private bool _slugManuallyEdited;
     private string error = string.Empty;
 
     protected override void OnInitialized()
@@ -119,11 +120,20 @@
     private void OnNameInput(ChangeEventArgs e)
     {
         name = e.Value?.ToString() ?? string.Empty;
-        slug = new string(name.ToLowerInvariant()
-            .Replace(' ', '-')
-            .Where(c => char.IsLetterOrDigit(c) || c == '-')
-            .ToArray())
-            .Trim('-');
+        if (!_slugManuallyEdited)
+        {
+            slug = new string(name.ToLowerInvariant()
+                .Replace(' ', '-')
+                .Where(c => char.IsLetterOrDigit(c) || c == '-')
+                .ToArray())
+                .Trim('-');
+        }
+    }
+
+    private void OnSlugInput(ChangeEventArgs e)
+    {
+        slug = e.Value?.ToString() ?? string.Empty;
+        _slugManuallyEdited = true;
     }
 
     private readonly Dictionary<string, string> selectedTemplates = [];
