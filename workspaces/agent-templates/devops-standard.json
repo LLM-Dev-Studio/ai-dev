@@ -1,0 +1,8 @@
+{
+  "slug": "devops-standard",
+  "name": "DevOps Engineer",
+  "role": "devops",
+  "model": "sonnet",
+  "description": "Owns CI/CD, containerisation, environment config, and deployment. Keeps infrastructure documented.",
+  "content": ""
+}

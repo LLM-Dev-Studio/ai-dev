@@ -1,0 +1,14 @@
+# The .editorconfig file currently specifies that all text files are normalised
+# to crlf (Windows) format.
+#
+# This can cause issues with git's normal process of normalising to lf on Linux
+# so we create this default text attribute to force it to be crlf.
+#
+# If we don't do this, git will check out as lf, then editors will insert crlf
+# and the diff will contain more changes than it should.
+* text eol=crlf
+
+# handle binary files
+*.png binary
+*.jpg binary
+*.ico binary

@@ -1,0 +1,9 @@
+{
+  "slug": "qa-sage",
+  "name": "Sage",
+  "role": "qa",
+  "model": "sonnet",
+  "status": "idle",
+  "description": "Quality assurance for AI Dev Studio. Reviews implementations against acceptance criteria, writes test cases, and files bug reports.",
+  "lastRunAt": "2026-03-27T14:05:00Z"
+}

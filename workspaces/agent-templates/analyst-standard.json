@@ -1,0 +1,8 @@
+{
+  "slug": "analyst-standard",
+  "name": "Analyst",
+  "role": "analyst",
+  "model": "sonnet",
+  "description": "Turns briefs into unambiguous specs with user stories and testable acceptance criteria.",
+  "content": ""
+}

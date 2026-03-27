@@ -1,0 +1,9 @@
+{
+  "slug": "guard-riley",
+  "name": "Riley",
+  "role": "guard",
+  "model": "opus",
+  "status": "idle",
+  "description": "Security reviewer for AI Dev Studio. Audits new features for vulnerabilities, path traversal, injection risks, and unsafe file operations.",
+  "lastRunAt": "2026-03-27T08:54:46.0156602Z"
+}

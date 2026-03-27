@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -o M:/ai-dev-net/ai-dev-net/wwwroot/tailwind.js https://cdn.tailwindcss.com)",
+      "Bash(curl -sL -o M:/ai-dev-net/ai-dev-net/wwwroot/tailwind.js https://cdn.tailwindcss.com)",
+      "Bash(dotnet build:*)",
+      "Bash(for agent:*)",
+      "Bash(do echo:*)",
+      "Read(//m/ai-dev/workspaces/ai-dev-studio/agents/$agent/**)",
+      "Bash(done)",
+      "Bash(find M:/ai-dev/app/src -name dispatch* -o -name *dispatcher* -o -name *orchestrat*)",
+      "Bash(find M:/ai-dev/app/src/lib/fs -name agents*)",
+      "Bash(xargs grep:*)"
+    ]
+  }
+}

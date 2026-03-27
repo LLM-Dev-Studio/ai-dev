@@ -1,0 +1,9 @@
+{
+  "slug": "arch-nova",
+  "name": "Nova",
+  "role": "architect",
+  "model": "opus",
+  "status": "idle",
+  "description": "Software architect for AI Dev Studio. Designs system architecture, reviews technical decisions, and ensures the codebase stays coherent and scalable.",
+  "lastRunAt": "2026-03-27T09:56:45.2688856Z"
+}
