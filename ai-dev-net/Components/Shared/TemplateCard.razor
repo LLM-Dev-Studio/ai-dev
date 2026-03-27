@@ -1,0 +1,193 @@
+@inject IJSRuntime JS
+
+<div class="rounded-lg border border-border bg-card">
+    <div class="flex items-center justify-between px-5 py-4">
+        <button class="flex-1 text-left" @onclick="ToggleExpanded">
+            <p class="text-sm font-semibold text-foreground">@Template.Name</p>
+            <p class="text-xs text-muted-foreground mt-0.5">
+                <span class="font-mono">@Template.Role</span>
+                @(" · ")
+                <span class="font-mono">@Template.Model</span>
+                @if (!string.IsNullOrEmpty(Template.Description))
+                {
+                    @($" · {Template.Description}")
+                }
+            </p>
+        </button>
+        <div class="flex items-center gap-2">
+            <button @onclick="Delete"
+                    class="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
+                    title="Delete template">
+                <SvgIcon Name="trash-2" Class="w-3.5 h-3.5" />
+            </button>
+            <button @onclick="ToggleExpanded" class="p-1.5 text-muted-foreground">
+                <SvgIcon Name="@(expanded ? "chevron-up" : "chevron-down")" Class="w-4 h-4" />
+            </button>
+        </div>
+    </div>
+
+    @if (expanded)
+    {
+        <div class="px-5 pb-5 border-t border-border space-y-4 pt-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs text-muted-foreground mb-1">Name</label>
+                    <input value="@draft.Name"
+                           @oninput="e => SetName(e.Value?.ToString())"
+                           class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                </div>
+                <div>
+                    <label class="block text-xs text-muted-foreground mb-1">Model</label>
+                    @if (ModelAliases.Count > 0)
+                    {
+                        <select value="@draft.Model"
+                                @onchange="e => SetModel(e.Value?.ToString())"
+                                class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                            @foreach (var alias in ModelAliases)
+                            {
+                                <option value="@alias" selected="@(draft.Model == alias)">@alias</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <input value="@draft.Model"
+                               @oninput="e => SetModel(e.Value?.ToString())"
+                               class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
+                    }
+                </div>
+                <div>
+                    <label class="block text-xs text-muted-foreground mb-1">Role</label>
+                    <select value="@draft.Role"
+                            @onchange="e => SetRole(e.Value?.ToString())"
+                            class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                        @foreach (var role in Roles)
+                        {
+                            <option value="@role" selected="@(draft.Role == role)">@role</option>
+                        }
+                        @if (!Roles.Contains(draft.Role) && !string.IsNullOrEmpty(draft.Role))
+                        {
+                            <option value="@draft.Role" selected>@draft.Role</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-muted-foreground mb-1">Description</label>
+                    <input value="@draft.Description"
+                           @oninput="e => SetDescription(e.Value?.ToString())"
+                           class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs text-muted-foreground mb-1">
+                    Instructions (CLAUDE.md)
+                    <span class="ml-2 opacity-60">— leave blank to generate from role at agent-creation time</span>
+                </label>
+                <textarea id="@textareaId"
+                          @oninput="OnContentInput"
+                          placeholder="Leave blank to auto-generate from role template…"
+                          class="w-full rounded-md border border-border bg-background px-3 py-2 text-xs font-mono text-foreground/90 leading-relaxed resize-none focus:outline-none focus:ring-1 focus:ring-ring min-h-[120px]"
+                          spellcheck="false">@draft.Content</textarea>
+            </div>
+
+            <div class="flex items-center justify-end gap-3">
+                @if (saveStatus == SaveStatus.Saved)
+                {
+                    <span class="text-xs text-green-500">Saved</span>
+                }
+                else if (saveStatus == SaveStatus.Error)
+                {
+                    <span class="text-xs text-destructive">Error</span>
+                }
+                <button @onclick="Save"
+                        disabled="@(saving || !IsDirty)"
+                        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                    <SvgIcon Name="save" Class="w-3 h-3" />
+                    @(saving ? "Saving…" : "Save")
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly List<string> Roles =
+    [
+        "analyst", "architect", "designer", "developer", "devops",
+        "growth-marketing", "guard", "process-evo", "project-manager", "qa", "generic"
+    ];
+
+    [Parameter, EditorRequired] public AgentTemplate Template { get; set; } = default!;
+    [Parameter, EditorRequired] public List<string> ModelAliases { get; set; } = default!;
+    [Parameter, EditorRequired] public EventCallback<AgentTemplate> OnSave { get; set; }
+    [Parameter, EditorRequired] public EventCallback<string> OnDelete { get; set; }
+
+    private AgentTemplate draft = default!;
+    private bool expanded;
+    private bool saving;
+    private SaveStatus saveStatus = SaveStatus.Idle;
+    private string textareaId = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        draft = new AgentTemplate
+        {
+            Slug = Template.Slug,
+            Name = Template.Name,
+            Role = Template.Role,
+            Model = Template.Model,
+            Description = Template.Description,
+            Content = Template.Content,
+        };
+        textareaId = $"ta-{Template.Slug}";
+    }
+
+    private bool IsDirty =>
+        draft.Name != Template.Name ||
+        draft.Role != Template.Role ||
+        draft.Model != Template.Model ||
+        draft.Description != Template.Description ||
+        draft.Content != Template.Content;
+
+    private void ToggleExpanded() => expanded = !expanded;
+
+    private void SetName(string? v) => draft.Name = v ?? string.Empty;
+    private void SetModel(string? v) => draft.Model = v ?? string.Empty;
+    private void SetRole(string? v) => draft.Role = v ?? string.Empty;
+    private void SetDescription(string? v) => draft.Description = v ?? string.Empty;
+
+    private async Task OnContentInput(ChangeEventArgs e)
+    {
+        draft.Content = e.Value?.ToString() ?? string.Empty;
+        await JS.InvokeVoidAsync("autoResizeById", textareaId);
+    }
+
+    private async Task Save()
+    {
+        saving = true;
+        saveStatus = SaveStatus.Idle;
+        try
+        {
+            await OnSave.InvokeAsync(draft);
+            saveStatus = SaveStatus.Saved;
+            _ = Task.Delay(2000).ContinueWith(_ =>
+            {
+                saveStatus = SaveStatus.Idle;
+                InvokeAsync(StateHasChanged);
+            });
+        }
+        catch
+        {
+            saveStatus = SaveStatus.Error;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task Delete() => await OnDelete.InvokeAsync(Template.Slug);
+
+    private enum SaveStatus { Idle, Saved, Error }
+}

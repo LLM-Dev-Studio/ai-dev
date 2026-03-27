@@ -1,0 +1,235 @@
+@page "/projects/{Slug}/settings"
+@rendermode InteractiveServer
+@inject WorkspaceService WorkspaceService
+@inject AgentService AgentService
+@inject AgentTemplatesService TemplatesService
+@inject NavigationManager NavigationManager
+
+<a href="@($"/projects/{Slug}")"
+   class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4 transition-colors">
+    <SvgIcon Name="arrow-left" Class="w-3 h-3" />
+    Back to agents
+</a>
+
+@if (project == null)
+{
+    <EmptyState Icon="settings" Title="Project not found" Description="This project does not exist." />
+}
+else
+{
+    <div class="max-w-xl space-y-8">
+
+        <!-- Project details -->
+        <section>
+            <h2 class="text-base font-semibold text-foreground mb-4">Project details</h2>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs text-muted-foreground mb-1">Name</label>
+                    <input @bind="editName"
+                           class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                </div>
+                <div>
+                    <label class="block text-xs text-muted-foreground mb-1">Slug</label>
+                    <input value="@project.Slug" disabled
+                           class="w-full rounded-md border border-border bg-muted px-3 py-1.5 text-sm text-muted-foreground font-mono cursor-not-allowed" />
+                    <p class="text-xs text-muted-foreground/60 mt-1">Slug cannot be changed after creation.</p>
+                </div>
+                <div>
+                    <label class="block text-xs text-muted-foreground mb-1">
+                        Description
+                        <span class="opacity-60 ml-1">(optional)</span>
+                    </label>
+                    <input @bind="editDescription"
+                           placeholder="What is this project about?"
+                           class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                </div>
+                <div>
+                    <label class="block text-xs text-muted-foreground mb-1">
+                        Codebase path
+                        <span class="opacity-60 ml-1">(optional)</span>
+                    </label>
+                    <input @bind="editCodebasePath"
+                           placeholder="C:\path\to\your\code"
+                           class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
+                    <p class="text-xs text-muted-foreground/60 mt-1">Absolute path to the codebase agents will work on.</p>
+                </div>
+
+                @if (!string.IsNullOrEmpty(detailsError))
+                {
+                    <p class="text-xs text-destructive">@detailsError</p>
+                }
+                @if (detailsSaved)
+                {
+                    <p class="text-xs text-green-600">Saved.</p>
+                }
+
+                <div class="flex justify-end pt-1">
+                    <button @onclick="SaveDetails"
+                            disabled="@savingDetails"
+                            class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                        <SvgIcon Name="save" Class="w-3 h-3" />
+                        @(savingDetails ? "Saving…" : "Save changes")
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Agents -->
+        <section>
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-semibold text-foreground">Agents</h2>
+                <button @onclick="() => showAddAgent = !showAddAgent"
+                        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors">
+                    <SvgIcon Name="plus" Class="w-3 h-3" />
+                    Add agent
+                </button>
+            </div>
+
+            @if (agents.Count == 0)
+            {
+                <p class="text-sm text-muted-foreground">No agents yet.</p>
+            }
+            else
+            {
+                <div class="space-y-2">
+                    @foreach (var agent in agents)
+                    {
+                        <div class="flex items-center justify-between p-3 rounded-md border border-border bg-card">
+                            <div class="min-w-0">
+                                <p class="text-sm font-medium text-foreground">@agent.Name</p>
+                                <p class="text-xs text-muted-foreground/70 font-mono mt-0.5">@agent.Slug · @agent.Model</p>
+                            </div>
+                            <a href="@($"/projects/{Slug}/agents/{agent.Slug}")"
+                               class="text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-3">
+                                Open →
+                            </a>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (showAddAgent)
+            {
+                <div class="mt-4 p-4 rounded-md border border-border bg-card space-y-3">
+                    <p class="text-xs font-medium text-foreground">Add agent</p>
+
+                    @if (templates.Count > 0)
+                    {
+                        <div>
+                            <label class="block text-xs text-muted-foreground mb-1">From template</label>
+                            <select @bind="newAgentTemplate"
+                                    class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                <option value="">— custom agent —</option>
+                                @foreach (var t in templates)
+                                {
+                                    <option value="@t.Slug">@t.Name (@t.Slug)</option>
+                                }
+                            </select>
+                        </div>
+                    }
+
+                    <div>
+                        <label class="block text-xs text-muted-foreground mb-1">Agent slug</label>
+                        <input @bind="newAgentSlug"
+                               placeholder="e.g. dev-alex"
+                               class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
+                    </div>
+                    <div>
+                        <label class="block text-xs text-muted-foreground mb-1">Display name</label>
+                        <input @bind="newAgentName"
+                               placeholder="e.g. Alex"
+                               class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(agentError))
+                    {
+                        <p class="text-xs text-destructive">@agentError</p>
+                    }
+
+                    <div class="flex justify-end gap-2">
+                        <button @onclick="() => { showAddAgent = false; agentError = string.Empty; }"
+                                class="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors">
+                            Cancel
+                        </button>
+                        <button @onclick="AddAgent"
+                                class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                            <SvgIcon Name="plus" Class="w-3 h-3" />
+                            Create agent
+                        </button>
+                    </div>
+                </div>
+            }
+        </section>
+
+    </div>
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+
+    private ProjectDetail? project;
+    private List<AgentInfo> agents = [];
+    private List<AgentTemplate> templates = [];
+
+    // Details form
+    private string editName = string.Empty;
+    private string editDescription = string.Empty;
+    private string editCodebasePath = string.Empty;
+    private bool savingDetails;
+    private string detailsError = string.Empty;
+    private bool detailsSaved;
+
+    // Add agent form
+    private bool showAddAgent;
+    private string newAgentSlug = string.Empty;
+    private string newAgentName = string.Empty;
+    private string newAgentTemplate = string.Empty;
+    private string agentError = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        project = WorkspaceService.GetProject(Slug);
+        if (project != null)
+        {
+            editName = project.Name;
+            editDescription = project.Description;
+            editCodebasePath = project.CodebasePath ?? string.Empty;
+        }
+        agents = AgentService.ListAgents(Slug);
+        templates = TemplatesService.ListTemplates();
+    }
+
+    private void SaveDetails()
+    {
+        detailsError = string.Empty;
+        detailsSaved = false;
+        if (string.IsNullOrWhiteSpace(editName)) { detailsError = "Name is required."; return; }
+
+        savingDetails = true;
+        var err = WorkspaceService.UpdateProject(Slug, editName, editDescription,
+            string.IsNullOrWhiteSpace(editCodebasePath) ? null : editCodebasePath);
+        savingDetails = false;
+
+        if (err != null) { detailsError = err; return; }
+
+        project = WorkspaceService.GetProject(Slug);
+        detailsSaved = true;
+    }
+
+    private void AddAgent()
+    {
+        agentError = string.Empty;
+        if (string.IsNullOrWhiteSpace(newAgentSlug)) { agentError = "Slug is required."; return; }
+        if (string.IsNullOrWhiteSpace(newAgentName)) { agentError = "Name is required."; return; }
+
+        var templateSlug = string.IsNullOrWhiteSpace(newAgentTemplate) ? null : newAgentTemplate;
+        var err = AgentService.CreateAgent(Slug, newAgentSlug, newAgentName, templateSlug);
+        if (err != null) { agentError = err; return; }
+
+        agents = AgentService.ListAgents(Slug);
+        showAddAgent = false;
+        newAgentSlug = string.Empty;
+        newAgentName = string.Empty;
+        newAgentTemplate = string.Empty;
+    }
+}

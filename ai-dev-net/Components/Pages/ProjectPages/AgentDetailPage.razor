@@ -1,0 +1,320 @@
+@page "/projects/{Slug}/agents/{AgentName}"
+@rendermode InteractiveServer
+@inject AgentService AgentService
+@inject MessagesService MessagesService
+@inject AgentRunnerService RunnerService
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<a href="@($"/projects/{Slug}")"
+   class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4 transition-colors">
+    <SvgIcon Name="arrow-left" Class="w-3 h-3" />
+    Back to agents
+</a>
+
+@if (agent == null)
+{
+    <LoadingGrid Count="3" />
+}
+else
+{
+    <div class="flex items-start gap-3 mb-6">
+        <div class="flex-1">
+            <div class="flex items-center gap-2 mb-1">
+                <h1 class="text-xl font-semibold text-foreground">@agent.Name</h1>
+                <StatusBadge Status="@(isRunning ? "running" : "idle")" />
+                <ModelBadge Model="@agent.Model" />
+            </div>
+            <p class="text-sm text-muted-foreground">@agent.Description</p>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+            <a href="@($"/projects/{Slug}/agents/{AgentName}/transcript")"
+               class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
+                <SvgIcon Name="scroll-text" Class="w-3 h-3" />
+                Transcript
+            </a>
+            @if (isRunning)
+            {
+                <button @onclick="StopAgent"
+                        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
+                    <SvgIcon Name="square" Class="w-3 h-3" />
+                    Stop
+                </button>
+            }
+            else
+            {
+                <button @onclick="LaunchAgent"
+                        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors">
+                    <SvgIcon Name="play" Class="w-3 h-3" />
+                    Run
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="grid grid-cols-3 gap-4 mb-8">
+        <div class="rounded-lg border border-border bg-card p-4">
+            <p class="text-xs text-muted-foreground mb-1">Role</p>
+            <p class="text-sm font-medium text-foreground font-mono">@(string.IsNullOrEmpty(agent.Role) ? "—" : agent.Role)</p>
+        </div>
+        <div class="rounded-lg border border-border bg-card p-4">
+            <p class="text-xs text-muted-foreground mb-1">Last run</p>
+            <p class="text-sm font-medium text-foreground">@FormatDate(agent.LastRunAt)</p>
+        </div>
+        <div class="rounded-lg border border-border bg-card p-4">
+            <p class="text-xs text-muted-foreground mb-1">Inbox</p>
+            <p class="text-sm font-medium text-foreground">@agent.InboxCount message@(agent.InboxCount != 1 ? "s" : "")</p>
+        </div>
+    </div>
+
+    <!-- Configuration -->
+    <div class="space-y-3 mb-8">
+        <div class="rounded-lg border border-border bg-card p-5">
+            <p class="text-sm font-semibold text-foreground mb-4">Agent Configuration</p>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs text-muted-foreground mb-1">Name</label>
+                    <input value="@editName"
+                           @oninput="e => editName = e.Value?.ToString() ?? string.Empty"
+                           class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                </div>
+                <div>
+                    <label class="block text-xs text-muted-foreground mb-1">Model</label>
+                    @if (modelAliases.Count > 0)
+                    {
+                        <select value="@editModel"
+                                @onchange="e => editModel = e.Value?.ToString() ?? string.Empty"
+                                class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                            @foreach (var alias in modelAliases)
+                            {
+                                <option value="@alias" selected="@(alias == editModel)">@alias</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <input value="@editModel"
+                               @oninput="e => editModel = e.Value?.ToString() ?? string.Empty"
+                               class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
+                    }
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-xs text-muted-foreground mb-1">Description</label>
+                    <input value="@editDescription"
+                           @oninput="e => editDescription = e.Value?.ToString() ?? string.Empty"
+                           class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                </div>
+            </div>
+            <div class="flex items-center justify-end gap-3 mt-4">
+                @if (metaStatus == SaveStatus.Saved)
+                {
+                    <span class="text-xs text-green-500">Saved</span>
+                }
+                @if (metaStatus == SaveStatus.Error)
+                {
+                    <span class="text-xs text-destructive">Error saving</span>
+                }
+                <button @onclick="SaveMeta"
+                        disabled="@(!IsMetaDirty || savingMeta)"
+                        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                    <SvgIcon Name="save" Class="w-3 h-3" />
+                    @(savingMeta ? "Saving…" : "Save")
+                </button>
+            </div>
+        </div>
+
+        <!-- CLAUDE.md collapsible -->
+        <div class="rounded-lg border border-border bg-card">
+            <button @onclick="() => claudeExpanded = !claudeExpanded"
+                    class="w-full flex items-center justify-between px-5 py-4 text-left">
+                <div>
+                    <p class="text-sm font-semibold text-foreground">Instructions (CLAUDE.md)</p>
+                    <p class="text-xs text-muted-foreground mt-0.5">Passed to the agent on every session — keep this focused and lean</p>
+                </div>
+                <SvgIcon Name="@(claudeExpanded ? "chevron-up" : "chevron-down")" Class="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            </button>
+            @if (claudeExpanded)
+            {
+                <div class="px-5 pb-5 border-t border-border">
+                    <textarea value="@claudeContent"
+                              @oninput="e => claudeContent = e.Value?.ToString() ?? string.Empty"
+                              class="w-full mt-4 rounded-md border border-border bg-background px-3 py-2 text-xs font-mono text-foreground/90 leading-relaxed resize-y focus:outline-none focus:ring-1 focus:ring-ring min-h-48"
+                              spellcheck="false" rows="12"></textarea>
+                    <div class="flex items-center justify-between mt-3">
+                        <button @onclick="ResetClaude"
+                                class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                            <SvgIcon Name="rotate-ccw" Class="w-3 h-3" />
+                            Reload from disk
+                        </button>
+                        <div class="flex items-center gap-3">
+                            @if (claudeStatus == SaveStatus.Saved)
+                            {
+                                <span class="text-xs text-green-500">Saved</span>
+                            }
+                            @if (claudeStatus == SaveStatus.Error)
+                            {
+                                <span class="text-xs text-destructive">Error saving</span>
+                            }
+                            <button @onclick="SaveClaude"
+                                    disabled="@(!IsClaudeDirty || savingClaude)"
+                                    class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                                <SvgIcon Name="save" Class="w-3 h-3" />
+                                @(savingClaude ? "Saving…" : "Save")
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Inbox -->
+    <h2 class="text-sm font-semibold text-foreground mb-3">Inbox</h2>
+    @if (messages.Count == 0)
+    {
+        <EmptyState Icon="inbox" Title="Inbox is empty" />
+    }
+    else
+    {
+        <div class="space-y-3">
+            @foreach (var msg in messages)
+            {
+                <div class="rounded-lg border border-border bg-card p-4">
+                    <div class="flex items-start justify-between mb-2">
+                        <div>
+                            <p class="text-sm font-medium text-foreground">@msg.Re</p>
+                            <p class="text-xs text-muted-foreground mt-0.5">
+                                from <span class="text-foreground/70">@msg.From</span>
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2 ml-3 flex-shrink-0">
+                            <span class="text-xs px-1.5 py-0.5 rounded border border-border text-muted-foreground">@msg.Type</span>
+                            <span class="text-xs text-muted-foreground">@FormatDateTime(msg.Date)</span>
+                        </div>
+                    </div>
+                    <p class="text-sm text-muted-foreground line-clamp-3">@msg.Body</p>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+    [Parameter] public string AgentName { get; set; } = string.Empty;
+
+    private AgentInfo? agent;
+    private List<MessageItem> messages = [];
+    private List<string> modelAliases = [];
+    private bool isRunning;
+    private Timer? _pollTimer;
+
+    // Editable meta
+    private string editName = string.Empty;
+    private string editDescription = string.Empty;
+    private string editModel = string.Empty;
+    private string originalName = string.Empty;
+    private string originalDescription = string.Empty;
+    private string originalModel = string.Empty;
+    private bool savingMeta;
+    private SaveStatus metaStatus;
+
+    // CLAUDE.md
+    private string claudeContent = string.Empty;
+    private string claudeOriginal = string.Empty;
+    private bool claudeExpanded;
+    private bool savingClaude;
+    private SaveStatus claudeStatus;
+
+    private enum SaveStatus { Idle, Saved, Error }
+
+    private bool IsMetaDirty => editName != originalName || editDescription != originalDescription || editModel != originalModel;
+    private bool IsClaudeDirty => claudeContent != claudeOriginal;
+
+    protected override void OnInitialized()
+    {
+        agent = AgentService.LoadAgent(Slug, AgentName);
+        if (agent == null) return;
+
+        editName = originalName = agent.Name;
+        editDescription = originalDescription = agent.Description;
+        editModel = originalModel = agent.Model;
+
+        claudeContent = claudeOriginal = AgentService.GetClaudeMd(Slug, AgentName);
+        modelAliases = AgentService.GetModelAliases();
+        messages = MessagesService.ListMessages(Slug, AgentName);
+        isRunning = RunnerService.IsRunning(Slug, AgentName);
+
+        // Poll every 2 s to reflect live run state
+        _pollTimer = new Timer(_ =>
+        {
+            var running = RunnerService.IsRunning(Slug, AgentName);
+            if (running != isRunning)
+            {
+                isRunning = running;
+                InvokeAsync(StateHasChanged);
+            }
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
+    private void LaunchAgent()
+    {
+        RunnerService.LaunchAgent(Slug, AgentName);
+        isRunning = true;
+    }
+
+    private void StopAgent()
+    {
+        RunnerService.StopAgent(Slug, AgentName);
+    }
+
+    public void Dispose() => _pollTimer?.Dispose();
+
+    private void SaveMeta()
+    {
+        savingMeta = true;
+        metaStatus = SaveStatus.Idle;
+        var err = AgentService.SaveAgentMeta(Slug, AgentName, editName, editDescription, editModel);
+        savingMeta = false;
+        if (err != null) { metaStatus = SaveStatus.Error; return; }
+        originalName = editName;
+        originalDescription = editDescription;
+        originalModel = editModel;
+        agent = AgentService.LoadAgent(Slug, AgentName);
+        metaStatus = SaveStatus.Saved;
+        Task.Delay(2000).ContinueWith(_ => { metaStatus = SaveStatus.Idle; InvokeAsync(StateHasChanged); });
+    }
+
+    private void SaveClaude()
+    {
+        savingClaude = true;
+        claudeStatus = SaveStatus.Idle;
+        var err = AgentService.SaveClaudeMd(Slug, AgentName, claudeContent);
+        savingClaude = false;
+        if (err != null) { claudeStatus = SaveStatus.Error; return; }
+        claudeOriginal = claudeContent;
+        claudeStatus = SaveStatus.Saved;
+        Task.Delay(2000).ContinueWith(_ => { claudeStatus = SaveStatus.Idle; InvokeAsync(StateHasChanged); });
+    }
+
+    private void ResetClaude()
+    {
+        claudeContent = AgentService.GetClaudeMd(Slug, AgentName);
+        claudeOriginal = claudeContent;
+        claudeStatus = SaveStatus.Idle;
+    }
+
+    private static string FormatDate(string? iso)
+    {
+        if (string.IsNullOrEmpty(iso)) return "—";
+        if (DateTime.TryParse(iso, out var dt)) return dt.ToLocalTime().ToString("MMM d");
+        return "—";
+    }
+
+    private static string FormatDateTime(string? iso)
+    {
+        if (string.IsNullOrEmpty(iso)) return string.Empty;
+        if (DateTime.TryParse(iso, out var dt)) return dt.ToLocalTime().ToString("MMM d HH:mm");
+        return iso;
+    }
+}

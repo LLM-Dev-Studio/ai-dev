@@ -1,0 +1,243 @@
+namespace AiDevNet.Services;
+
+/// <summary>
+/// Monitors board tasks for stalls and ensures work keeps moving.
+///
+/// Every <see cref="ScanInterval"/>:
+///   - Tasks in non-done columns that haven't moved in > <see cref="StallThreshold"/>
+///     are considered stalled.
+///   - Stalled tasks with an assignee receive an inbox nudge (subject to
+///     <see cref="NudgeCooldown"/> to prevent spam). NudgedAt is reset when a task
+///     moves columns so a progressing task is never counted as stalled.
+///   - Stalled tasks with no assignee raise a decision for human intervention.
+/// </summary>
+public class OverwatchService(
+    WorkspaceService workspace,
+    BoardService boardService,
+    AgentRunnerService runner,
+    DecisionsService decisionsService,
+    ILogger<OverwatchService> logger)
+    : IHostedService, IDisposable
+{
+    private static readonly ActivitySource ActivitySource = new("AiDevNet.Overwatch");
+
+    private static readonly TimeSpan StallThreshold = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan NudgeCooldown  = TimeSpan.FromMinutes(20);
+    private static readonly TimeSpan ScanInterval   = TimeSpan.FromMinutes(5);
+
+    private Timer? _timer;
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "[overwatch] Starting — stall: {Stall}m, cooldown: {Cooldown}m, interval: {Interval}m",
+            StallThreshold.TotalMinutes, NudgeCooldown.TotalMinutes, ScanInterval.TotalMinutes);
+
+        // Initial scan after 30 s (let app finish init), then every ScanInterval
+        _timer = new Timer(_ => ScanAll(), null,
+            TimeSpan.FromSeconds(30), ScanInterval);
+
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        logger.LogInformation("[overwatch] Stopping");
+        Dispose();
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    // -------------------------------------------------------------------------
+    // Scan
+    // -------------------------------------------------------------------------
+
+    private void ScanAll()
+    {
+        using var activity = ActivitySource.StartActivity("Overwatch.Scan", ActivityKind.Internal);
+        var projects = workspace.ListProjects();
+        activity?.SetTag("projects.count", projects.Count);
+
+        foreach (var project in projects)
+        {
+            try { ScanProject(project.Slug, activity?.Id); }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "[overwatch] Error scanning project {Project}", project.Slug);
+            }
+        }
+    }
+
+    private void ScanProject(string projectSlug, string? parentActivityId)
+    {
+        using var activity = ActivitySource.StartActivity(
+            "Overwatch.ScanProject", ActivityKind.Internal, parentActivityId);
+        activity?.SetTag("project", projectSlug);
+
+        var board = boardService.LoadBoard(projectSlug);
+        if (board.Columns.Count == 0 || board.Tasks.Count == 0) return;
+
+        var now = DateTime.UtcNow;
+        var nudged = 0;
+        var skipped = 0;
+        var escalated = 0;
+
+        // Build task → column lookup
+        var taskColumn = board.Columns
+            .SelectMany(c => c.TaskIds.Select(id => (id, col: c)))
+            .ToDictionary(x => x.id, x => x.col);
+
+        foreach (var (taskId, task) in board.Tasks)
+        {
+            if (!taskColumn.TryGetValue(taskId, out var column)) continue;
+
+            // Skip completed tasks
+            if (column.Id == "done" || !string.IsNullOrEmpty(task.CompletedAt)) continue;
+
+            // How long in current column? Fall back to CreatedAt for legacy tasks without MovedAt.
+            var sinceStr = task.MovedAt ?? task.CreatedAt;
+            if (!DateTime.TryParse(sinceStr, null,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var sinceTime))
+                continue;
+
+            var age = now - sinceTime;
+            if (age < StallThreshold) continue;
+
+            // Respect nudge cooldown
+            if (!string.IsNullOrEmpty(task.NudgedAt) &&
+                DateTime.TryParse(task.NudgedAt, null,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var lastNudge) &&
+                now - lastNudge < NudgeCooldown)
+            {
+                skipped++;
+                continue;
+            }
+
+            using var taskActivity = ActivitySource.StartActivity(
+                "Overwatch.StalledTask", ActivityKind.Internal, activity?.Id);
+            taskActivity?.SetTag("project", projectSlug);
+            taskActivity?.SetTag("task.id", taskId);
+            taskActivity?.SetTag("task.title", task.Title);
+            taskActivity?.SetTag("task.column", column.Title);
+            taskActivity?.SetTag("task.priority", task.Priority);
+            taskActivity?.SetTag("task.ageMinutes", (int)age.TotalMinutes);
+            taskActivity?.SetTag("task.assignee", task.Assignee ?? "unassigned");
+
+            logger.LogWarning(
+                "[overwatch] Task stalled {Age}m in [{Column}]: \"{Title}\" — assignee: {Assignee}",
+                (int)age.TotalMinutes, column.Title, task.Title, task.Assignee ?? "none");
+
+            if (!string.IsNullOrEmpty(task.Assignee))
+            {
+                var outcome = NudgeAgent(projectSlug, task, column.Title, age);
+                taskActivity?.SetTag("overwatch.action", outcome);
+                if (outcome == "nudged") nudged++;
+                else skipped++;
+            }
+            else
+            {
+                var outcome = RaiseDecision(projectSlug, task, column.Title, age);
+                taskActivity?.SetTag("overwatch.action", outcome);
+                if (outcome == "decision-raised") escalated++;
+                else skipped++;
+            }
+        }
+
+        if (nudged + escalated > 0)
+            logger.LogInformation(
+                "[overwatch] {Project}: {Nudged} nudged, {Escalated} escalated, {Skipped} in cooldown",
+                projectSlug, nudged, escalated, skipped);
+
+        activity?.SetTag("overwatch.nudged", nudged);
+        activity?.SetTag("overwatch.escalated", escalated);
+        activity?.SetTag("overwatch.skipped", skipped);
+    }
+
+    // -------------------------------------------------------------------------
+    // Actions
+    // -------------------------------------------------------------------------
+
+    private string NudgeAgent(string projectSlug, BoardTask task, string columnTitle, TimeSpan age)
+    {
+        // Don't nudge if the agent is already running — it'll pick up work when it next runs
+        if (runner.IsRunning(projectSlug, task.Assignee!))
+        {
+            logger.LogInformation(
+                "[overwatch] Agent {Agent} is currently running — skipping nudge for \"{Title}\"",
+                task.Assignee, task.Title);
+            return "skip-agent-running";
+        }
+
+        var ageStr = FormatAge(age);
+        var body = $"""
+            Task "{task.Title}" has been stalled in **{columnTitle}** for {ageStr} with no progress.
+
+            **Task ID:** {task.Id}
+            **Priority:** {task.Priority}
+            {(string.IsNullOrEmpty(task.Description) ? "" : $"**Description:** {task.Description}\n\n")}Please action this task and move it forward. If you are blocked, raise a decision or message the relevant agent explaining the blocker.
+            """;
+
+        var err = runner.WriteInboxMessage(
+            projectSlug,
+            task.Assignee!,
+            from: "overwatch",
+            re: $"Stalled task: {task.Title}",
+            type: "overwatch-nudge",
+            priority: task.Priority is "critical" or "high" ? task.Priority : "high",
+            body: body);
+
+        if (err != null)
+        {
+            logger.LogError("[overwatch] Failed to nudge {Agent} for \"{Title}\": {Error}",
+                task.Assignee, task.Title, err);
+            return "nudge-failed";
+        }
+
+        logger.LogInformation("[overwatch] Nudged {Agent} for stalled task \"{Title}\" ({Age})",
+            task.Assignee, task.Title, ageStr);
+        boardService.SetTaskNudged(projectSlug, task.Id);
+        return "nudged";
+    }
+
+    private string RaiseDecision(string projectSlug, BoardTask task, string columnTitle, TimeSpan age)
+    {
+        var ageStr = FormatAge(age);
+        var body = $"""
+            Task "{task.Title}" has been in **{columnTitle}** for {ageStr} with no assigned agent.
+
+            **Task ID:** {task.Id}
+            **Priority:** {task.Priority}
+            {(string.IsNullOrEmpty(task.Description) ? "" : $"**Description:** {task.Description}\n\n")}Please assign an agent to progress this task, or resolve it manually.
+            """;
+
+        var err = decisionsService.CreateDecision(
+            projectSlug,
+            from: "overwatch",
+            subject: $"Unassigned stalled task: {task.Title}",
+            priority: task.Priority is "critical" or "high" ? task.Priority : "high",
+            blocks: task.Id,
+            body: body);
+
+        if (err != null)
+        {
+            logger.LogError("[overwatch] Failed to raise decision for \"{Title}\": {Error}",
+                task.Title, err);
+            return "decision-failed";
+        }
+
+        logger.LogInformation("[overwatch] Raised decision for unassigned stalled task \"{Title}\" ({Age})",
+            task.Title, ageStr);
+        boardService.SetTaskNudged(projectSlug, task.Id);
+        return "decision-raised";
+    }
+
+    private static string FormatAge(TimeSpan age) =>
+        age.TotalHours >= 1
+            ? $"{(int)age.TotalHours}h {age.Minutes}m"
+            : $"{(int)age.TotalMinutes}m";
+}

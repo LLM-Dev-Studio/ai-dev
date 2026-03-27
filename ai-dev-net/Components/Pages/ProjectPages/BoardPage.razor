@@ -1,0 +1,387 @@
+@page "/projects/{Slug}/board"
+@rendermode InteractiveServer
+@inject BoardService BoardService
+@inject AgentService AgentService
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<div class="flex items-center justify-between mb-1">
+    <div>
+        <h1 class="text-xl font-semibold text-foreground">Board</h1>
+        @if (board != null)
+        {
+            <p class="text-sm text-muted-foreground mt-0.5">@board.Tasks.Count task@(board.Tasks.Count != 1 ? "s" : "")</p>
+        }
+    </div>
+</div>
+
+@if (board == null)
+{
+    <div class="flex gap-4 mt-5">
+        @for (int i = 0; i < 4; i++)
+        {
+            <div class="flex-shrink-0 w-64">
+                <div class="h-5 w-24 bg-muted rounded animate-pulse mb-3"></div>
+                <div class="space-y-2">
+                    <div class="h-20 rounded-lg border border-border bg-card animate-pulse"></div>
+                    <div class="h-16 rounded-lg border border-border bg-card animate-pulse"></div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="flex gap-4 overflow-x-auto pb-4 mt-5">
+        @foreach (var col in board.Columns)
+        {
+            <div class="flex-shrink-0 w-64 flex flex-col">
+                <div class="flex items-center justify-between mb-3">
+                    <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">@col.Title</p>
+                    <span class="text-xs text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">@col.TaskIds.Count</span>
+                </div>
+
+                <div class="space-y-2 flex-1">
+                    @foreach (var taskId in col.TaskIds)
+                    {
+                        @if (board.Tasks.TryGetValue(taskId, out var task))
+                        {
+                            var colIdx = board.Columns.IndexOf(col);
+                            var prevCol = colIdx > 0 ? board.Columns[colIdx - 1] : null;
+                            var nextCol = colIdx < board.Columns.Count - 1 ? board.Columns[colIdx + 1] : null;
+
+                            <div class="relative w-full rounded-lg border @(openMenuId == taskId ? "border-ring/40" : "border-border") bg-card hover:border-border/80 transition-colors">
+                                <button class="w-full text-left p-3 pr-7"
+                                        @onclick="() => OpenEditTask(task, col.Id)">
+                                    <div class="flex items-start gap-2">
+                                        <span class="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 @PriorityDot(task.Priority)"></span>
+                                        <p class="text-sm text-foreground leading-snug">@task.Title</p>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(task.Assignee) || !string.IsNullOrEmpty(task.Description))
+                                    {
+                                        <div class="mt-2 ml-3.5 space-y-1">
+                                            @if (!string.IsNullOrEmpty(task.Description))
+                                            {
+                                                <p class="text-xs text-muted-foreground/70 line-clamp-2 leading-relaxed">@task.Description</p>
+                                            }
+                                            @if (!string.IsNullOrEmpty(task.Assignee))
+                                            {
+                                                <div class="flex items-center gap-1.5">
+                                                    <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium @PriorityBadge(task.Priority)">@task.Priority</span>
+                                                    <span class="text-xs text-muted-foreground">@task.Assignee</span>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </button>
+
+                                <button class="absolute top-2 right-2 p-0.5 rounded text-muted-foreground/30 hover:text-muted-foreground hover:bg-accent/50 transition-colors"
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => ToggleMenu(taskId)">
+                                    <SvgIcon Name="ellipsis" Class="w-3.5 h-3.5" />
+                                </button>
+
+                                @if (openMenuId == taskId)
+                                {
+                                    <div class="absolute right-1 top-7 z-20 min-w-44 rounded-md border border-border bg-card shadow-lg py-1"
+                                         @onclick:stopPropagation="true">
+                                        @if (!string.IsNullOrEmpty(task.Assignee))
+                                        {
+                                            <a href="@($"/projects/{Slug}/agents/{task.Assignee}/transcript")"
+                                               class="flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors">
+                                                <SvgIcon Name="scroll-text" Class="w-3.5 h-3.5 text-muted-foreground" />
+                                                View Transcript
+                                            </a>
+                                            <a href="@($"/projects/{Slug}/agents/{task.Assignee}")"
+                                               class="flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors">
+                                                <SvgIcon Name="bot" Class="w-3.5 h-3.5 text-muted-foreground" />
+                                                View Agent
+                                            </a>
+                                            <div class="my-1 border-t border-border"></div>
+                                        }
+                                        @if (nextCol != null)
+                                        {
+                                            <button class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors text-left"
+                                                    @onclick="() => QuickMove(taskId, nextCol.Id)">
+                                                <SvgIcon Name="arrow-right" Class="w-3.5 h-3.5 text-muted-foreground" />
+                                                Move to @nextCol.Title
+                                            </button>
+                                        }
+                                        @if (prevCol != null)
+                                        {
+                                            <button class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors text-left"
+                                                    @onclick="() => QuickMove(taskId, prevCol.Id)">
+                                                <SvgIcon Name="arrow-left" Class="w-3.5 h-3.5" />
+                                                Move to @prevCol.Title
+                                            </button>
+                                        }
+                                        @if (nextCol != null || prevCol != null)
+                                        {
+                                            <div class="my-1 border-t border-border"></div>
+                                        }
+                                        <button class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors text-left"
+                                                @onclick="() => OpenEditTask(task, col.Id)">
+                                            <SvgIcon Name="pencil" Class="w-3.5 h-3.5 text-muted-foreground" />
+                                            Edit
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+
+                    @if (col.TaskIds.Count == 0)
+                    {
+                        <div class="h-16 rounded-lg border border-dashed border-border flex items-center justify-center">
+                            <p class="text-xs text-muted-foreground/40">Empty</p>
+                        </div>
+                    }
+                </div>
+
+                <button class="w-full flex items-center gap-1.5 rounded-md px-2.5 py-1.5 mt-1 text-xs text-muted-foreground/60 hover:text-muted-foreground hover:bg-secondary transition-colors"
+                        @onclick="() => OpenNewTask(col.Id)">
+                    <SvgIcon Name="plus" Class="w-3.5 h-3.5" />
+                    Add task
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@if (openMenuId != null)
+{
+    <div class="fixed inset-0 z-10" @onclick="CloseMenu"></div>
+}
+
+@if (showTaskDialog)
+{
+    <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div class="bg-card border border-border rounded-lg w-full max-w-lg p-6">
+            <div class="flex items-start justify-between mb-5">
+                <p class="text-base font-semibold text-foreground">@(editingTaskId == null ? "New Task" : "Edit Task")</p>
+                <button @onclick="CloseTaskDialog" class="p-1 text-muted-foreground hover:text-foreground">
+                    <SvgIcon Name="x" Class="w-4 h-4" />
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-muted-foreground mb-1.5">Title <span class="text-destructive">*</span></label>
+                    <input value="@taskTitle"
+                           @oninput="e => taskTitle = e.Value?.ToString() ?? string.Empty"
+                           placeholder="What needs to be done?"
+                           class="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-muted-foreground mb-1.5">Description</label>
+                    <textarea value="@taskDescription"
+                              @oninput="e => taskDescription = e.Value?.ToString() ?? string.Empty"
+                              rows="3"
+                              placeholder="Optional details, acceptance criteria…"
+                              class="w-full resize-none rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-muted-foreground mb-1.5">Priority</label>
+                        <select value="@taskPriority"
+                                @onchange="e => taskPriority = e.Value?.ToString() ?? string.Empty"
+                                class="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                            <option value="low">Low</option>
+                            <option value="normal">Normal</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-muted-foreground mb-1.5">Column</label>
+                        <select value="@taskColumnId"
+                                @onchange="e => taskColumnId = e.Value?.ToString() ?? string.Empty"
+                                class="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                            @foreach (var col in board?.Columns ?? [])
+                            {
+                                <option value="@col.Id" selected="@(col.Id == taskColumnId)">@col.Title</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-muted-foreground mb-1.5">Assignee</label>
+                    <select value="@taskAssignee"
+                            @onchange="e => taskAssignee = e.Value?.ToString() ?? string.Empty"
+                            class="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                        <option value="">Unassigned</option>
+                        @foreach (var a in agents)
+                        {
+                            <option value="@a.Slug" selected="@(a.Slug == taskAssignee)">@a.Name (@a.Role)</option>
+                        }
+                    </select>
+                </div>
+                @if (!string.IsNullOrEmpty(taskError))
+                {
+                    <p class="text-xs text-destructive">@taskError</p>
+                }
+            </div>
+
+            <div class="flex items-center justify-between mt-5">
+                @if (editingTaskId != null)
+                {
+                    <button @onclick="DeleteTask"
+                            class="flex items-center gap-1.5 text-sm text-destructive hover:bg-destructive/10 rounded-md px-3 py-1.5 transition-colors">
+                        <SvgIcon Name="trash-2" Class="w-3.5 h-3.5" />
+                        Delete
+                    </button>
+                }
+                else
+                {
+                    <span></span>
+                }
+                <div class="flex gap-2">
+                    <button @onclick="CloseTaskDialog"
+                            class="rounded-md px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                        Cancel
+                    </button>
+                    <button @onclick="SaveTask"
+                            disabled="@(saving || string.IsNullOrWhiteSpace(taskTitle))"
+                            class="flex items-center gap-2 rounded-md px-4 py-1.5 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                        <SvgIcon Name="check" Class="w-3.5 h-3.5" />
+                        @(editingTaskId == null ? "Create Task" : "Save")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+
+    private BoardData? board;
+    private List<AgentInfo> agents = [];
+
+    // Action menu state
+    private string? openMenuId;
+    private Timer? _pollTimer;
+
+    // Task dialog state
+    private bool showTaskDialog;
+    private string? editingTaskId;
+    private string taskTitle = string.Empty;
+    private string taskDescription = string.Empty;
+    private string taskPriority = "normal";
+    private string taskColumnId = string.Empty;
+    private string taskAssignee = string.Empty;
+    private string taskError = string.Empty;
+    private bool saving;
+
+    protected override void OnInitialized()
+    {
+        board = BoardService.LoadBoard(Slug);
+        agents = AgentService.ListAgents(Slug);
+
+        _pollTimer = new Timer(_ =>
+        {
+            board = BoardService.LoadBoard(Slug);
+            InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    public void Dispose() => _pollTimer?.Dispose();
+
+    private void OpenNewTask(string columnId)
+    {
+        editingTaskId = null;
+        taskTitle = string.Empty;
+        taskDescription = string.Empty;
+        taskPriority = "normal";
+        taskColumnId = columnId;
+        taskAssignee = string.Empty;
+        taskError = string.Empty;
+        showTaskDialog = true;
+    }
+
+    private void ToggleMenu(string taskId)
+    {
+        openMenuId = openMenuId == taskId ? null : taskId;
+    }
+
+    private void CloseMenu() => openMenuId = null;
+
+    private void QuickMove(string taskId, string targetColumnId)
+    {
+        if (board == null || !board.Tasks.TryGetValue(taskId, out var task)) return;
+        BoardService.UpdateTask(Slug, taskId, targetColumnId,
+            task.Title, task.Description, task.Priority, task.Assignee);
+        board = BoardService.LoadBoard(Slug);
+        openMenuId = null;
+        StateHasChanged();
+    }
+
+    private void OpenEditTask(BoardTask task, string columnId)
+    {
+        openMenuId = null;
+        editingTaskId = task.Id;
+        taskTitle = task.Title;
+        taskDescription = task.Description ?? string.Empty;
+        taskPriority = task.Priority;
+        taskColumnId = columnId;
+        taskAssignee = task.Assignee ?? string.Empty;
+        taskError = string.Empty;
+        showTaskDialog = true;
+    }
+
+    private void CloseTaskDialog()
+    {
+        showTaskDialog = false;
+        taskError = string.Empty;
+    }
+
+    private void SaveTask()
+    {
+        if (string.IsNullOrWhiteSpace(taskTitle)) return;
+        saving = true;
+        taskError = string.Empty;
+        string? err;
+
+        if (editingTaskId == null)
+        {
+            err = BoardService.CreateTask(Slug, taskColumnId, taskTitle.Trim(),
+                taskDescription, taskPriority, taskAssignee);
+        }
+        else
+        {
+            err = BoardService.UpdateTask(Slug, editingTaskId, taskColumnId, taskTitle.Trim(),
+                taskDescription, taskPriority, taskAssignee);
+        }
+
+        saving = false;
+        if (err != null) { taskError = err; return; }
+        board = BoardService.LoadBoard(Slug);
+        CloseTaskDialog();
+    }
+
+    private void DeleteTask()
+    {
+        if (editingTaskId == null) return;
+        saving = true;
+        BoardService.DeleteTask(Slug, editingTaskId);
+        saving = false;
+        board = BoardService.LoadBoard(Slug);
+        CloseTaskDialog();
+    }
+
+    private static string PriorityDot(string priority) => priority switch
+    {
+        "critical" => "bg-red-400",
+        "high"     => "bg-orange-400",
+        "normal"   => "bg-blue-400",
+        _          => "bg-zinc-500",
+    };
+
+    private static string PriorityBadge(string priority) => priority switch
+    {
+        "critical" => "text-red-400 bg-red-400/10",
+        "high"     => "text-orange-400 bg-orange-400/10",
+        "normal"   => "text-blue-400 bg-blue-400/10",
+        _          => "text-zinc-400 bg-zinc-400/10",
+    };
+}

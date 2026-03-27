@@ -1,0 +1,14 @@
+﻿@inherits LayoutComponentBase
+
+<div class="flex h-screen bg-background overflow-hidden">
+    <Sidebar />
+    <main class="flex-1 overflow-y-auto">
+        <div class="px-8 py-6">@Body</div>
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>

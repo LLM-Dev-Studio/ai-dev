@@ -1,0 +1,120 @@
+@page "/settings"
+@rendermode InteractiveServer
+@inject StudioSettingsService SettingsService
+
+<PageTitle>Settings</PageTitle>
+
+<PageHeader Title="Studio Settings" Description="Global configuration for AI Dev Studio." />
+
+<div class="rounded-lg border border-border bg-card p-6 mt-6">
+    <div class="flex items-center justify-between mb-1">
+        <div>
+            <p class="text-sm font-semibold text-foreground">Model Aliases</p>
+            <p class="text-xs text-muted-foreground mt-0.5">
+                Map short names used in <code class="text-xs font-mono">agent.json</code> to full Claude model IDs passed to the CLI.
+            </p>
+        </div>
+    </div>
+
+    <div class="mt-4 space-y-2">
+        <div class="grid gap-2 px-1" style="grid-template-columns: 1fr 2fr auto;">
+            <p class="text-xs text-muted-foreground font-medium">Alias</p>
+            <p class="text-xs text-muted-foreground font-medium">Model ID</p>
+            <span></span>
+        </div>
+        @for (int i = 0; i < rows.Count; i++)
+        {
+            var idx = i;
+            <div class="grid gap-2 items-center" style="grid-template-columns: 1fr 2fr auto;">
+                <input value="@rows[idx].Alias"
+                       @oninput="e => SetAlias(idx, e.Value?.ToString())"
+                       placeholder="e.g. sonnet"
+                       class="rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono" />
+                <input value="@rows[idx].ModelId"
+                       @oninput="e => SetModelId(idx, e.Value?.ToString())"
+                       placeholder="e.g. claude-sonnet-4-6"
+                       class="rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono" />
+                <button @onclick="() => RemoveRow(idx)"
+                        class="p-1.5 text-muted-foreground hover:text-destructive transition-colors">
+                    <SvgIcon Name="trash-2" Class="w-3.5 h-3.5" />
+                </button>
+            </div>
+        }
+    </div>
+
+    <button @onclick="AddRow"
+            class="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+        <SvgIcon Name="plus" Class="w-3.5 h-3.5" />
+        Add alias
+    </button>
+
+    <div class="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-border">
+        @if (saveStatus == SaveStatus.Saved)
+        {
+            <span class="text-xs text-green-500">Saved</span>
+        }
+        else if (saveStatus == SaveStatus.Error)
+        {
+            <span class="text-xs text-destructive">Error saving</span>
+        }
+        <button @onclick="Save"
+                disabled="@saving"
+                class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+            <SvgIcon Name="save" Class="w-3 h-3" />
+            @(saving ? "Saving…" : "Save")
+        </button>
+    </div>
+</div>
+
+@code {
+    private record AliasRow(string Alias, string ModelId);
+    private List<AliasRow> rows = [];
+    private bool saving;
+    private SaveStatus saveStatus = SaveStatus.Idle;
+
+    protected override void OnInitialized()
+    {
+        var settings = SettingsService.GetSettings();
+        rows = settings.Models.Select(kv => new AliasRow(kv.Key, kv.Value)).ToList();
+    }
+
+    private void SetAlias(int index, string? value) =>
+        rows[index] = rows[index] with { Alias = value ?? string.Empty };
+
+    private void SetModelId(int index, string? value) =>
+        rows[index] = rows[index] with { ModelId = value ?? string.Empty };
+
+    private void AddRow() => rows.Add(new AliasRow(string.Empty, string.Empty));
+
+    private void RemoveRow(int index) => rows.RemoveAt(index);
+
+    private async Task Save()
+    {
+        saving = true;
+        saveStatus = SaveStatus.Idle;
+        try
+        {
+            var models = rows
+                .Where(r => !string.IsNullOrWhiteSpace(r.Alias))
+                .ToDictionary(r => r.Alias.Trim(), r => r.ModelId.Trim());
+
+            SettingsService.SaveSettings(new StudioSettings { Models = models });
+            saveStatus = SaveStatus.Saved;
+            _ = Task.Delay(2000).ContinueWith(_ =>
+            {
+                saveStatus = SaveStatus.Idle;
+                InvokeAsync(StateHasChanged);
+            });
+        }
+        catch
+        {
+            saveStatus = SaveStatus.Error;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private enum SaveStatus { Idle, Saved, Error }
+}

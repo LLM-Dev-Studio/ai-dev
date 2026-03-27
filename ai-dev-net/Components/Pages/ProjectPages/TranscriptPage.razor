@@ -1,0 +1,229 @@
+@page "/projects/{Slug}/agents/{AgentName}/transcript"
+@rendermode InteractiveServer
+@inject AgentService AgentService
+@inject AgentRunnerService RunnerService
+@inject IJSRuntime JS
+@implements IDisposable
+
+<a href="@($"/projects/{Slug}/agents/{AgentName}")"
+   class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4 transition-colors">
+    <SvgIcon Name="arrow-left" Class="w-3 h-3" />
+    Back to @AgentName
+</a>
+
+<div class="flex items-center justify-between mb-4">
+    <div class="flex items-center gap-2">
+        <h1 class="text-xl font-semibold text-foreground">Transcript</h1>
+        @if (isRunning)
+        {
+            <span class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                Live
+            </span>
+        }
+    </div>
+
+    @if (dates.Length > 0)
+    {
+        <div class="flex items-center gap-1">
+            @foreach (var d in dates)
+            {
+                var isActive = d == selectedDate;
+                <button @onclick="() => SelectDate(d)"
+                        class="text-xs px-2.5 py-1 rounded-md border transition-colors @(isActive ? "border-border bg-accent text-foreground" : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/50")">
+                    @FormatDateTab(d)
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@if (dates.Length == 0)
+{
+    <EmptyState Icon="file-text" Title="No transcripts yet" Description="Transcripts are written when the agent runs" />
+}
+else
+{
+    <div id="transcript-output"
+         class="rounded-lg border border-border bg-[hsl(var(--card))] font-mono text-xs leading-relaxed overflow-y-auto"
+         style="height: calc(100vh - 200px);">
+        <div class="p-4 space-y-0.5">
+            @foreach (var line in parsedLines)
+            {
+                @if (line.Kind == LineKind.SessionHeader)
+                {
+                    <div class="pt-3 pb-1 first:pt-0">
+                        <p class="text-muted-foreground/60 border-b border-border pb-1">@line.Text</p>
+                    </div>
+                }
+                else if (line.Kind == LineKind.Stderr)
+                {
+                    <p class="text-amber-400/80"><span class="text-muted-foreground/40">@line.Timestamp</span> <span class="text-amber-500/60">[stderr]</span> @line.Message</p>
+                }
+                else if (line.Kind == LineKind.Error)
+                {
+                    <p class="text-red-400/80"><span class="text-muted-foreground/40">@line.Timestamp</span> <span class="text-red-500/60">[error]</span> @line.Message</p>
+                }
+                else if (line.Kind == LineKind.Stdout)
+                {
+                    <p class="text-foreground/80"><span class="text-muted-foreground/40">@line.Timestamp</span> @line.Message</p>
+                }
+                else
+                {
+                    <div class="h-1"></div>
+                }
+            }
+            @if (isRunning && selectedDate == TodayDate)
+            {
+                <p class="text-muted-foreground/40 animate-pulse mt-2">▌</p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+    [Parameter] public string AgentName { get; set; } = string.Empty;
+
+    private string[] dates = [];
+    private string selectedDate = string.Empty;
+    private List<TranscriptLine> parsedLines = [];
+    private bool isRunning;
+    private Timer? _pollTimer;
+    private int _lastLineCount;
+
+    private static string TodayDate => DateTime.UtcNow.ToString("yyyy-MM-dd");
+
+    private enum LineKind { Stdout, Stderr, Error, SessionHeader, Blank }
+
+    private record TranscriptLine(LineKind Kind, string Text, string Timestamp = "", string Message = "");
+
+    protected override void OnInitialized()
+    {
+        dates = AgentService.ListTranscriptDates(Slug, AgentName);
+        selectedDate = dates.Contains(TodayDate) ? TodayDate : (dates.FirstOrDefault() ?? string.Empty);
+        isRunning = RunnerService.IsRunning(Slug, AgentName);
+
+        LoadTranscript();
+
+        _pollTimer = new Timer(_ =>
+        {
+            var running = RunnerService.IsRunning(Slug, AgentName);
+            var changed = running != isRunning;
+            isRunning = running;
+
+            if (running || changed)
+            {
+                // Refresh date list in case today's file was just created
+                var newDates = AgentService.ListTranscriptDates(Slug, AgentName);
+                if (!newDates.SequenceEqual(dates))
+                {
+                    dates = newDates;
+                    if (!dates.Contains(selectedDate))
+                        selectedDate = dates.FirstOrDefault() ?? string.Empty;
+                }
+                LoadTranscript();
+                InvokeAsync(async () =>
+                {
+                    StateHasChanged();
+                    if (isRunning && selectedDate == TodayDate)
+                        await JS.InvokeVoidAsync("scrollToBottom", "transcript-output");
+                });
+            }
+            else if (changed)
+            {
+                InvokeAsync(StateHasChanged);
+            }
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && (isRunning && selectedDate == TodayDate || parsedLines.Count > 0))
+            await JS.InvokeVoidAsync("scrollToBottom", "transcript-output");
+    }
+
+    private void SelectDate(string date)
+    {
+        selectedDate = date;
+        LoadTranscript();
+    }
+
+    private void LoadTranscript()
+    {
+        if (string.IsNullOrEmpty(selectedDate)) { parsedLines = []; return; }
+        var raw = AgentService.ReadTranscript(Slug, AgentName, selectedDate);
+        var lines = raw.Split('\n');
+        if (lines.Length == _lastLineCount && selectedDate != TodayDate) return;
+        _lastLineCount = lines.Length;
+        parsedLines = ParseLines(lines);
+    }
+
+    private static List<TranscriptLine> ParseLines(string[] lines)
+    {
+        var result = new List<TranscriptLine>(lines.Length);
+        foreach (var raw in lines)
+        {
+            var line = raw.TrimEnd('\r');
+
+            if (string.IsNullOrEmpty(line))
+            {
+                result.Add(new(LineKind.Blank, string.Empty));
+                continue;
+            }
+
+            if (line.StartsWith("## "))
+            {
+                result.Add(new(LineKind.SessionHeader, line[3..]));
+                continue;
+            }
+
+            // [timestamp] [stderr] message  or  [timestamp] [error] message  or  [timestamp] message
+            if (line.StartsWith('['))
+            {
+                var closeTs = line.IndexOf(']');
+                if (closeTs > 0)
+                {
+                    var ts = line[1..closeTs];
+                    var rest = line[(closeTs + 2)..]; // skip "] "
+
+                    if (rest.StartsWith("[stderr] "))
+                    {
+                        result.Add(new(LineKind.Stderr, line, FormatTs(ts), rest[9..]));
+                        continue;
+                    }
+                    if (rest.StartsWith("[error] "))
+                    {
+                        result.Add(new(LineKind.Error, line, FormatTs(ts), rest[8..]));
+                        continue;
+                    }
+                    result.Add(new(LineKind.Stdout, line, FormatTs(ts), rest));
+                    continue;
+                }
+            }
+
+            result.Add(new(LineKind.Stdout, line, string.Empty, line));
+        }
+        return result;
+    }
+
+    private static string FormatTs(string iso)
+    {
+        if (DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+            return dt.ToLocalTime().ToString("HH:mm:ss");
+        return string.Empty;
+    }
+
+    private static string FormatDateTab(string date)
+    {
+        if (DateTime.TryParse(date, out var dt))
+        {
+            return dt.Date == DateTime.UtcNow.Date
+                ? "Today"
+                : dt.ToString("MMM d");
+        }
+        return date;
+    }
+
+    public void Dispose() => _pollTimer?.Dispose();
+}

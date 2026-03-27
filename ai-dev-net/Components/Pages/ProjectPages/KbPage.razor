@@ -1,0 +1,170 @@
+@page "/projects/{Slug}/kb"
+@rendermode InteractiveServer
+@inject KbService KbService
+@inject IJSRuntime JS
+
+<h1 class="text-xl font-semibold text-foreground mb-1">Knowledge Base</h1>
+<p class="text-sm text-muted-foreground mb-4">
+    Shared SOPs and best practices. Reference articles from code with <code class="bg-muted px-1 py-0.5 rounded text-xs">@@kb: article-slug</code> — agents read them automatically.
+</p>
+
+<div class="flex gap-4 mt-2">
+    <div class="w-52 flex-shrink-0 space-y-1">
+        @foreach (var article in articles)
+        {
+            var isSelected = selected == article.Slug;
+            <div class="group flex items-center justify-between rounded-md px-2 py-1.5 cursor-pointer transition-colors @(isSelected ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50")"
+                 @onclick="() => SelectArticle(article.Slug)">
+                <span class="text-sm truncate flex-1">@article.Title</span>
+                <button @onclick:stopPropagation="true"
+                        @onclick="() => DeleteArticle(article.Slug)"
+                        class="opacity-0 group-hover:opacity-100 p-0.5 hover:text-destructive transition-all">
+                    <SvgIcon Name="trash-2" Class="w-3 h-3" />
+                </button>
+            </div>
+        }
+
+        <div class="pt-2 flex gap-1">
+            <input value="@newSlug"
+                   @oninput="e => newSlug = e.Value?.ToString() ?? string.Empty"
+                   @onkeydown="OnNewSlugKeyDown"
+                   placeholder="new-article"
+                   class="flex-1 min-w-0 rounded-md border border-border bg-background px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+            <button @onclick="CreateArticle"
+                    disabled="@(creating || string.IsNullOrWhiteSpace(newSlug))"
+                    class="p-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                <SvgIcon Name="plus" Class="w-3.5 h-3.5" />
+            </button>
+        </div>
+        @if (!string.IsNullOrEmpty(createError))
+        {
+            <p class="text-xs text-destructive">@createError</p>
+        }
+    </div>
+
+    <div class="flex-1 min-w-0">
+        @if (string.IsNullOrEmpty(selected))
+        {
+            <EmptyState Icon="library" Title="Select an article or create a new one" />
+        }
+        else
+        {
+            <div class="rounded-lg border border-border bg-card p-5">
+                <textarea id="kb-editor"
+                          value="@content"
+                          @oninput="OnContentInput"
+                          class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono text-foreground/90 leading-relaxed resize-none focus:outline-none focus:ring-1 focus:ring-ring min-h-72"
+                          spellcheck="false"
+                          rows="16"></textarea>
+                <div class="flex items-center justify-between mt-3">
+                    <p class="text-xs text-muted-foreground">
+                        Reference in code: <code class="bg-muted px-1 py-0.5 rounded">@@kb: @selected</code>
+                    </p>
+                    <div class="flex items-center gap-3">
+                        @if (saveStatus == SaveStatus.Saved)
+                        {
+                            <span class="text-xs text-green-500">Saved</span>
+                        }
+                        @if (saveStatus == SaveStatus.Error)
+                        {
+                            <span class="text-xs text-destructive">Error</span>
+                        }
+                        <button @onclick="Save"
+                                disabled="@(!isDirty || saving)"
+                                class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                            <SvgIcon Name="save" Class="w-3 h-3" />
+                            @(saving ? "Saving…" : "Save")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+
+    private List<KbArticle> articles = [];
+    private string selected = string.Empty;
+    private string content = string.Empty;
+    private string original = string.Empty;
+    private bool isDirty;
+    private bool saving;
+    private SaveStatus saveStatus;
+    private string newSlug = string.Empty;
+    private bool creating;
+    private string createError = string.Empty;
+
+    private enum SaveStatus { Idle, Saved, Error }
+
+    protected override void OnInitialized()
+    {
+        articles = KbService.ListArticles(Slug);
+    }
+
+    private void SelectArticle(string slug)
+    {
+        selected = slug;
+        saveStatus = SaveStatus.Idle;
+        content = KbService.GetContent(Slug, slug);
+        original = content;
+        isDirty = false;
+    }
+
+    private void OnContentInput(ChangeEventArgs e)
+    {
+        content = e.Value?.ToString() ?? string.Empty;
+        isDirty = content != original;
+    }
+
+    private void Save()
+    {
+        saving = true;
+        saveStatus = SaveStatus.Idle;
+        var err = KbService.Save(Slug, selected, content);
+        saving = false;
+        if (err != null) { saveStatus = SaveStatus.Error; return; }
+        original = content;
+        isDirty = false;
+
+        // Update title in list
+        var titleMatch = content.Split('\n').FirstOrDefault(l => l.StartsWith("# "));
+        var title = titleMatch != null ? titleMatch[2..].Trim() : selected;
+        var idx = articles.FindIndex(a => a.Slug == selected);
+        if (idx >= 0) articles[idx] = new KbArticle { Slug = selected, Title = title };
+
+        saveStatus = SaveStatus.Saved;
+        Task.Delay(2000).ContinueWith(_ => { saveStatus = SaveStatus.Idle; InvokeAsync(StateHasChanged); });
+    }
+
+    private void CreateArticle()
+    {
+        createError = string.Empty;
+        var slug = newSlug.Trim().ToLowerInvariant()
+            .Replace(' ', '-');
+        slug = new string(slug.Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray());
+        if (string.IsNullOrEmpty(slug)) return;
+
+        creating = true;
+        var err = KbService.Create(Slug, slug);
+        creating = false;
+        if (err != null) { createError = err; return; }
+
+        newSlug = string.Empty;
+        articles = KbService.ListArticles(Slug);
+        SelectArticle(slug);
+    }
+
+    private void DeleteArticle(string slug)
+    {
+        KbService.Delete(Slug, slug);
+        articles = KbService.ListArticles(Slug);
+        if (selected == slug) { selected = string.Empty; content = string.Empty; original = string.Empty; isDirty = false; }
+    }
+
+    private void OnNewSlugKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") CreateArticle();
+    }
+}

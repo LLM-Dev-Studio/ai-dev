@@ -1,0 +1,133 @@
+@page "/projects/{Slug}"
+@page "/projects/{Slug}/agents"
+@rendermode InteractiveServer
+@inject AgentService AgentService
+@inject AgentRunnerService RunnerService
+
+<div class="flex items-center justify-between mb-1">
+    <div>
+        <h1 class="text-xl font-semibold text-foreground">Agents</h1>
+        @if (agents != null)
+        {
+            <p class="text-sm text-muted-foreground mt-0.5">
+                @agents.Count agent@(agents.Count != 1 ? "s" : "")
+                · @agents.Count(a => a.Status == "running") running
+                · @agents.Count(a => a.InboxCount > 0) with pending inbox
+            </p>
+        }
+    </div>
+    <button @onclick="() => showAdd = true"
+            class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex-shrink-0">
+        <SvgIcon Name="plus" Class="w-3.5 h-3.5" />
+        Add agent
+    </button>
+</div>
+
+@if (agents == null)
+{
+    <LoadingGrid Count="4" Class="mt-5" />
+}
+else if (agents.Count == 0)
+{
+    <div class="mt-5">
+        <EmptyState Icon="bot" Title="No agents yet" Description="Add agents to this project to get started." />
+    </div>
+}
+else
+{
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-5">
+        @foreach (var agent in agents)
+        {
+            var agentSlug = agent.Slug;
+            var running = RunnerService.IsRunning(Slug, agentSlug);
+            <div class="group rounded-lg border border-border bg-card hover:border-border/80 hover:bg-card/80 transition-colors">
+                <a href="@($"/projects/{Slug}/agents/{agentSlug}")" class="block p-5">
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="min-w-0">
+                            <p class="text-sm font-semibold text-foreground truncate">@agent.Name</p>
+                            <p class="text-xs text-muted-foreground truncate mt-0.5">@agentSlug</p>
+                        </div>
+                        <div class="flex items-center gap-1.5 ml-2 flex-shrink-0">
+                            @if (running)
+                            {
+                                <button @onclick="() => StopAgent(agentSlug)" @onclick:stopPropagation="true"
+                                        class="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-xs px-2 py-1 rounded border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-opacity">
+                                    <SvgIcon Name="square" Class="w-2.5 h-2.5" />
+                                    Stop
+                                </button>
+                            }
+                            else if (agent.InboxCount > 0)
+                            {
+                                <button @onclick="() => LaunchAgent(agentSlug)" @onclick:stopPropagation="true"
+                                        class="opacity-0 group-hover:opacity-100 flex items-center gap-1 text-xs px-2 py-1 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-opacity">
+                                    <SvgIcon Name="play" Class="w-2.5 h-2.5" />
+                                    Run
+                                </button>
+                            }
+                            <StatusBadge Status="@(running ? "running" : agent.Status)" />
+                            <ModelBadge Model="@agent.Model" />
+                        </div>
+                    </div>
+                    <div class="space-y-1.5">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs text-muted-foreground">Role</span>
+                            <span class="text-xs text-muted-foreground font-mono truncate ml-2">@(string.IsNullOrEmpty(agent.Role) ? "—" : agent.Role)</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs text-muted-foreground">Inbox</span>
+                            <span class="text-xs font-medium @(agent.InboxCount > 0 ? "text-orange-400" : "text-muted-foreground")">
+                                @agent.InboxCount @(agent.InboxCount == 1 ? "message" : "messages")
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs text-muted-foreground">Last run</span>
+                            <span class="text-xs text-muted-foreground">@FormatDate(agent.LastRunAt)</span>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        }
+    </div>
+}
+
+@if (showAdd)
+{
+    <AddAgentDialog ProjectSlug="@Slug" OnCreated="Refresh" OnClose="() => showAdd = false" />
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+
+    private List<AgentInfo>? agents;
+    private bool showAdd;
+
+    protected override void OnInitialized() => Load();
+
+    private void Load() => agents = AgentService.ListAgents(Slug);
+
+    private void Refresh()
+    {
+        showAdd = false;
+        Load();
+    }
+
+    private void LaunchAgent(string agentSlug)
+    {
+        RunnerService.LaunchAgent(Slug, agentSlug);
+        StateHasChanged();
+    }
+
+    private void StopAgent(string agentSlug)
+    {
+        RunnerService.StopAgent(Slug, agentSlug);
+        StateHasChanged();
+    }
+
+    private static string FormatDate(string? iso)
+    {
+        if (string.IsNullOrEmpty(iso)) return "—";
+        if (DateTime.TryParse(iso, out var dt))
+            return dt.ToLocalTime().ToString("MMM d");
+        return "—";
+    }
+}

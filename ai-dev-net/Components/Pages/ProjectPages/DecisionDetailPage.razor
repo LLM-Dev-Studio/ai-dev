@@ -1,0 +1,111 @@
+@page "/projects/{Slug}/decisions/{DecisionId}"
+@rendermode InteractiveServer
+@inject DecisionsService DecisionsService
+@inject NavigationManager NavigationManager
+
+<a href="@($"/projects/{Slug}/decisions")"
+   class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4 transition-colors">
+    <SvgIcon Name="arrow-left" Class="w-3 h-3" />
+    Back to decisions
+</a>
+
+@if (decision == null)
+{
+    <div class="max-w-2xl">
+        <div class="h-8 w-64 bg-muted rounded animate-pulse mb-4"></div>
+        <div class="h-48 rounded-lg border border-border bg-card animate-pulse"></div>
+    </div>
+}
+else
+{
+    <div class="max-w-2xl">
+        <div class="flex items-start gap-3 mb-6">
+            <div class="flex-1">
+                <h1 class="text-xl font-semibold text-foreground">@decision.Subject</h1>
+                <div class="flex items-center gap-3 mt-1 flex-wrap">
+                    <span class="text-xs text-muted-foreground">
+                        from <span class="text-foreground/70">@decision.From</span>
+                    </span>
+                    <span class="text-xs text-muted-foreground">@FormatDateTime(decision.Date)</span>
+                    <span class="text-xs px-1.5 py-0.5 rounded border @StatusBadge(decision.Status)">@decision.Status</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="rounded-lg border border-border bg-card p-5 mb-4">
+            <pre class="whitespace-pre-wrap text-sm text-foreground/90 font-sans leading-relaxed">@decision.Body</pre>
+        </div>
+
+        @if (!string.IsNullOrEmpty(decision.Response))
+        {
+            <div class="rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-5 mb-4">
+                <div class="flex items-center gap-2 mb-2">
+                    <SvgIcon Name="check-circle-2" Class="w-4 h-4 text-emerald-400" />
+                    <p class="text-sm font-medium text-emerald-400">Human Response</p>
+                    <span class="text-xs text-muted-foreground">@FormatDateTime(decision.ResolvedAt)</span>
+                </div>
+                <pre class="whitespace-pre-wrap text-sm text-foreground/90 font-sans leading-relaxed">@decision.Response</pre>
+            </div>
+        }
+
+        @if (decision.Status == "pending")
+        {
+            <div class="rounded-lg border border-border bg-card p-5">
+                <p class="text-sm font-medium text-foreground mb-3">Your response</p>
+                <textarea value="@response"
+                          @oninput="e => response = e.Value?.ToString() ?? string.Empty"
+                          placeholder="Type your decision or instructions here..."
+                          rows="5"
+                          class="w-full bg-background border border-border rounded-md p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary"></textarea>
+                @if (!string.IsNullOrEmpty(resolveError))
+                {
+                    <p class="text-xs text-destructive mt-2">@resolveError</p>
+                }
+                <div class="flex justify-end mt-3">
+                    <button @onclick="Resolve"
+                            disabled="@(submitting || string.IsNullOrWhiteSpace(response))"
+                            class="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors">
+                        @(submitting ? "Resolving…" : "Resolve Decision")
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+    [Parameter] public string DecisionId { get; set; } = string.Empty;
+
+    private DecisionItem? decision;
+    private string response = string.Empty;
+    private bool submitting;
+    private string resolveError = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        decision = DecisionsService.GetDecision(Slug, DecisionId);
+    }
+
+    private void Resolve()
+    {
+        if (string.IsNullOrWhiteSpace(response)) return;
+        submitting = true;
+        resolveError = string.Empty;
+        var err = DecisionsService.ResolveDecision(Slug, DecisionId, response.Trim());
+        submitting = false;
+        if (err != null) { resolveError = err; return; }
+        NavigationManager.NavigateTo($"/projects/{Slug}/decisions");
+    }
+
+    private static string StatusBadge(string status) => status == "resolved"
+        ? "border-emerald-400/20 text-emerald-400"
+        : "border-orange-400/20 text-orange-400";
+
+    private static string FormatDateTime(string? iso)
+    {
+        if (string.IsNullOrEmpty(iso)) return string.Empty;
+        if (DateTime.TryParse(iso, out var dt)) return dt.ToLocalTime().ToString("MMM d HH:mm");
+        return iso;
+    }
+}

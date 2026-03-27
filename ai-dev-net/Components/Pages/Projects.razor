@@ -1,0 +1,98 @@
+@page "/projects"
+@rendermode InteractiveServer
+@inject WorkspaceService WorkspaceService
+@inject AgentService AgentService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Projects</PageTitle>
+
+<div class="flex items-start justify-between mb-6">
+    <div>
+        <h1 class="text-xl font-semibold text-foreground">Projects</h1>
+        <p class="text-sm text-muted-foreground mt-1">Select a project to open its dashboard.</p>
+    </div>
+    <button @onclick="() => showNew = true"
+            class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex-shrink-0 mt-1">
+        <SvgIcon Name="plus" Class="w-3.5 h-3.5" />
+        New project
+    </button>
+</div>
+
+@if (projects == null)
+{
+    <LoadingGrid Count="3" />
+}
+else if (projects.Count == 0)
+{
+    <EmptyState Icon="folder-open"
+                Title="No projects yet"
+                Description="Create a project to get started, or add one to workspaces/workspaces.json." />
+}
+else
+{
+    <div class="space-y-2">
+        @foreach (var project in projects)
+        {
+            <a href="@($"/projects/{project.Slug}")"
+               class="flex items-center justify-between p-4 rounded-lg border border-border bg-card hover:border-primary transition-colors group">
+                <div class="min-w-0">
+                    <p class="text-sm font-medium text-foreground">@project.Name</p>
+                    @if (!string.IsNullOrEmpty(project.Description))
+                    {
+                        <p class="text-xs text-muted-foreground mt-0.5 truncate">@project.Description</p>
+                    }
+                    <p class="text-xs text-muted-foreground mt-1">
+                        <span class="font-mono text-muted-foreground/60">@project.Slug</span>
+                        <span class="mx-1.5 text-muted-foreground/30">·</span>
+                        @project.AgentCount agent@(project.AgentCount != 1 ? "s" : "")
+                    </p>
+                </div>
+                <SvgIcon Name="chevron-right" Class="w-4 h-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors flex-shrink-0 ml-4" />
+            </a>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(createError))
+{
+    <div class="mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-xs text-destructive">
+        @createError
+    </div>
+}
+
+@if (showNew)
+{
+    <NewProjectDialog OnCreated="OnProjectCreated" OnClose="() => showNew = false" />
+}
+
+@code {
+    private List<WorkspaceProject>? projects;
+    private bool showNew;
+    private string createError = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        projects = WorkspaceService.ListProjects();
+    }
+
+    private void OnProjectCreated(NewProjectDialog.NewProjectRequest req)
+    {
+        createError = string.Empty;
+        var error = WorkspaceService.CreateProject(req.Slug, req.Name, req.Description, req.CodebasePath);
+        if (error != null)
+        {
+            createError = error;
+            return;
+        }
+
+        // Create agents from selected templates (slug → display name)
+        foreach (var (templateSlug, agentName) in req.SelectedTemplates)
+        {
+            AgentService.CreateAgent(req.Slug, templateSlug, agentName, templateSlug);
+        }
+
+        showNew = false;
+        projects = WorkspaceService.ListProjects();
+        NavigationManager.NavigateTo($"/projects/{req.Slug}");
+    }
+}

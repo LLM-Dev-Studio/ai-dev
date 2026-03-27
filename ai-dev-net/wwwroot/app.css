@@ -1,0 +1,27 @@
+.markdown-body { color: var(--foreground); line-height: 1.6; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 { font-weight: 600; margin-top: 1rem; margin-bottom: 0.25rem; }
+.markdown-body h1 { font-size: 1.125rem; }
+.markdown-body h2 { font-size: 1rem; }
+.markdown-body h3 { font-size: 0.875rem; }
+.markdown-body p { margin-bottom: 0.5rem; font-size: 0.875rem; }
+.markdown-body ul, .markdown-body ol { padding-left: 1.25rem; margin-bottom: 0.5rem; font-size: 0.875rem; }
+.markdown-body ul { list-style-type: disc; }
+.markdown-body ol { list-style-type: decimal; }
+.markdown-body li { margin-bottom: 0.125rem; }
+.markdown-body code { font-family: ui-monospace, monospace; font-size: 0.8125rem; background: var(--muted); border-radius: 0.25rem; padding: 0.1rem 0.3rem; }
+.markdown-body pre { background: var(--muted); border-radius: 0.375rem; padding: 0.75rem; overflow-x: auto; margin-bottom: 0.75rem; }
+.markdown-body pre code { background: none; padding: 0; font-size: 0.8125rem; }
+.markdown-body blockquote { border-left: 3px solid var(--border); padding-left: 0.75rem; color: var(--muted-foreground); margin-bottom: 0.5rem; font-size: 0.875rem; }
+.markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 0.75rem 0; }
+.markdown-body a { color: var(--primary); text-decoration: underline; }
+.markdown-body strong { font-weight: 600; }
+
+.blazor-error-boundary {
+    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbmsiPjxwYXRoIGQ9Ik0yNjMuNTA2IDUxQzI2NC43MTcgNTEgMjY1LjgxMyA1MS40ODM3IDI2Ni42MDYgNTIuMjY1OEwyNjcuMDUyIDUyLjc5ODcgMjY3LjUzOSA1My42MjgzIDI5MC4xODUgOTIuMTgzMSAyOTAuNTQ1IDkyLjc5NSAyOTAuNjU2IDkyLjk5NkMyOTAuODc3IDkzLjUxMyAyOTEgOTQuMDgxNSAyOTEgOTQuNjc4MiAyOTEgOTcuMDY1MSAyODkuMDM4IDk5IDI4Ni42MTcgOTlMMjQwLjM4MyA5OUMyMzcuOTYzIDk5IDIzNiA5Ny4wNjUxIDIzNiA5NC42NzgyIDIzNiA5NC4zNzk5IDIzNi4wMzEgOTQuMDg4NiAyMzYuMDg5IDkzLjgwNzJMMjM2LjMzOCA5My4wMTYyIDIzNi44NTggOTIuMTMxNCAyNTkuNDczIDUzLjYyOTQgMjU5Ljk2MSA1Mi43OTg1IDI2MC40MDcgNTIuMjY1OEMyNjEuMiA1MS40ODM3IDI2Mi4yOTYgNTEgMjYzLjUwNiA1MVoiIGZpbGw9IiNGRkU1MDAiLz48L3N2Zz4=) no-repeat 1rem/1.8rem, #b32121;
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: white;
+}
+
+.blazor-error-boundary::after {
+    content: "An error has occurred."
+}

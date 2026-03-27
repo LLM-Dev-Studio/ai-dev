@@ -1,0 +1,104 @@
+@page "/projects/{Slug}/journals"
+@rendermode InteractiveServer
+@inject AgentService AgentService
+@inject JournalsService JournalsService
+
+<h1 class="text-xl font-semibold text-foreground mb-4">Journals</h1>
+
+<div class="flex gap-4">
+    <div class="w-48 flex-shrink-0 space-y-1">
+        @foreach (var a in agents)
+        {
+            var isSelected = selectedAgent == a.Slug;
+            <button @onclick="() => LoadAgent(a.Slug)"
+                    class="w-full text-left px-3 py-2 rounded-md text-sm transition-colors @(isSelected ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50")">
+                @a.Name (@a.Role)
+            </button>
+        }
+        @if (agents.Count == 0)
+        {
+            <p class="text-xs text-muted-foreground px-3 py-2">No agents</p>
+        }
+    </div>
+
+    <div class="flex-1 min-w-0">
+        @if (string.IsNullOrEmpty(selectedAgent))
+        {
+            <EmptyState Icon="book-open" Title="Select an agent to view their journal" />
+        }
+        else if (loading && entries.Count == 0)
+        {
+            <div class="h-32 rounded-lg border border-border bg-card animate-pulse"></div>
+        }
+        else if (entries.Count == 0)
+        {
+            <EmptyState Icon="book-open" Title="No journal entries yet" />
+        }
+        else
+        {
+            <div class="flex gap-3">
+                <div class="w-36 flex-shrink-0 space-y-1">
+                    @foreach (var entry in entries)
+                    {
+                        var isSelected = selectedDate == entry.Date;
+                        <button @onclick="() => LoadEntry(entry.Date)"
+                                class="w-full text-left px-3 py-2 rounded-md text-xs transition-colors @(isSelected ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50")">
+                            @entry.Date
+                        </button>
+                    }
+                </div>
+                <div class="flex-1 min-w-0">
+                    @if (loading)
+                    {
+                        <div class="h-32 rounded-lg border border-border bg-card animate-pulse"></div>
+                    }
+                    else
+                    {
+                        <div class="rounded-lg border border-border bg-card p-5">
+                            <pre class="whitespace-pre-wrap text-sm text-foreground/90 font-sans leading-relaxed">@(string.IsNullOrEmpty(entryContent) ? "No content." : entryContent)</pre>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+
+    private List<AgentInfo> agents = [];
+    private string selectedAgent = string.Empty;
+    private List<JournalEntry> entries = [];
+    private string selectedDate = string.Empty;
+    private string entryContent = string.Empty;
+    private bool loading;
+
+    protected override void OnInitialized()
+    {
+        agents = AgentService.ListAgents(Slug);
+    }
+
+    private void LoadAgent(string agentSlug)
+    {
+        selectedAgent = agentSlug;
+        entries = [];
+        selectedDate = string.Empty;
+        entryContent = string.Empty;
+        loading = true;
+
+        entries = JournalsService.ListDates(Slug, agentSlug);
+        if (entries.Count > 0)
+            LoadEntry(entries[0].Date);
+        else
+            loading = false;
+    }
+
+    private void LoadEntry(string date)
+    {
+        selectedDate = date;
+        loading = true;
+        entryContent = JournalsService.GetEntry(Slug, selectedAgent, date);
+        loading = false;
+    }
+}

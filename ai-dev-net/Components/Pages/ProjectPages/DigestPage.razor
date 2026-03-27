@@ -1,0 +1,78 @@
+@page "/projects/{Slug}/digest"
+@rendermode InteractiveServer
+@inject DigestService DigestService
+
+<h1 class="text-xl font-semibold text-foreground mb-1">Digest</h1>
+
+@if (digest == null)
+{
+    <div class="grid grid-cols-3 gap-4 mb-8 mt-4">
+        @for (int i = 0; i < 3; i++)
+        {
+            <div class="rounded-lg border border-border bg-card p-4 animate-pulse">
+                <div class="h-3 w-24 bg-muted rounded mb-2"></div>
+                <div class="h-7 w-12 bg-muted rounded"></div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <p class="text-sm text-muted-foreground mb-4">Summary for @digest.Date</p>
+
+    <div class="grid grid-cols-3 gap-4 mb-8">
+        <div class="rounded-lg border border-border bg-card p-4">
+            <p class="text-xs text-muted-foreground mb-1">Messages today</p>
+            <p class="text-2xl font-bold text-foreground">@digest.TotalMessages</p>
+        </div>
+        <div class="rounded-lg border border-border bg-card p-4">
+            <p class="text-xs text-muted-foreground mb-1">Pending decisions</p>
+            <p class="text-2xl font-bold text-foreground">@digest.PendingDecisions</p>
+        </div>
+        <div class="rounded-lg border border-border bg-card p-4">
+            <p class="text-xs text-muted-foreground mb-1">Resolved today</p>
+            <p class="text-2xl font-bold text-foreground">@digest.ResolvedDecisions</p>
+        </div>
+    </div>
+
+    <h2 class="text-sm font-semibold text-foreground mb-3">Agent Activity</h2>
+    @if (digest.AgentActivity.Count == 0)
+    {
+        <EmptyState Icon="newspaper" Title="No agent activity today" />
+    }
+    else
+    {
+        <div class="space-y-2">
+            @foreach (var a in digest.AgentActivity)
+            {
+                <div class="rounded-lg border border-border bg-card p-4 flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-foreground">@a.AgentName</p>
+                        <p class="text-xs text-muted-foreground">@a.AgentSlug</p>
+                    </div>
+                    <div class="flex gap-6 text-sm">
+                        <div class="text-center">
+                            <p class="font-medium text-foreground">@a.MessagesSent</p>
+                            <p class="text-xs text-muted-foreground">sent</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="font-medium text-foreground">@a.MessagesReceived</p>
+                            <p class="text-xs text-muted-foreground">received</p>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+    private DigestData? digest;
+
+    protected override void OnInitialized()
+    {
+        var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        digest = DigestService.GetDigest(Slug, today);
+    }
+}

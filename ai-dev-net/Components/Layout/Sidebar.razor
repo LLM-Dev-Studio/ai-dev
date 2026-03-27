@@ -1,0 +1,92 @@
+@implements IDisposable
+@inject NavigationManager NavigationManager
+@inject WorkspaceService WorkspaceService
+
+@{
+    var segments = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').Split('/');
+    string? slug = segments.Length >= 2 && segments[0] == "projects" && !string.IsNullOrEmpty(segments[1]) ? segments[1] : null;
+    var basePath = slug != null ? $"/projects/{slug}" : "";
+    var currentPath = new Uri(NavigationManager.Uri).AbsolutePath;
+}
+
+<aside class="w-52 flex-shrink-0 flex flex-col border-r border-sidebar-border bg-sidebar h-screen">
+
+    <a href="/" class="px-4 py-4 border-b border-sidebar-border block hover:bg-accent/50 transition-colors">
+        <p class="text-sm font-bold text-foreground">AI Dev Studio</p>
+        <p class="text-xs text-muted-foreground">Mission Control</p>
+    </a>
+
+    <div class="flex-1 flex flex-col min-h-0">
+
+        <div class="overflow-y-auto min-h-0">
+            <div class="px-2 py-3">
+                <p class="px-3 pb-1 text-xs text-muted-foreground font-medium uppercase tracking-wider opacity-60">Projects</p>
+                @if (projects.Count > 0)
+                {
+                    @foreach (var project in projects)
+                    {
+                        var isCurrentProject = project.Slug == slug;
+                        var projectClass = isCurrentProject
+                            ? "bg-accent text-foreground"
+                            : "text-muted-foreground hover:bg-accent/50";
+                        <a href="@($"/projects/{project.Slug}")"
+                           class="flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors @projectClass">
+                            <SvgIcon Name="folder-open" Class="w-3.5 h-3.5 flex-shrink-0" />
+                            <span class="truncate">@project.Name</span>
+                        </a>
+                    }
+                }
+                else
+                {
+                    <p class="px-3 py-2 text-xs text-muted-foreground opacity-50">No projects</p>
+                }
+            </div>
+        </div>
+
+        @if (slug != null)
+        {
+            <div class="flex-1 overflow-y-auto min-h-0 border-t border-sidebar-border">
+                <nav class="px-2 py-3 space-y-0.5">
+                    <NavItem Href="@basePath" Icon="bot" Label="Agents" />
+                    <NavItem Href="@($"{basePath}/board")" Icon="layout-grid" Label="Board" />
+                    <NavItem Href="@($"{basePath}/messages")" Icon="message-square" Label="Messages" />
+                    <NavItem Href="@($"{basePath}/decisions")" Icon="circle-alert" Label="Decisions" />
+                    <NavItem Href="@($"{basePath}/journals")" Icon="book-open" Label="Journals" />
+                    <NavItem Href="@($"{basePath}/digest")" Icon="newspaper" Label="Digest" />
+                    <NavItem Href="@($"{basePath}/kb")" Icon="library" Label="Knowledge Base" />
+                    <NavItem Href="@($"{basePath}/codebase")" Icon="git-fork" Label="Codebase" />
+                    <NavItem Href="@($"{basePath}/process")" Icon="git-branch" Label="Process" />
+                    <NavItem Href="@($"{basePath}/settings")" Icon="settings" Label="Settings" />
+                </nav>
+            </div>
+        }
+
+    </div>
+
+    <div class="px-2 py-3 border-t border-sidebar-border space-y-0.5">
+        <NavItem Href="/templates" Icon="layout-template" Label="Templates" />
+        <NavItem Href="/settings" Icon="settings" Label="Settings" />
+    </div>
+
+</aside>
+
+@code {
+    private List<WorkspaceProject> projects = [];
+
+    protected override void OnInitialized()
+    {
+        projects = WorkspaceService.ListProjects();
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        projects = WorkspaceService.ListProjects();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}

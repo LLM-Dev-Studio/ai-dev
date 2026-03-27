@@ -1,0 +1,20 @@
+<div class="flex items-start justify-between mb-6 @ClassName">
+    <div>
+        <h1 class="text-xl font-semibold text-foreground">@Title</h1>
+        @if (!string.IsNullOrEmpty(Description))
+        {
+            <p class="text-sm text-muted-foreground mt-1">@Description</p>
+        }
+    </div>
+    @if (Actions != null)
+    {
+        <div class="flex items-center gap-2">@Actions</div>
+    }
+</div>
+
+@code {
+    [Parameter] public required string Title { get; set; }
+    [Parameter] public required string Description { get; set; }
+    [Parameter] public required RenderFragment Actions { get; set; }
+    [Parameter] public required string ClassName { get; set; }
+}

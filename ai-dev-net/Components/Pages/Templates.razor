@@ -1,0 +1,72 @@
+@page "/templates"
+@rendermode InteractiveServer
+@inject AgentTemplatesService TemplatesService
+@inject StudioSettingsService SettingsService
+
+<PageTitle>Agent Templates</PageTitle>
+
+<div class="flex items-start justify-between mb-6">
+    <div>
+        <h1 class="text-xl font-semibold text-foreground">Agent Templates</h1>
+        <p class="text-sm text-muted-foreground mt-1">Global starting points for new agents. Applied when adding an agent to any project.</p>
+    </div>
+    <button @onclick="() => showNew = true"
+            class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex-shrink-0 mt-1">
+        <SvgIcon Name="plus" Class="w-3.5 h-3.5" />
+        New template
+    </button>
+</div>
+
+<div class="space-y-3">
+    @foreach (var template in templates)
+    {
+        <TemplateCard Template="@template"
+                      ModelAliases="@modelAliases"
+                      OnSave="@SaveTemplate"
+                      OnDelete="@DeleteTemplate" />
+    }
+    @if (templates.Count == 0)
+    {
+        <p class="text-sm text-muted-foreground">No templates yet.</p>
+    }
+</div>
+
+@if (showNew)
+{
+    <NewTemplateDialog ModelAliases="@modelAliases"
+                       OnCreated="@OnTemplateCreated"
+                       OnClose="@(() => showNew = false)" />
+}
+
+@code {
+    private List<AgentTemplate> templates = [];
+    private List<string> modelAliases = [];
+    private bool showNew;
+
+    protected override void OnInitialized()
+    {
+        templates = TemplatesService.ListTemplates();
+        var settings = SettingsService.GetSettings();
+        modelAliases = settings.Models.Keys.ToList();
+    }
+
+    private void SaveTemplate(AgentTemplate updated)
+    {
+        TemplatesService.SaveTemplate(updated);
+        var idx = templates.FindIndex(t => t.Slug == updated.Slug);
+        if (idx >= 0) templates[idx] = updated;
+    }
+
+    private void DeleteTemplate(string slug)
+    {
+        TemplatesService.DeleteTemplate(slug);
+        templates.RemoveAll(t => t.Slug == slug);
+    }
+
+    private void OnTemplateCreated(AgentTemplate template)
+    {
+        TemplatesService.CreateTemplate(template);
+        templates.Add(template);
+        templates = templates.OrderBy(t => t.Name).ToList();
+    }
+}

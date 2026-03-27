@@ -1,0 +1,112 @@
+@page "/projects/{Slug}/decisions"
+@rendermode InteractiveServer
+@inject DecisionsService DecisionsService
+
+<h1 class="text-xl font-semibold text-foreground mb-1">Decisions</h1>
+
+<div class="flex gap-1 mb-6 border-b border-border mt-4">
+    <button @onclick="SetTabPending"
+            class="@TabClass("pending")">
+        Pending
+    </button>
+    <button @onclick="SetTabResolved"
+            class="@TabClass("resolved")">
+        Resolved
+    </button>
+</div>
+
+@if (decisions == null)
+{
+    <div class="space-y-2">
+        @for (int i = 0; i < 3; i++)
+        {
+            <div class="h-24 rounded-lg border border-border bg-card animate-pulse"></div>
+        }
+    </div>
+}
+else if (decisions.Count == 0)
+{
+    @if (tab == "pending")
+    {
+        <EmptyState Icon="circle-alert" Title="No pending decisions" Description="Decisions escalated by agents appear here." />
+    }
+    else
+    {
+        <EmptyState Icon="check-circle-2" Title="No resolved decisions" Description="Resolved decisions will appear here." />
+    }
+}
+else
+{
+    <div class="space-y-2">
+        @foreach (var d in decisions)
+        {
+            <a href="@($"/projects/{Slug}/decisions/{d.Id}")"
+               class="block rounded-lg border border-border bg-card p-4 hover:border-border/80 transition-colors border-l-4 @PriorityBorder(d.Priority)">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-foreground">@d.Subject</p>
+                        <p class="text-xs text-muted-foreground mt-0.5">
+                            from <span class="text-foreground/70">@d.From</span>
+                            @if (!string.IsNullOrEmpty(d.Blocks))
+                            {
+                                <span> · blocks <span class="text-foreground/70">@d.Blocks</span></span>
+                            }
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2 ml-3 flex-shrink-0">
+                        <span class="text-xs px-1.5 py-0.5 rounded border @PriorityBadge(d.Priority)">@d.Priority</span>
+                        <span class="text-xs text-muted-foreground">@FormatDateTime(d.Date)</span>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(d.Body))
+                {
+                    <p class="text-sm text-muted-foreground mt-2 line-clamp-2">@d.Body</p>
+                }
+            </a>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+
+    private List<DecisionItem>? decisions;
+    private string tab = "pending";
+
+    protected override void OnInitialized() => Load();
+
+    private void SetTabPending() => SetTab("pending");
+    private void SetTabResolved() => SetTab("resolved");
+
+    private void SetTab(string newTab)
+    {
+        tab = newTab;
+        decisions = null;
+        Load();
+    }
+
+    private void Load() => decisions = DecisionsService.ListDecisions(Slug, tab);
+
+    private string TabClass(string t) =>
+        t == tab
+            ? "px-4 py-2 text-sm font-medium border-b-2 -mb-px border-primary text-foreground capitalize"
+            : "px-4 py-2 text-sm font-medium border-b-2 -mb-px border-transparent text-muted-foreground hover:text-foreground capitalize transition-colors";
+
+    private static string PriorityBorder(string p) => p switch
+    {
+        "critical" => "border-l-red-400",
+        "high"     => "border-l-orange-400",
+        _          => "border-l-border",
+    };
+
+    private static string PriorityBadge(string p) => p is "high" or "critical"
+        ? "border-orange-400/20 text-orange-400"
+        : "border-border text-muted-foreground";
+
+    private static string FormatDateTime(string? iso)
+    {
+        if (string.IsNullOrEmpty(iso)) return string.Empty;
+        if (DateTime.TryParse(iso, out var dt)) return dt.ToLocalTime().ToString("MMM d HH:mm");
+        return iso;
+    }
+}

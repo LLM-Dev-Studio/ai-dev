@@ -1,0 +1,13 @@
+@page "/projects/{Slug}/process"
+@rendermode InteractiveServer
+
+<h1 class="text-xl font-semibold text-foreground mb-1">Process</h1>
+<p class="text-sm text-muted-foreground mb-6">Workflow and process configuration</p>
+
+<EmptyState Icon="git-branch"
+            Title="Process configuration coming soon"
+            Description="This area will allow you to configure agent workflows, triggers, and automation rules." />
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+}

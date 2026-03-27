@@ -1,0 +1,43 @@
+@implements IDisposable
+@inject NavigationManager NavigationManager
+
+@{
+    var currentPath = new Uri(NavigationManager.Uri).AbsolutePath;
+    var isActive = currentPath == Href || currentPath.StartsWith(Href.TrimEnd('/') + "/");
+    var linkClass = isActive
+        ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+        : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground";
+}
+
+<a href="@Href" class="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors @linkClass">
+    <SvgIcon Name="@Icon" />
+    <span class="flex-1">@Label</span>
+    @if (Badge is > 0)
+    {
+        <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-xs font-bold">
+            @(Badge > 99 ? "99+" : Badge.ToString())
+        </span>
+    }
+</a>
+
+@code {
+    [Parameter] public string Href { get; set; }
+    [Parameter] public string Icon { get; set; }
+    [Parameter] public string Label { get; set; }
+    [Parameter] public int? Badge { get; set; }
+
+    protected override void OnInitialized()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}

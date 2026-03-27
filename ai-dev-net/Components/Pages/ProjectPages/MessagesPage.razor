@@ -1,0 +1,135 @@
+@page "/projects/{Slug}/messages"
+@rendermode InteractiveServer
+@inject MessagesService MessagesService
+@using Markdig
+
+<h1 class="text-xl font-semibold text-foreground mb-1">Messages</h1>
+
+@if (messages == null)
+{
+    <div class="space-y-2 mt-4">
+        @for (int i = 0; i < 5; i++)
+        {
+            <div class="h-20 rounded-lg border border-border bg-card animate-pulse"></div>
+        }
+    </div>
+}
+else
+{
+    <p class="text-sm text-muted-foreground mb-4">@messages.Count message@(messages.Count != 1 ? "s" : "") across all agents</p>
+
+    @if (messages.Count == 0)
+    {
+        <EmptyState Icon="message-square" Title="No messages yet" Description="Messages sent between agents appear here." />
+    }
+    else
+    {
+        <div class="space-y-2">
+            @foreach (var msg in messages)
+            {
+                var captured = msg;
+                <div @onclick="() => OpenMessage(captured)"
+                     class="rounded-lg border border-border bg-card p-4 hover:border-border/80 transition-colors cursor-pointer">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <p class="text-sm font-medium text-foreground truncate">@msg.Re</p>
+                                @if (!string.IsNullOrEmpty(msg.Type))
+                                {
+                                    <span class="text-xs px-1.5 py-0.5 rounded border border-border text-muted-foreground flex-shrink-0">@msg.Type</span>
+                                }
+                                @if (msg.Priority is "high" or "critical")
+                                {
+                                    <span class="text-xs flex-shrink-0 @PriorityColor(msg.Priority)">@msg.Priority</span>
+                                }
+                            </div>
+                            <p class="text-xs text-muted-foreground mt-0.5">
+                                <span class="text-foreground/70">@msg.From</span>
+                                <span class="mx-1">→</span>
+                                <span class="text-foreground/70">@msg.To</span>
+                            </p>
+                        </div>
+                        <span class="text-xs text-muted-foreground ml-3 flex-shrink-0">@FormatDateTime(msg.Date)</span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(msg.Body))
+                    {
+                        <p class="text-sm text-muted-foreground mt-2 line-clamp-2">@msg.Body</p>
+                    }
+                </div>
+            }
+        </div>
+    }
+}
+
+@if (selectedMsg != null)
+{
+    <div class="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+        <div class="bg-card border border-border rounded-lg w-full max-w-2xl my-8">
+            <div class="flex items-start justify-between p-5 border-b border-border">
+                <div class="flex-1 min-w-0 pr-4">
+                    <p class="text-sm font-semibold text-foreground">@selectedMsg.Re</p>
+                    <p class="text-xs text-muted-foreground mt-0.5">
+                        <span class="text-foreground/70">@selectedMsg.From</span>
+                        <span class="mx-1">→</span>
+                        <span class="text-foreground/70">@selectedMsg.To</span>
+                        <span class="mx-2">·</span>
+                        <span>@FormatDateTime(selectedMsg.Date)</span>
+                        @if (!string.IsNullOrEmpty(selectedMsg.Type))
+                        {
+                            <span class="ml-2 px-1.5 py-0.5 rounded border border-border">@selectedMsg.Type</span>
+                        }
+                    </p>
+                </div>
+                <button @onclick="CloseMessage" class="p-1 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
+                    <SvgIcon Name="x" Class="w-4 h-4" />
+                </button>
+            </div>
+            <div class="p-5">
+                @if (string.IsNullOrEmpty(selectedMsg.Body))
+                {
+                    <p class="text-sm text-muted-foreground italic">No message body.</p>
+                }
+                else
+                {
+                    <div class="markdown-body">@((MarkupString)RenderMarkdown(selectedMsg.Body))</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+
+    private List<MessageItem>? messages;
+    private MessageItem? selectedMsg;
+
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .Build();
+
+    protected override void OnInitialized()
+    {
+        messages = MessagesService.ListMessages(Slug);
+    }
+
+    private void OpenMessage(MessageItem msg) => selectedMsg = msg;
+    private void CloseMessage() => selectedMsg = null;
+
+    private static string RenderMarkdown(string markdown) =>
+        Markdig.Markdown.ToHtml(markdown, Pipeline);
+
+    private static string PriorityColor(string priority) => priority switch
+    {
+        "critical" => "text-red-400",
+        "high"     => "text-orange-400",
+        _          => "text-muted-foreground",
+    };
+
+    private static string FormatDateTime(string? iso)
+    {
+        if (string.IsNullOrEmpty(iso)) return string.Empty;
+        if (DateTime.TryParse(iso, out var dt)) return dt.ToLocalTime().ToString("MMM d HH:mm");
+        return iso;
+    }
+}
