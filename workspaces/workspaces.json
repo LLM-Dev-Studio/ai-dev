@@ -1,5 +1,14 @@
 {
   "projects": [
-    { "slug": "ai-dev-studio", "path": "ai-dev-studio", "name": "AI Dev Studio" }
+    {
+      "slug": "ai-dev-studio",
+      "path": "ai-dev-studio",
+      "name": "AI Dev Studio"
+    },
+    {
+      "slug": "branch",
+      "path": "branch",
+      "name": "Branch"
+    }
   ]
 }

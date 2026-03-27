@@ -41,6 +41,7 @@ Video Portal Api/
 Video Portal Web/
 Blackmoth Video Retrieval Service/
 RVS Video Retrieval Service/
+workspaces/
 
 # Build results on 'Bin' directories
 **/[Bb]in/*
