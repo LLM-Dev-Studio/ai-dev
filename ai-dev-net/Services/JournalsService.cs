@@ -6,14 +6,11 @@ public class JournalEntry
     public string Filename { get; set; } = string.Empty;
 }
 
-public class JournalsService(WorkspaceService workspace)
+public class JournalsService(WorkspacePaths paths)
 {
-    private string JournalDir(string projectSlug, string agentSlug) =>
-        Path.Combine(workspace.GetProjectPath(projectSlug), "agents", agentSlug, "journal");
-
-    public List<JournalEntry> ListDates(string projectSlug, string agentSlug)
+    public List<JournalEntry> ListDates(ProjectSlug projectSlug, AgentSlug agentSlug)
     {
-        var dir = JournalDir(projectSlug, agentSlug);
+        var dir = paths.AgentJournalDir(projectSlug, agentSlug);
         if (!Directory.Exists(dir)) return [];
 
         return Directory.GetFiles(dir, "*.md")
@@ -26,9 +23,9 @@ public class JournalsService(WorkspaceService workspace)
             .ToList();
     }
 
-    public string GetEntry(string projectSlug, string agentSlug, string date)
+    public string GetEntry(ProjectSlug projectSlug, AgentSlug agentSlug, string date)
     {
-        var path = Path.Combine(JournalDir(projectSlug, agentSlug), $"{date}.md");
+        var path = Path.Combine(paths.AgentJournalDir(projectSlug, agentSlug), $"{date}.md");
         return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
     }
 }

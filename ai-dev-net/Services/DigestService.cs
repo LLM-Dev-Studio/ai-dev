@@ -17,45 +17,44 @@ public class DigestData
     public List<AgentActivityItem> AgentActivity { get; set; } = [];
 }
 
-public class DigestService(WorkspaceService workspace)
+public class DigestService(WorkspacePaths paths)
 {
-    public DigestData GetDigest(string projectSlug, string date)
+    public DigestData GetDigest(ProjectSlug projectSlug, string date)
     {
-        var projectDir = workspace.GetProjectPath(projectSlug);
-        var agentsDir = Path.Combine(projectDir, "agents");
+        var agentsDir      = paths.AgentsDir(projectSlug);
+        var pendingDir     = paths.DecisionsPendingDir(projectSlug);
+        var resolvedDir    = paths.DecisionsResolvedDir(projectSlug);
 
-        var pendingDir = Path.Combine(projectDir, "decisions", "pending");
-        var resolvedDir = Path.Combine(projectDir, "decisions", "resolved");
-
-        var pendingCount = Directory.Exists(pendingDir) ? Directory.GetFiles(pendingDir, "*.md").Length : 0;
-        var resolvedCount = CountFilesForDate(resolvedDir, date);
-        var agentActivity = new List<AgentActivityItem>();
-        var totalMessages = 0;
+        var pendingCount   = Directory.Exists(pendingDir)  ? Directory.GetFiles(pendingDir,  "*.md").Length : 0;
+        var resolvedCount  = CountFilesForDate(resolvedDir, date);
+        var agentActivity  = new List<AgentActivityItem>();
+        var totalMessages  = 0;
 
         if (Directory.Exists(agentsDir))
         {
             foreach (var agentDir in Directory.GetDirectories(agentsDir))
             {
-                var slug = Path.GetFileName(agentDir);
-                var jsonPath = Path.Combine(agentDir, "agent.json");
-                var name = slug;
-                if (File.Exists(jsonPath))
+                if (!AgentSlug.TryParse(Path.GetFileName(agentDir), out var agentSlug)) continue;
+
+                var jsonPath = paths.AgentJsonPath(projectSlug, agentSlug);
+                var name     = agentSlug.Value;
+                if (jsonPath.Exists())
                 {
                     try
                     {
                         using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(jsonPath));
-                        if (doc.RootElement.TryGetProperty("name", out var n)) name = n.GetString() ?? slug;
+                        if (doc.RootElement.TryGetProperty("name", out var n)) name = n.GetString() ?? agentSlug.Value;
                     }
                     catch { }
                 }
 
-                var sent = CountFilesForDate(Path.Combine(agentDir, "outbox"), date);
-                var received = CountFilesForDate(Path.Combine(agentDir, "inbox"), date);
+                var sent     = CountFilesForDate(paths.AgentOutboxDir(projectSlug, agentSlug), date);
+                var received = CountFilesForDate(paths.AgentInboxDir(projectSlug, agentSlug),  date);
                 totalMessages += received;
 
                 agentActivity.Add(new()
                 {
-                    AgentSlug = slug,
+                    AgentSlug = agentSlug.Value,
                     AgentName = name,
                     MessagesSent = sent,
                     MessagesReceived = received,
@@ -73,12 +72,12 @@ public class DigestService(WorkspaceService workspace)
         };
     }
 
-    private static int CountFilesForDate(string dir, string date)
+    private static int CountFilesForDate(DirPath dir, string date)
     {
-        if (!Directory.Exists(dir)) return 0;
+        if (!dir.Exists()) return 0;
         // Files named YYYYMMDD-HHMMSS-*.md — date prefix is first 8 chars of the compact date
         var prefix = date.Replace("-", ""); // "2026-03-27" → "20260327"
-        return Directory.GetFiles(dir, "*.md")
+        return Directory.GetFiles(dir.Value, "*.md")
             .Count(f => Path.GetFileName(f).StartsWith(prefix));
     }
 }

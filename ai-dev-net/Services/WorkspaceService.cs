@@ -1,63 +1,27 @@
 namespace AiDevNet.Services;
 
-public class WorkspaceService(IWebHostEnvironment env)
+public class WorkspaceService(WorkspacePaths paths)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public string GetWorkspaceRoot()
-    {
-        var envVar = Environment.GetEnvironmentVariable("WORKSPACE_ROOT");
-        if (!string.IsNullOrEmpty(envVar))
-        {
-            // Reject relative paths and UNC paths (\\server\share) — must be an absolute local path.
-            if (!Path.IsPathFullyQualified(envVar) || envVar.StartsWith(@"\\"))
-                throw new InvalidOperationException(
-                    $"WORKSPACE_ROOT must be an absolute local path, got: '{envVar}'");
-            return envVar;
-        }
-        return Path.GetFullPath(Path.Combine(env.ContentRootPath, "..", "workspaces"));
-    }
-
-    public string GetStudioSettingsPath() =>
-        Path.Combine(GetWorkspaceRoot(), "studio-settings.json");
-
-    public string GetAgentTemplatesDir() =>
-        Path.Combine(GetWorkspaceRoot(), "agent-templates");
-
-    public string GetRegistryPath() =>
-        Path.Combine(GetWorkspaceRoot(), "workspaces.json");
-
-    public string GetProjectPath(string projectSlug)
-    {
-        var baseDir = GetWorkspaceRoot();
-        var resolved = Path.GetFullPath(Path.Combine(baseDir, projectSlug));
-        var canonicalBase = Path.GetFullPath(baseDir);
-        // Reject any slug that resolves outside the workspace root (e.g. "../../etc/passwd").
-        if (!resolved.StartsWith(canonicalBase + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(resolved, canonicalBase, StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException($"Invalid project slug: '{projectSlug}'", nameof(projectSlug));
-        return resolved;
-    }
-
     public List<WorkspaceProject> ListProjects()
     {
-        var registryPath = GetRegistryPath();
-        if (!File.Exists(registryPath)) return [];
+        if (!File.Exists(paths.RegistryPath)) return [];
 
         try
         {
-            var json = File.ReadAllText(registryPath);
+            var json = File.ReadAllText(paths.RegistryPath);
             var registry = JsonSerializer.Deserialize<WorkspaceRegistry>(json, JsonOptions);
             if (registry?.Projects == null) return [];
 
             var projects = new List<WorkspaceProject>();
             foreach (var entry in registry.Projects)
             {
-                var projectDir = GetProjectPath(entry.Path);
-                var projectJsonPath = Path.Combine(projectDir, "project.json");
+                if (!ProjectSlug.TryParse(entry.Path, out var entrySlug)) continue;
+                var projectJsonPath = paths.ProjectJsonPath(entrySlug);
 
                 string? description = null;
                 string? createdAt = null;
@@ -74,7 +38,7 @@ public class WorkspaceService(IWebHostEnvironment env)
                     catch { /* use defaults */ }
                 }
 
-                var agentsDir = Path.Combine(projectDir, "agents");
+                var agentsDir = paths.AgentsDir(entrySlug);
                 var agentCount = Directory.Exists(agentsDir)
                     ? Directory.GetDirectories(agentsDir).Length
                     : 0;
@@ -100,25 +64,20 @@ public class WorkspaceService(IWebHostEnvironment env)
     /// </summary>
     public string? CreateProject(string slug, string name, string? description, string? codebasePath = null)
     {
-        // Validate slug — only lowercase letters, digits, hyphens; no path traversal
-        if (string.IsNullOrWhiteSpace(slug))
-            return "Slug is required.";
-        if (!System.Text.RegularExpressions.Regex.IsMatch(slug, @"^[a-z0-9][a-z0-9\-]*[a-z0-9]$"))
+        if (!ProjectSlug.TryParse(slug, out var projectSlug))
             return "Slug must contain only lowercase letters, digits, and hyphens, and cannot start or end with a hyphen.";
-        if (slug.Contains("..") || slug.Contains('/') || slug.Contains('\\'))
-            return "Slug contains invalid characters.";
 
-        var projectDir = GetProjectPath(slug);
+        var projectDir = paths.ProjectDir(projectSlug);
         if (Directory.Exists(projectDir))
             return $"A project with slug '{slug}' already exists.";
 
         try
         {
             // Create folder structure
-            Directory.CreateDirectory(Path.Combine(projectDir, "agents"));
-            Directory.CreateDirectory(Path.Combine(projectDir, "board"));
-            Directory.CreateDirectory(Path.Combine(projectDir, "decisions", "pending"));
-            Directory.CreateDirectory(Path.Combine(projectDir, "decisions", "resolved"));
+            Directory.CreateDirectory(paths.AgentsDir(projectSlug));
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.BoardPath(projectSlug))!);
+            Directory.CreateDirectory(paths.DecisionsPendingDir(projectSlug));
+            Directory.CreateDirectory(paths.DecisionsResolvedDir(projectSlug));
 
             // Write project.json
             var meta = new Dictionary<string, object?>
@@ -133,7 +92,7 @@ public class WorkspaceService(IWebHostEnvironment env)
                 meta["codebasePath"] = codebasePath;
 
             File.WriteAllText(
-                Path.Combine(projectDir, "project.json"),
+                paths.ProjectJsonPath(projectSlug),
                 JsonSerializer.Serialize(meta, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
 
             // Write default board
@@ -149,15 +108,14 @@ public class WorkspaceService(IWebHostEnvironment env)
                 tasks = new { },
             };
             File.WriteAllText(
-                Path.Combine(projectDir, "board", "board.json"),
+                paths.BoardPath(projectSlug),
                 JsonSerializer.Serialize(boardJson, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
 
             // Register in workspaces.json
-            var registryPath = GetRegistryPath();
             WorkspaceRegistry registry;
-            if (File.Exists(registryPath))
+            if (File.Exists(paths.RegistryPath))
             {
-                var existing = File.ReadAllText(registryPath);
+                var existing = File.ReadAllText(paths.RegistryPath);
                 registry = JsonSerializer.Deserialize<WorkspaceRegistry>(existing, JsonOptions) ?? new WorkspaceRegistry();
             }
             else
@@ -166,22 +124,21 @@ public class WorkspaceService(IWebHostEnvironment env)
             }
 
             registry.Projects.Add(new() { Slug = slug, Path = slug, Name = name });
-            File.WriteAllText(registryPath, JsonSerializer.Serialize(registry, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+            File.WriteAllText(paths.RegistryPath, JsonSerializer.Serialize(registry, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
 
             return null; // success
         }
         catch (Exception ex)
         {
             // Clean up partial directory on failure
-            try { if (Directory.Exists(projectDir)) Directory.Delete(projectDir, recursive: true); } catch { }
+            try { if (Directory.Exists(projectDir)) Directory.Delete(projectDir.Value, recursive: true); } catch { }
             return $"Failed to create project: {ex.Message}";
         }
     }
 
-    public ProjectDetail? GetProject(string projectSlug)
+    public ProjectDetail? GetProject(ProjectSlug projectSlug)
     {
-        var projectDir = GetProjectPath(projectSlug);
-        var jsonPath = Path.Combine(projectDir, "project.json");
+        var jsonPath = paths.ProjectJsonPath(projectSlug);
         if (!File.Exists(jsonPath)) return null;
 
         try
@@ -200,10 +157,9 @@ public class WorkspaceService(IWebHostEnvironment env)
         catch { return null; }
     }
 
-    public string? UpdateProject(string projectSlug, string name, string? description, string? codebasePath)
+    public string? UpdateProject(ProjectSlug projectSlug, string name, string? description, string? codebasePath)
     {
-        var projectDir = GetProjectPath(projectSlug);
-        var jsonPath = Path.Combine(projectDir, "project.json");
+        var jsonPath = paths.ProjectJsonPath(projectSlug);
         if (!File.Exists(jsonPath)) return "Project not found.";
 
         try
@@ -222,15 +178,14 @@ public class WorkspaceService(IWebHostEnvironment env)
                 new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
 
             // Keep display name in sync in workspaces.json
-            var registryPath = GetRegistryPath();
-            if (File.Exists(registryPath))
+            if (File.Exists(paths.RegistryPath))
             {
-                var registry = JsonSerializer.Deserialize<WorkspaceRegistry>(File.ReadAllText(registryPath), JsonOptions);
+                var registry = JsonSerializer.Deserialize<WorkspaceRegistry>(File.ReadAllText(paths.RegistryPath), JsonOptions);
                 var entry = registry?.Projects.FirstOrDefault(p => p.Slug == projectSlug);
                 if (entry != null)
                 {
                     entry.Name = name;
-                    File.WriteAllText(registryPath, JsonSerializer.Serialize(registry,
+                    File.WriteAllText(paths.RegistryPath, JsonSerializer.Serialize(registry,
                         new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
                 }
             }

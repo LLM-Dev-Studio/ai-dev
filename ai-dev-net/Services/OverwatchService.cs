@@ -65,7 +65,8 @@ public class OverwatchService(
 
         foreach (var project in projects)
         {
-            try { ScanProject(project.Slug, activity?.Id); }
+            if (!ProjectSlug.TryParse(project.Slug, out var ps)) continue;
+            try { ScanProject(ps, activity?.Id); }
             catch (Exception ex)
             {
                 logger.LogError(ex, "[overwatch] Error scanning project {Project}", project.Slug);
@@ -73,7 +74,7 @@ public class OverwatchService(
         }
     }
 
-    private void ScanProject(string projectSlug, string? parentActivityId)
+    private void ScanProject(ProjectSlug projectSlug, string? parentActivityId)
     {
         using var activity = ActivitySource.StartActivity(
             "Overwatch.ScanProject", ActivityKind.Internal, parentActivityId);
@@ -162,14 +163,21 @@ public class OverwatchService(
     // Actions
     // -------------------------------------------------------------------------
 
-    private string NudgeAgent(string projectSlug, BoardTask task, string columnTitle, TimeSpan age)
+    private string NudgeAgent(ProjectSlug projectSlug, BoardTask task, string columnTitle, TimeSpan age)
     {
+        if (!AgentSlug.TryParse(task.Assignee, out var assigneeSlug))
+        {
+            logger.LogWarning("[overwatch] Task \"{Title}\" has invalid assignee slug: {Assignee}",
+                task.Title, task.Assignee);
+            return "invalid-assignee-slug";
+        }
+
         // Don't nudge if the agent is already running — it'll pick up work when it next runs
-        if (runner.IsRunning(projectSlug, task.Assignee!))
+        if (runner.IsRunning(projectSlug, assigneeSlug))
         {
             logger.LogInformation(
                 "[overwatch] Agent {Agent} is currently running — skipping nudge for \"{Title}\"",
-                task.Assignee, task.Title);
+                assigneeSlug, task.Title);
             return "skip-agent-running";
         }
 
@@ -184,12 +192,13 @@ public class OverwatchService(
 
         var err = runner.WriteInboxMessage(
             projectSlug,
-            task.Assignee!,
+            assigneeSlug,
             from: "overwatch",
             re: $"Stalled task: {task.Title}",
             type: "overwatch-nudge",
             priority: task.Priority is "critical" or "high" ? task.Priority : "high",
-            body: body);
+            body: body,
+            taskId: task.Id);
 
         if (err != null)
         {
@@ -204,7 +213,7 @@ public class OverwatchService(
         return "nudged";
     }
 
-    private string RaiseDecision(string projectSlug, BoardTask task, string columnTitle, TimeSpan age)
+    private string RaiseDecision(ProjectSlug projectSlug, BoardTask task, string columnTitle, TimeSpan age)
     {
         var ageStr = FormatAge(age);
         var body = $"""

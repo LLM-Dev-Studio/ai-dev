@@ -6,26 +6,11 @@ public class KbArticle
     public string Title { get; set; } = string.Empty;
 }
 
-public class KbService(WorkspaceService workspace)
+public class KbService(WorkspacePaths paths)
 {
-    private string KbDir(string projectSlug) =>
-        Path.Combine(workspace.GetProjectPath(projectSlug), "kb");
-
-    /// <summary>
-    /// Returns the canonical .md path for a KB article slug, or null if it would escape the kb directory.
-    /// </summary>
-    private string? SafeArticlePath(string projectSlug, string slug)
+    public List<KbArticle> ListArticles(ProjectSlug projectSlug)
     {
-        if (string.IsNullOrWhiteSpace(slug)) return null;
-        var dir = Path.GetFullPath(KbDir(projectSlug));
-        var resolved = Path.GetFullPath(Path.Combine(dir, $"{slug}.md"));
-        return resolved.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-            ? resolved : null;
-    }
-
-    public List<KbArticle> ListArticles(string projectSlug)
-    {
-        var dir = KbDir(projectSlug);
+        var dir = paths.KbDir(projectSlug);
         if (!Directory.Exists(dir)) return [];
 
         return Directory.GetFiles(dir, "*.md")
@@ -39,40 +24,40 @@ public class KbService(WorkspaceService workspace)
             .ToList();
     }
 
-    public string GetContent(string projectSlug, string slug)
+    public string GetContent(ProjectSlug projectSlug, string slug)
     {
-        var path = SafeArticlePath(projectSlug, slug);
-        return path != null && File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+        var path = paths.SafeKbArticlePath(projectSlug, slug);
+        return path != null && File.Exists(path.Value) ? File.ReadAllText(path.Value) : string.Empty;
     }
 
-    public string? Save(string projectSlug, string slug, string content)
+    public string? Save(ProjectSlug projectSlug, string slug, string content)
     {
-        var path = SafeArticlePath(projectSlug, slug);
+        var path = paths.SafeKbArticlePath(projectSlug, slug);
         if (path == null) return "Invalid article slug.";
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, content);
+            Directory.CreateDirectory(Path.GetDirectoryName(path.Value)!);
+            File.WriteAllText(path.Value, content);
             return null;
         }
         catch (Exception ex) { return ex.Message; }
     }
 
-    public string? Create(string projectSlug, string slug)
+    public string? Create(ProjectSlug projectSlug, string slug)
     {
         if (string.IsNullOrWhiteSpace(slug)) return "Slug is required.";
         if (slug.Contains("..") || slug.Contains('/') || slug.Contains('\\')) return "Invalid slug.";
 
-        var path = Path.Combine(KbDir(projectSlug), $"{slug}.md");
+        var path = Path.Combine(paths.KbDir(projectSlug), $"{slug}.md");
         if (File.Exists(path)) return $"Article '{slug}' already exists.";
 
         return Save(projectSlug, slug, $"# {slug}\n\n");
     }
 
-    public void Delete(string projectSlug, string slug)
+    public void Delete(ProjectSlug projectSlug, string slug)
     {
-        var path = SafeArticlePath(projectSlug, slug);
-        if (path != null && File.Exists(path)) File.Delete(path);
+        var path = paths.SafeKbArticlePath(projectSlug, slug);
+        if (path != null && File.Exists(path.Value)) File.Delete(path.Value);
     }
 
     private static string? ExtractTitle(string content)

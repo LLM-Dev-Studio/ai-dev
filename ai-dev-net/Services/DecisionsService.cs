@@ -16,17 +16,11 @@ public class DecisionItem
     public string? Response { get; set; }
 }
 
-public class DecisionsService(WorkspaceService workspace)
+public class DecisionsService(WorkspacePaths paths)
 {
     private const string ResponseSeparator = "\n\n---\n\n## Human Response\n\n";
 
-    private string PendingDir(string projectSlug) =>
-        Path.Combine(workspace.GetProjectPath(projectSlug), "decisions", "pending");
-
-    private string ResolvedDir(string projectSlug) =>
-        Path.Combine(workspace.GetProjectPath(projectSlug), "decisions", "resolved");
-
-    public string? CreateDecision(string projectSlug, string from, string subject,
+    public string? CreateDecision(ProjectSlug projectSlug, string from, string subject,
         string priority, string? blocks, string body)
     {
         try
@@ -47,7 +41,7 @@ public class DecisionsService(WorkspaceService workspace)
             };
             if (!string.IsNullOrEmpty(blocks)) fields["blocks"] = blocks;
 
-            var pendingDir = PendingDir(projectSlug);
+            var pendingDir = paths.DecisionsPendingDir(projectSlug);
             Directory.CreateDirectory(pendingDir);
             File.WriteAllText(Path.Combine(pendingDir, filename),
                 FrontmatterParser.Stringify(fields, body));
@@ -56,11 +50,11 @@ public class DecisionsService(WorkspaceService workspace)
         catch (Exception ex) { return ex.Message; }
     }
 
-    public List<DecisionItem> ListDecisions(string projectSlug, string status = "pending")
+    public List<DecisionItem> ListDecisions(ProjectSlug projectSlug, string status = "pending")
     {
         string[] dirs = status == "resolved"
-            ? [ResolvedDir(projectSlug)]
-            : [PendingDir(projectSlug)];
+            ? [paths.DecisionsResolvedDir(projectSlug)]
+            : [paths.DecisionsPendingDir(projectSlug)];
 
         var results = new List<DecisionItem>();
         foreach (var dir in dirs)
@@ -75,17 +69,17 @@ public class DecisionsService(WorkspaceService workspace)
         return results;
     }
 
-    public DecisionItem? GetDecision(string projectSlug, string id)
+    public DecisionItem? GetDecision(ProjectSlug projectSlug, string id)
     {
         var filename = $"{id}.md";
-        var pendingPath = Path.Combine(PendingDir(projectSlug), filename);
+        var pendingPath = Path.Combine(paths.DecisionsPendingDir(projectSlug), filename);
         if (File.Exists(pendingPath)) return ParseDecisionFile(pendingPath);
-        var resolvedPath = Path.Combine(ResolvedDir(projectSlug), filename);
+        var resolvedPath = Path.Combine(paths.DecisionsResolvedDir(projectSlug), filename);
         if (File.Exists(resolvedPath)) return ParseDecisionFile(resolvedPath);
         return null;
     }
 
-    public string? ResolveDecision(string projectSlug, string id, string response)
+    public string? ResolveDecision(ProjectSlug projectSlug, string id, string response)
     {
         var decision = GetDecision(projectSlug, id);
         if (decision == null) return "Decision not found.";
@@ -109,13 +103,13 @@ public class DecisionsService(WorkspaceService workspace)
             var mainContent = FrontmatterParser.Stringify(updatedFields, decision.Body);
             var fullContent = mainContent + ResponseSeparator + response;
 
-            var resolvedDir = ResolvedDir(projectSlug);
+            var resolvedDir = paths.DecisionsResolvedDir(projectSlug);
             Directory.CreateDirectory(resolvedDir);
             var destPath = Path.Combine(resolvedDir, decision.Filename);
             File.WriteAllText(destPath, fullContent);
 
             // Remove from pending
-            var pendingPath = Path.Combine(PendingDir(projectSlug), decision.Filename);
+            var pendingPath = Path.Combine(paths.DecisionsPendingDir(projectSlug), decision.Filename);
             if (File.Exists(pendingPath)) File.Delete(pendingPath);
 
             return null;

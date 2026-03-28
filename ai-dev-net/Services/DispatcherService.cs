@@ -10,8 +10,10 @@ namespace AiDevNet.Services;
 ///      OS error, or race conditions. LaunchAgent is idempotent so double-firing is safe.
 /// </summary>
 public class DispatcherService(
+    WorkspacePaths paths,
     WorkspaceService workspace,
     AgentRunnerService runner,
+    MessageChangedNotifier messageNotifier,
     ILogger<DispatcherService> logger)
     : IHostedService, IDisposable
 {
@@ -21,7 +23,7 @@ public class DispatcherService(
     private readonly List<FileSystemWatcher> _watchers = [];
 
     // Track which inbox dirs we're already watching (avoids duplicate watchers)
-    private readonly HashSet<string> _watchedInboxDirs  = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _watchedInboxDirs = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _watchedAgentsDirs = new(StringComparer.OrdinalIgnoreCase);
 
     private Timer? _pollTimer;
@@ -36,9 +38,9 @@ public class DispatcherService(
 
         var projects = workspace.ListProjects();
         foreach (var project in projects)
-            WatchProject(project.Slug);
+            if (ProjectSlug.TryParse(project.Slug, out var ps)) WatchProject(ps);
 
-        var workspaceRoot = workspace.GetWorkspaceRoot();
+        var workspaceRoot = paths.Root;
         if (Directory.Exists(workspaceRoot))
             WatchForNewProjects(workspaceRoot);
 
@@ -61,7 +63,14 @@ public class DispatcherService(
     public void Dispose()
     {
         _pollTimer?.Dispose();
-        foreach (var w in _watchers) { try { w.Dispose(); } catch { } }
+        foreach (var w in _watchers)
+        {
+            try { w.Dispose(); }
+            catch
+            {
+                // ignored
+            }
+        }
         _watchers.Clear();
         GC.SuppressFinalize(this);
     }
@@ -70,21 +79,24 @@ public class DispatcherService(
     // Per-project setup
     // -------------------------------------------------------------------------
 
-    private void WatchProject(string projectSlug)
+    private void WatchProject(ProjectSlug projectSlug)
     {
-        var projectDir = workspace.GetProjectPath(projectSlug);
+        var projectDir = paths.ProjectDir(projectSlug);
         if (!Directory.Exists(projectDir)) return;
 
-        var decisionsDir = Path.Combine(projectDir, "decisions", "pending");
+        var decisionsDir = paths.DecisionsPendingDir(projectSlug);
         WatchDecisionsDir(projectSlug, decisionsDir);
 
-        var agentsDir = Path.Combine(projectDir, "agents");
+        var agentsDir = paths.AgentsDir(projectSlug);
         if (Directory.Exists(agentsDir) && _watchedAgentsDirs.Add(agentsDir))
         {
             WatchForNewAgents(projectSlug, agentsDir);
 
             foreach (var agentDir in Directory.GetDirectories(agentsDir))
-                WatchAgentInbox(projectSlug, Path.GetFileName(agentDir), agentDir);
+            {
+                if (AgentSlug.TryParse(Path.GetFileName(agentDir), out var agentSlug))
+                    WatchAgentInbox(projectSlug, agentSlug);
+            }
         }
 
         ScanAndLaunchAgents(projectSlug, source: "startup");
@@ -94,15 +106,15 @@ public class DispatcherService(
     // File system watchers
     // -------------------------------------------------------------------------
 
-    private void WatchDecisionsDir(string projectSlug, string decisionsDir)
+    private void WatchDecisionsDir(ProjectSlug projectSlug, string decisionsDir)
     {
         if (!Directory.Exists(decisionsDir)) return;
 
         var w = new FileSystemWatcher(decisionsDir, "*.md")
         {
-            NotifyFilter          = NotifyFilters.FileName,
+            NotifyFilter = NotifyFilters.FileName,
             IncludeSubdirectories = false,
-            EnableRaisingEvents   = true,
+            EnableRaisingEvents = true,
         };
         w.Created += (_, e) =>
             logger.LogInformation("[dispatcher] New decision in {Project}: {File}",
@@ -110,16 +122,16 @@ public class DispatcherService(
         _watchers.Add(w);
     }
 
-    private void WatchAgentInbox(string projectSlug, string agentSlug, string agentDir)
+    private void WatchAgentInbox(ProjectSlug projectSlug, AgentSlug agentSlug)
     {
-        var inboxDir = Path.Combine(agentDir, "inbox");
+        var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
         Directory.CreateDirectory(inboxDir);
 
         if (!_watchedInboxDirs.Add(inboxDir)) return;
 
         var w = new FileSystemWatcher(inboxDir, "*.md")
         {
-            NotifyFilter       = NotifyFilters.FileName,
+            NotifyFilter = NotifyFilters.FileName,
             IncludeSubdirectories = false,
             InternalBufferSize = 65536, // raised from 8192 default — overflows cause silent event loss
             EnableRaisingEvents = true,
@@ -128,13 +140,13 @@ public class DispatcherService(
         w.Created += (_, e) => OnInboxMessage(projectSlug, agentSlug, e.FullPath, source: "fsw-created");
         // Renamed catches atomic writes (write-to-temp-then-rename) common on Windows
         w.Renamed += (_, e) => OnInboxMessage(projectSlug, agentSlug, e.FullPath, source: "fsw-renamed");
-        w.Error   += (_, e) => OnWatcherError(w, projectSlug, agentSlug, e.GetException());
+        w.Error += (_, e) => OnWatcherError(w, projectSlug, agentSlug, e.GetException());
 
         _watchers.Add(w);
         logger.LogInformation("[dispatcher] Watching inbox: {InboxDir}", inboxDir);
     }
 
-    private void OnWatcherError(FileSystemWatcher w, string projectSlug, string agentSlug, Exception ex)
+    private void OnWatcherError(FileSystemWatcher w, ProjectSlug projectSlug, AgentSlug agentSlug, Exception ex)
     {
         logger.LogError(ex,
             "[dispatcher] FSW error for {Project}/{Agent} — restarting watcher and scanning inbox",
@@ -156,20 +168,20 @@ public class DispatcherService(
         ScanAndLaunchAgents(projectSlug, source: "fsw-error-recovery");
     }
 
-    private void WatchForNewAgents(string projectSlug, string agentsDir)
+    private void WatchForNewAgents(ProjectSlug projectSlug, string agentsDir)
     {
         var w = new FileSystemWatcher(agentsDir)
         {
-            NotifyFilter          = NotifyFilters.DirectoryName,
+            NotifyFilter = NotifyFilters.DirectoryName,
             IncludeSubdirectories = false,
-            EnableRaisingEvents   = true,
+            EnableRaisingEvents = true,
         };
         w.Created += (_, e) =>
         {
-            var agentSlug = Path.GetFileName(e.FullPath);
+            if (!AgentSlug.TryParse(Path.GetFileName(e.FullPath), out var agentSlug)) return;
             logger.LogInformation("[dispatcher] New agent detected: {Project}/{Agent}", projectSlug, agentSlug);
             // Brief delay so the agent folder structure is fully written before watching
-            Task.Delay(500).ContinueWith(_ => WatchAgentInbox(projectSlug, agentSlug, e.FullPath));
+            Task.Delay(500).ContinueWith(_ => WatchAgentInbox(projectSlug, agentSlug));
         };
         _watchers.Add(w);
     }
@@ -178,20 +190,18 @@ public class DispatcherService(
     {
         var w = new FileSystemWatcher(workspaceRoot)
         {
-            NotifyFilter          = NotifyFilters.DirectoryName,
+            NotifyFilter = NotifyFilters.DirectoryName,
             IncludeSubdirectories = false,
-            EnableRaisingEvents   = true,
+            EnableRaisingEvents = true,
         };
         w.Created += (_, e) =>
         {
-            var projectSlug = Path.GetFileName(e.FullPath);
             Task.Delay(1000).ContinueWith(_ =>
             {
-                if (File.Exists(Path.Combine(e.FullPath, "project.json")))
-                {
-                    logger.LogInformation("[dispatcher] New project detected: {Project}", projectSlug);
-                    WatchProject(projectSlug);
-                }
+                if (!File.Exists(Path.Combine(e.FullPath, "project.json"))) return;
+                if (!ProjectSlug.TryParse(Path.GetFileName(e.FullPath), out var projectSlug)) return;
+                logger.LogInformation("[dispatcher] New project detected: {Project}", projectSlug);
+                WatchProject(projectSlug);
             });
         };
         _watchers.Add(w);
@@ -201,7 +211,7 @@ public class DispatcherService(
     // Inbox event handling
     // -------------------------------------------------------------------------
 
-    private void OnInboxMessage(string projectSlug, string agentSlug, string fullPath, string source)
+    private void OnInboxMessage(ProjectSlug projectSlug, AgentSlug agentSlug, string fullPath, string source)
     {
         if (fullPath.Contains(Path.DirectorySeparatorChar + "processed" + Path.DirectorySeparatorChar,
                 StringComparison.OrdinalIgnoreCase))
@@ -230,6 +240,8 @@ public class DispatcherService(
             return;
         }
 
+        messageNotifier.Notify(projectSlug);
+
         var launched = runner.LaunchAgent(projectSlug, agentSlug);
         activity?.SetTag("dispatch.outcome", launched ? "launched" : "already-launched");
         logger.LogInformation("[dispatcher] {Outcome} {Project}/{Agent}",
@@ -243,21 +255,21 @@ public class DispatcherService(
     private void PollAllProjects()
     {
         foreach (var project in workspace.ListProjects())
-            ScanAndLaunchAgents(project.Slug, source: "poll");
+            if (ProjectSlug.TryParse(project.Slug, out var ps)) ScanAndLaunchAgents(ps, source: "poll");
     }
 
-    private void ScanAndLaunchAgents(string projectSlug, string source)
+    private void ScanAndLaunchAgents(ProjectSlug projectSlug, string source)
     {
-        var agentsDir = Path.Combine(workspace.GetProjectPath(projectSlug), "agents");
+        var agentsDir = paths.AgentsDir(projectSlug);
         if (!Directory.Exists(agentsDir)) return;
 
         foreach (var agentDir in Directory.GetDirectories(agentsDir))
         {
-            var agentSlug = Path.GetFileName(agentDir);
-            var inboxDir  = Path.Combine(agentDir, "inbox");
-            if (!Directory.Exists(inboxDir)) continue;
+            if (!AgentSlug.TryParse(Path.GetFileName(agentDir), out var agentSlug)) continue;
+            var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
+            if (!inboxDir.Exists()) continue;
 
-            var pending = Directory.GetFiles(inboxDir, "*.md")
+            var pending = Directory.GetFiles(inboxDir.Value, "*.md")
                 .Where(f => !f.Contains(
                     Path.DirectorySeparatorChar + "processed" + Path.DirectorySeparatorChar,
                     StringComparison.OrdinalIgnoreCase))

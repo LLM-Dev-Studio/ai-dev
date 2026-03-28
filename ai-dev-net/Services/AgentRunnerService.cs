@@ -5,9 +5,10 @@ namespace AiDevNet.Services;
 /// Each agent runs in its own directory with its CLAUDE.md as context.
 /// </summary>
 public class AgentRunnerService(
-    WorkspaceService workspace,
+    WorkspacePaths paths,
     StudioSettingsService settings,
     IEnumerable<IAgentExecutor> executors,
+    MessageChangedNotifier messageNotifier,
     ILogger<AgentRunnerService> logger)
 {
 
@@ -19,22 +20,22 @@ public class AgentRunnerService(
 
     private sealed class SessionInfo(CancellationTokenSource cts)
     {
-        public string ProjectSlug { get; init; } = string.Empty;
-        public string AgentSlug { get; init; } = string.Empty;
-        public string StartedAt { get; init; } = string.Empty;
+        public required ProjectSlug ProjectSlug { get; init; }
+        public required AgentSlug AgentSlug { get; init; }
+        public required string StartedAt { get; init; }
         public int Pid { get; set; }
         public CancellationTokenSource Cts { get; } = cts;
     }
 
     private readonly ConcurrentDictionary<string, SessionInfo> _sessions = new();
 
-    private static string Key(string project, string agent) => $"{project}/{agent}";
+    private static string Key(ProjectSlug project, AgentSlug agent) => $"{project.Value}/{agent.Value}";
 
     // -------------------------------------------------------------------------
     // Public surface
     // -------------------------------------------------------------------------
 
-    public bool IsRunning(string projectSlug, string agentSlug) =>
+    public bool IsRunning(ProjectSlug projectSlug, AgentSlug agentSlug) =>
         _sessions.ContainsKey(Key(projectSlug, agentSlug));
 
     public IReadOnlyList<RunningSession> GetRunningSessions() =>
@@ -50,7 +51,7 @@ public class AgentRunnerService(
     /// Launches an agent. Returns false if already running.
     /// The process runs in the background — this method returns quickly.
     /// </summary>
-    public bool LaunchAgent(string projectSlug, string agentSlug)
+    public bool LaunchAgent(ProjectSlug projectSlug, AgentSlug agentSlug)
     {
         var key = Key(projectSlug, agentSlug);
         if (_sessions.ContainsKey(key))
@@ -83,7 +84,7 @@ public class AgentRunnerService(
     /// <summary>
     /// Signals a running agent to stop.
     /// </summary>
-    public bool StopAgent(string projectSlug, string agentSlug)
+    public bool StopAgent(ProjectSlug projectSlug, AgentSlug agentSlug)
     {
         var key = Key(projectSlug, agentSlug);
         if (!_sessions.TryGetValue(key, out var info)) return false;
@@ -105,8 +106,8 @@ public class AgentRunnerService(
         activity?.SetTag("agent.project", projectSlug);
         activity?.SetTag("agent.slug", agentSlug);
         activity?.SetTag("agent.sessionStartedAt", startedAt.ToString("o"));
-        var agentDir = Path.Combine(workspace.GetProjectPath(projectSlug), "agents", agentSlug);
-        var inboxDir = Path.Combine(agentDir, "inbox");
+        var agentDir = paths.AgentDir(projectSlug, agentSlug);
+        var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
 
         // Snapshot inbox files present at launch so we can archive them on exit
         var inboxSnapshot = Array.Empty<string>();
@@ -148,9 +149,10 @@ public class AgentRunnerService(
         // Channel decouples executor output from the async transcript writer.
         // The consumer task owns the StreamWriter entirely — no transcript reference leaks into
         // the outer scope or across a Task.Run boundary.
-        var transcriptDir = Path.Combine(agentDir, "transcripts");
+        var transcriptDir = paths.AgentTranscriptsDir(projectSlug, agentSlug);
         Directory.CreateDirectory(transcriptDir);
-        var transcriptPath = Path.Combine(transcriptDir, $"{startedAt:yyyy-MM-dd}.md");
+        var transcriptDate = TranscriptDate.From(startedAt);
+        var transcriptPath = paths.TranscriptPath(projectSlug, agentSlug, transcriptDate).Value;
         var outputChannel = Channel.CreateUnbounded<string>(new() { SingleReader = true });
         var consumerTask = Task.Run(async () =>
         {
@@ -224,6 +226,7 @@ public class AgentRunnerService(
             });
 
             ArchiveInbox(inboxDir, inboxSnapshot);
+            if (inboxSnapshot.Length > 0) messageNotifier.Notify(projectSlug);
 
             // Messages can arrive in the inbox while the session is running and the
             // FileSystemWatcher skips them (agent already running). Check after archiving
@@ -314,8 +317,8 @@ public class AgentRunnerService(
     /// <summary>
     /// Writes a human-readable message to an agent's inbox.
     /// </summary>
-    public string? WriteInboxMessage(string projectSlug, string agentSlug,
-        string from, string re, string type, string priority, string body)
+    public string? WriteInboxMessage(ProjectSlug projectSlug, AgentSlug agentSlug,
+        string from, string re, string type, string priority, string body, string? taskId = null)
     {
         using var activity = ActivitySource.StartActivity("Agent.WriteInboxMessage", ActivityKind.Internal);
         activity?.SetTag("agent.project", projectSlug);
@@ -324,7 +327,7 @@ public class AgentRunnerService(
         activity?.SetTag("message.type", type);
         activity?.SetTag("message.priority", priority);
 
-        var inboxDir = Path.Combine(workspace.GetProjectPath(projectSlug), "agents", agentSlug, "inbox");
+        var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
         activity?.SetTag("message.inboxDir", inboxDir);
 
         try
@@ -333,15 +336,17 @@ public class AgentRunnerService(
             var now = DateTime.UtcNow;
             var filename = $"{now:yyyyMMdd-HHmmss}-from-{from}.md";
             var filePath = Path.Combine(inboxDir, filename);
-            var content = FrontmatterParser.Stringify(new()
+            var fields = new Dictionary<string, string>
             {
-                ["from"] = from,
-                ["to"] = agentSlug,
-                ["date"] = now.ToString("o"),
+                ["from"]     = from,
+                ["to"]       = agentSlug,
+                ["date"]     = now.ToString("o"),
                 ["priority"] = priority,
-                ["re"] = re,
-                ["type"] = type,
-            }, body);
+                ["re"]       = re,
+                ["type"]     = type,
+            };
+            if (!string.IsNullOrEmpty(taskId)) fields["task-id"] = taskId;
+            var content = FrontmatterParser.Stringify(fields, body);
             File.WriteAllText(filePath, content);
             activity?.SetTag("message.filename", filename);
             activity?.SetTag("message.success", true);

@@ -29,7 +29,7 @@ public class BoardTask
     [JsonPropertyName("nudgedAt")] public string? NudgedAt { get; set; }
 }
 
-public class BoardService(WorkspaceService workspace, AgentRunnerService agentRunner, ILogger<BoardService> logger)
+public class BoardService(WorkspacePaths paths, AgentRunnerService agentRunner, ILogger<BoardService> logger)
 {
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -38,12 +38,9 @@ public class BoardService(WorkspaceService workspace, AgentRunnerService agentRu
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    private string BoardPath(string projectSlug) =>
-        Path.Combine(workspace.GetProjectPath(projectSlug), "board", "board.json");
-
-    public BoardData LoadBoard(string projectSlug)
+    public BoardData LoadBoard(ProjectSlug projectSlug)
     {
-        var path = BoardPath(projectSlug);
+        var path = paths.BoardPath(projectSlug);
         if (!File.Exists(path)) return new();
         try
         {
@@ -53,14 +50,14 @@ public class BoardService(WorkspaceService workspace, AgentRunnerService agentRu
         catch { return new(); }
     }
 
-    public void SaveBoard(string projectSlug, BoardData board)
+    public void SaveBoard(ProjectSlug projectSlug, BoardData board)
     {
-        var path = BoardPath(projectSlug);
+        var path = paths.BoardPath(projectSlug);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, JsonSerializer.Serialize(board, Options));
     }
 
-    public string? CreateTask(string projectSlug, string columnId, string title,
+    public string? CreateTask(ProjectSlug projectSlug, string columnId, string title,
         string? description, string priority, string? assignee)
     {
         var board = LoadBoard(projectSlug);
@@ -92,7 +89,8 @@ public class BoardService(WorkspaceService workspace, AgentRunnerService agentRu
                 re: title,
                 type: "task-assigned",
                 priority: priority,
-                body: $"You have been assigned a new task: {title}{(string.IsNullOrWhiteSpace(description) ? "" : $"\n\n{description}")}");
+                body: $"You have been assigned a new task: {title}{(string.IsNullOrWhiteSpace(description) ? "" : $"\n\n{description}")}",
+                taskId: id);
             if (err != null)
                 logger.LogError("[board] Failed to send task-assigned inbox message to {Assignee} for task {TaskId}: {Error}",
                     assignee, id, err);
@@ -103,7 +101,7 @@ public class BoardService(WorkspaceService workspace, AgentRunnerService agentRu
         return null;
     }
 
-    public string? UpdateTask(string projectSlug, string taskId, string newColumnId,
+    public string? UpdateTask(ProjectSlug projectSlug, string taskId, string newColumnId,
         string title, string? description, string priority, string? assignee)
     {
         var board = LoadBoard(projectSlug);
@@ -146,7 +144,8 @@ public class BoardService(WorkspaceService workspace, AgentRunnerService agentRu
                 re: title,
                 type: "task-assigned",
                 priority: priority,
-                body: $"You have been assigned a new task: {title}{(string.IsNullOrWhiteSpace(description) ? "" : $"\n\n{description}")}");
+                body: $"You have been assigned a new task: {title}{(string.IsNullOrWhiteSpace(description) ? "" : $"\n\n{description}")}",
+                taskId: taskId);
             if (err != null)
                 logger.LogError("[board] Failed to send task-assigned inbox message to {Assignee} for task {TaskId}: {Error}",
                     assignee, taskId, err);
@@ -157,7 +156,7 @@ public class BoardService(WorkspaceService workspace, AgentRunnerService agentRu
         return null;
     }
 
-    public void SetTaskNudged(string projectSlug, string taskId)
+    public void SetTaskNudged(ProjectSlug projectSlug, string taskId)
     {
         var board = LoadBoard(projectSlug);
         if (!board.Tasks.TryGetValue(taskId, out var task)) return;
@@ -165,7 +164,7 @@ public class BoardService(WorkspaceService workspace, AgentRunnerService agentRu
         SaveBoard(projectSlug, board);
     }
 
-    public string? DeleteTask(string projectSlug, string taskId)
+    public string? DeleteTask(ProjectSlug projectSlug, string taskId)
     {
         var board = LoadBoard(projectSlug);
         if (!board.Tasks.ContainsKey(taskId)) return "Task not found.";

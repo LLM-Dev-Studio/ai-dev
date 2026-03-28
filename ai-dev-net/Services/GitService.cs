@@ -20,11 +20,11 @@ public class GitCommitDetail
     public string Diff { get; set; } = string.Empty;
 }
 
-public class GitService
+public partial class GitService
 {
     // Only allow hex commit hashes (4–64 chars). Rejects any flag injection.
     private static readonly Regex ValidHashRegex =
-        new(@"^[0-9a-f]{4,64}$", RegexOptions.Compiled);
+        MyGitHashRegex();
 
     public bool IsGitRepo(string repoPath)
     {
@@ -113,4 +113,8 @@ public class GitService
             return (-1, string.Empty);
         }
     }
+
+    [GeneratedRegex(@"^[0-9a-f]{4,64}$", RegexOptions.Compiled)]
+    private static partial Regex MyGitHashRegex();
+
 }

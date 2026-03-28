@@ -11,27 +11,23 @@ public class MessageItem
     public string Re { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
+    public bool IsProcessed { get; set; }
+    public string TaskId { get; set; } = string.Empty;
 }
 
-public class MessagesService(WorkspaceService workspace)
+public class MessagesService(WorkspacePaths paths)
 {
-    public List<MessageItem> ListMessages(string projectSlug, string? agentSlug = null)
+    public List<MessageItem> ListMessages(ProjectSlug projectSlug, AgentSlug? agentSlug = null)
     {
         var results = new List<MessageItem>();
-        var projectDir = workspace.GetProjectPath(projectSlug);
-        var agentsDir = Path.Combine(projectDir, "agents");
+        var agentsDir = paths.AgentsDir(projectSlug);
 
         if (!Directory.Exists(agentsDir)) return results;
 
         string[] agentDirs;
         if (agentSlug != null)
         {
-            var canonicalAgentsDir = Path.GetFullPath(agentsDir);
-            var resolvedAgentDir = Path.GetFullPath(Path.Combine(agentsDir, agentSlug));
-            if (!resolvedAgentDir.StartsWith(canonicalAgentsDir + Path.DirectorySeparatorChar,
-                    StringComparison.OrdinalIgnoreCase))
-                return results;
-            agentDirs = [resolvedAgentDir];
+            agentDirs = [paths.AgentDir(projectSlug, agentSlug).Value];
         }
         else
         {
@@ -40,21 +36,33 @@ public class MessagesService(WorkspaceService workspace)
 
         foreach (var agentDir in agentDirs)
         {
-            var slug = Path.GetFileName(agentDir);
-            var inboxDir = Path.Combine(agentDir, "inbox");
-            if (!Directory.Exists(inboxDir)) continue;
+            var dirName = Path.GetFileName(agentDir);
+            if (!AgentSlug.TryParse(dirName, out var slug)) continue;
 
-            foreach (var file in Directory.GetFiles(inboxDir, "*.md").OrderByDescending(f => f))
+            var inboxDir = paths.AgentInboxDir(projectSlug, slug);
+            var processedDir = paths.AgentInboxProcessedDir(projectSlug, slug);
+
+            if (inboxDir.Exists())
             {
-                var item = ParseMessageFile(file, slug);
-                if (item != null) results.Add(item);
+                results.AddRange(Directory.GetFiles(inboxDir.Value, "*.md")
+                    .Select(file => ParseMessageFile(file, slug.Value, isProcessed: false))
+                    .OfType<MessageItem>());
             }
+
+            if (!processedDir.Exists())
+            {
+                continue;
+            }
+
+            results.AddRange(Directory.GetFiles(processedDir.Value, "*.md")
+                .Select(file => ParseMessageFile(file, slug.Value, isProcessed: true))
+                .OfType<MessageItem>());
         }
 
-        return results.OrderByDescending(m => m.Date).ToList();
+        return [.. results.OrderByDescending(m => m.Date)];
     }
 
-    private static MessageItem? ParseMessageFile(string path, string agentSlug)
+    private static MessageItem? ParseMessageFile(string path, string agentSlug, bool isProcessed)
     {
         try
         {
@@ -71,6 +79,8 @@ public class MessagesService(WorkspaceService workspace)
                 Re = fields.GetValueOrDefault("re", string.Empty),
                 Type = fields.GetValueOrDefault("type", string.Empty),
                 Body = body.Trim(),
+                IsProcessed = isProcessed,
+                TaskId = fields.GetValueOrDefault("task-id", string.Empty),
             };
         }
         catch { return null; }

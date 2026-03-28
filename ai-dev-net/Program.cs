@@ -8,15 +8,17 @@ builder.AddServiceDefaults();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+builder.Services.AddSingleton<WorkspacePaths>();
 builder.Services.AddSingleton<WorkspaceService>();
 builder.Services.AddSingleton<StudioSettingsService>();
 builder.Services.AddSingleton<AgentTemplatesService>();
 builder.Services.AddSingleton<AgentService>();
 builder.Services.AddSingleton<BoardService>((sp) =>
     new BoardService(
-        sp.GetRequiredService<WorkspaceService>(),
+        sp.GetRequiredService<WorkspacePaths>(),
         sp.GetRequiredService<AgentRunnerService>(),
         sp.GetRequiredService<ILogger<BoardService>>()));
+builder.Services.AddSingleton<MessageChangedNotifier>();
 builder.Services.AddSingleton<MessagesService>();
 builder.Services.AddSingleton<DecisionsService>();
 builder.Services.AddSingleton<JournalsService>();

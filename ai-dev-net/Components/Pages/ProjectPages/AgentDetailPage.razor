@@ -1,4 +1,4 @@
-@page "/projects/{Slug}/agents/{AgentName}"
+@page "/projects/{Slug}/agents/{AgentSlug}"
 @rendermode InteractiveServer
 @inject AgentService AgentService
 @inject MessagesService MessagesService
@@ -28,7 +28,7 @@ else
             <p class="text-sm text-muted-foreground">@agent.Description</p>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
-            <a href="@($"/projects/{Slug}/agents/{AgentName}/transcript")"
+            <a href="@($"/projects/{Slug}/agents/{AgentSlug}/transcript")"
                class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
                 <SvgIcon Name="scroll-text" Class="w-3 h-3" />
                 Transcript
@@ -201,7 +201,7 @@ else
 
 @code {
     [Parameter] public string Slug { get; set; } = string.Empty;
-    [Parameter] public string AgentName { get; set; } = string.Empty;
+    [Parameter] public string AgentSlug { get; set; } = string.Empty;
 
     private AgentInfo? agent;
     private List<MessageItem> messages = [];
@@ -233,22 +233,22 @@ else
 
     protected override void OnInitialized()
     {
-        agent = AgentService.LoadAgent(Slug, AgentName);
+        agent = AgentService.LoadAgent(Slug, AgentSlug);
         if (agent == null) return;
 
         editName = originalName = agent.Name;
         editDescription = originalDescription = agent.Description;
         editModel = originalModel = agent.Model;
 
-        claudeContent = claudeOriginal = AgentService.GetClaudeMd(Slug, AgentName);
+        claudeContent = claudeOriginal = AgentService.GetClaudeMd(Slug, AgentSlug);
         modelAliases = AgentService.GetModelAliases();
-        messages = MessagesService.ListMessages(Slug, AgentName);
-        isRunning = RunnerService.IsRunning(Slug, AgentName);
+        messages = MessagesService.ListMessages(Slug, AgentSlug);
+        isRunning = RunnerService.IsRunning(Slug, AgentSlug);
 
         // Poll every 2 s to reflect live run state
         _pollTimer = new Timer(_ =>
         {
-            var running = RunnerService.IsRunning(Slug, AgentName);
+            var running = RunnerService.IsRunning(Slug, AgentSlug);
             if (running != isRunning)
             {
                 isRunning = running;
@@ -259,13 +259,13 @@ else
 
     private void LaunchAgent()
     {
-        RunnerService.LaunchAgent(Slug, AgentName);
+        RunnerService.LaunchAgent(Slug, AgentSlug);
         isRunning = true;
     }
 
     private void StopAgent()
     {
-        RunnerService.StopAgent(Slug, AgentName);
+        RunnerService.StopAgent(Slug, AgentSlug);
     }
 
     public void Dispose() => _pollTimer?.Dispose();
@@ -274,13 +274,13 @@ else
     {
         savingMeta = true;
         metaStatus = SaveStatus.Idle;
-        var err = AgentService.SaveAgentMeta(Slug, AgentName, editName, editDescription, editModel);
+        var err = AgentService.SaveAgentMeta(Slug, AgentSlug, editName, editDescription, editModel);
         savingMeta = false;
         if (err != null) { metaStatus = SaveStatus.Error; return; }
         originalName = editName;
         originalDescription = editDescription;
         originalModel = editModel;
-        agent = AgentService.LoadAgent(Slug, AgentName);
+        agent = AgentService.LoadAgent(Slug, AgentSlug);
         metaStatus = SaveStatus.Saved;
         Task.Delay(2000).ContinueWith(_ => { metaStatus = SaveStatus.Idle; InvokeAsync(StateHasChanged); });
     }
@@ -289,7 +289,7 @@ else
     {
         savingClaude = true;
         claudeStatus = SaveStatus.Idle;
-        var err = AgentService.SaveClaudeMd(Slug, AgentName, claudeContent);
+        var err = AgentService.SaveClaudeMd(Slug, AgentSlug, claudeContent);
         savingClaude = false;
         if (err != null) { claudeStatus = SaveStatus.Error; return; }
         claudeOriginal = claudeContent;
@@ -299,7 +299,7 @@ else
 
     private void ResetClaude()
     {
-        claudeContent = AgentService.GetClaudeMd(Slug, AgentName);
+        claudeContent = AgentService.GetClaudeMd(Slug, AgentSlug);
         claudeOriginal = claudeContent;
         claudeStatus = SaveStatus.Idle;
     }

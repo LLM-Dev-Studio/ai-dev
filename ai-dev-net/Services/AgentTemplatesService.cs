@@ -1,6 +1,6 @@
 namespace AiDevNet.Services;
 
-public class AgentTemplatesService(WorkspaceService workspace)
+public class AgentTemplatesService(WorkspacePaths paths)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -18,21 +18,9 @@ public class AgentTemplatesService(WorkspaceService workspace)
         SlugRegex.IsMatch(slug) &&
         !slug.Contains("..") && !slug.Contains('/') && !slug.Contains('\\');
 
-    /// <summary>
-    /// Returns the canonical path for a template file, or null if the slug would escape the templates directory.
-    /// </summary>
-    private string? SafeTemplatePath(string slug, string extension)
-    {
-        if (!IsValidSlug(slug)) return null;
-        var dir = workspace.GetAgentTemplatesDir();
-        var resolved = Path.GetFullPath(Path.Combine(dir, $"{slug}{extension}"));
-        var canonicalDir = Path.GetFullPath(dir) + Path.DirectorySeparatorChar;
-        return resolved.StartsWith(canonicalDir, StringComparison.OrdinalIgnoreCase) ? resolved : null;
-    }
-
     public List<AgentTemplate> ListTemplates()
     {
-        var dir = workspace.GetAgentTemplatesDir();
+        var dir = paths.AgentTemplatesDir;
         if (!Directory.Exists(dir)) return [];
 
         return Directory.GetFiles(dir, "*.json")
@@ -61,22 +49,22 @@ public class AgentTemplatesService(WorkspaceService workspace)
 
     public AgentTemplate? GetTemplate(string slug)
     {
-        var jsonPath = SafeTemplatePath(slug, ".json");
-        return jsonPath != null && File.Exists(jsonPath) ? LoadTemplateFile(jsonPath) : null;
+        if (!IsValidSlug(slug)) return null;
+        var jsonPath = paths.SafeTemplatePath(slug, ".json");
+        return jsonPath != null && File.Exists(jsonPath.Value) ? LoadTemplateFile(jsonPath.Value) : null;
     }
 
     public void SaveTemplate(AgentTemplate template)
     {
-        var jsonPath = SafeTemplatePath(template.Slug, ".json");
-        var mdPath = SafeTemplatePath(template.Slug, ".md");
+        var jsonPath = paths.SafeTemplatePath(template.Slug, ".json");
+        var mdPath   = paths.SafeTemplatePath(template.Slug, ".md");
         if (jsonPath == null || mdPath == null)
             throw new ArgumentException($"Invalid template slug: '{template.Slug}'");
 
-        var dir = workspace.GetAgentTemplatesDir();
-        Directory.CreateDirectory(dir);
+        Directory.CreateDirectory(paths.AgentTemplatesDir.Value);
 
         if (!string.IsNullOrEmpty(template.Content))
-            File.WriteAllText(mdPath, template.Content);
+            File.WriteAllText(mdPath.Value, template.Content);
 
         // Store metadata only in JSON (content lives in .md)
         var meta = new AgentTemplate
@@ -88,7 +76,7 @@ public class AgentTemplatesService(WorkspaceService workspace)
             Description = template.Description,
             Content = "",
         };
-        File.WriteAllText(jsonPath, JsonSerializer.Serialize(meta, JsonOptions));
+        File.WriteAllText(jsonPath.Value, JsonSerializer.Serialize(meta, JsonOptions));
     }
 
     public AgentTemplate CreateTemplate(AgentTemplate template)
@@ -102,10 +90,10 @@ public class AgentTemplatesService(WorkspaceService workspace)
 
     public void DeleteTemplate(string slug)
     {
-        var jsonPath = SafeTemplatePath(slug, ".json");
-        var mdPath = SafeTemplatePath(slug, ".md");
+        var jsonPath = paths.SafeTemplatePath(slug, ".json");
+        var mdPath   = paths.SafeTemplatePath(slug, ".md");
 
-        if (jsonPath != null && File.Exists(jsonPath)) File.Delete(jsonPath);
-        if (mdPath != null && File.Exists(mdPath)) File.Delete(mdPath);
+        if (jsonPath != null && File.Exists(jsonPath.Value)) File.Delete(jsonPath.Value);
+        if (mdPath   != null && File.Exists(mdPath.Value))   File.Delete(mdPath.Value);
     }
 }

@@ -10,7 +10,7 @@ public class StudioSettings
     public string OllamaBaseUrl { get; set; } = "http://localhost:11434";
 }
 
-public class StudioSettingsService(WorkspaceService workspace)
+public class StudioSettingsService(WorkspacePaths paths)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -27,7 +27,7 @@ public class StudioSettingsService(WorkspaceService workspace)
 
     public StudioSettings GetSettings()
     {
-        var path = workspace.GetStudioSettingsPath();
+        var path = paths.StudioSettingsPath;
         if (!File.Exists(path))
             return new() { Models = new(Defaults) };
 
@@ -52,7 +52,7 @@ public class StudioSettingsService(WorkspaceService workspace)
 
     public void SaveSettings(StudioSettings settings)
     {
-        var path = workspace.GetStudioSettingsPath();
+        var path = paths.StudioSettingsPath;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, JsonSerializer.Serialize(settings, JsonOptions));
     }

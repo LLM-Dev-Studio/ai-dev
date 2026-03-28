@@ -1,7 +1,10 @@
 @page "/projects/{Slug}/messages"
 @rendermode InteractiveServer
 @inject MessagesService MessagesService
+@inject BoardService BoardService
+@inject MessageChangedNotifier MessageChangedNotifier
 @using Markdig
+@implements IDisposable
 
 <h1 class="text-xl font-semibold text-foreground mb-1">Messages</h1>
 
@@ -24,37 +27,59 @@ else
     }
     else
     {
-        <div class="space-y-2">
-            @foreach (var msg in messages)
+        <div class="space-y-6">
+            @foreach (var group in groups!)
             {
-                var captured = msg;
-                <div @onclick="() => OpenMessage(captured)"
-                     class="rounded-lg border border-border bg-card p-4 hover:border-border/80 transition-colors cursor-pointer">
-                    <div class="flex items-start justify-between">
-                        <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <p class="text-sm font-medium text-foreground truncate">@msg.Re</p>
-                                @if (!string.IsNullOrEmpty(msg.Type))
+                <div>
+                    @if (group.TaskId != null)
+                    {
+                        <div class="flex items-center gap-2 mb-2">
+                            <h2 class="text-sm font-semibold text-foreground">@group.TaskTitle</h2>
+                            <span class="text-xs text-muted-foreground/60 font-mono">@group.TaskId</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <h2 class="text-sm font-semibold text-muted-foreground mb-2">Other</h2>
+                    }
+                    <div class="space-y-2">
+                        @foreach (var msg in group.Messages)
+                        {
+                            var captured = msg;
+                            <div @onclick="() => OpenMessage(captured)"
+                                 class="rounded-lg border p-4 transition-colors cursor-pointer @(msg.IsProcessed ? "border-border/40 bg-card/50 opacity-60 hover:opacity-80" : "border-border bg-card hover:border-border/80")">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <p class="text-sm font-medium @(msg.IsProcessed ? "text-muted-foreground" : "text-foreground") truncate">@msg.Re</p>
+                                            @if (msg.IsProcessed)
+                                            {
+                                                <span class="text-xs px-1.5 py-0.5 rounded border border-border/40 text-muted-foreground/60 flex-shrink-0">processed</span>
+                                            }
+                                            @if (!string.IsNullOrEmpty(msg.Type))
+                                            {
+                                                <span class="text-xs px-1.5 py-0.5 rounded border border-border text-muted-foreground flex-shrink-0">@msg.Type</span>
+                                            }
+                                            @if (!msg.IsProcessed && msg.Priority is "high" or "critical")
+                                            {
+                                                <span class="text-xs flex-shrink-0 @PriorityColor(msg.Priority)">@msg.Priority</span>
+                                            }
+                                        </div>
+                                        <p class="text-xs text-muted-foreground mt-0.5">
+                                            <span class="@(msg.IsProcessed ? "text-foreground/40" : "text-foreground/70")">@msg.From</span>
+                                            <span class="mx-1">→</span>
+                                            <span class="@(msg.IsProcessed ? "text-foreground/40" : "text-foreground/70")">@msg.To</span>
+                                        </p>
+                                    </div>
+                                    <span class="text-xs text-muted-foreground ml-3 flex-shrink-0">@FormatDateTime(msg.Date)</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(msg.Body))
                                 {
-                                    <span class="text-xs px-1.5 py-0.5 rounded border border-border text-muted-foreground flex-shrink-0">@msg.Type</span>
-                                }
-                                @if (msg.Priority is "high" or "critical")
-                                {
-                                    <span class="text-xs flex-shrink-0 @PriorityColor(msg.Priority)">@msg.Priority</span>
+                                    <p class="text-sm text-muted-foreground mt-2 line-clamp-2 @(msg.IsProcessed ? "opacity-60" : "")">@msg.Body</p>
                                 }
                             </div>
-                            <p class="text-xs text-muted-foreground mt-0.5">
-                                <span class="text-foreground/70">@msg.From</span>
-                                <span class="mx-1">→</span>
-                                <span class="text-foreground/70">@msg.To</span>
-                            </p>
-                        </div>
-                        <span class="text-xs text-muted-foreground ml-3 flex-shrink-0">@FormatDateTime(msg.Date)</span>
+                        }
                     </div>
-                    @if (!string.IsNullOrEmpty(msg.Body))
-                    {
-                        <p class="text-sm text-muted-foreground mt-2 line-clamp-2">@msg.Body</p>
-                    }
                 </div>
             }
         </div>
@@ -99,9 +124,12 @@ else
 }
 
 @code {
+    private record MessageGroup(string? TaskId, string TaskTitle, List<MessageItem> Messages);
+
     [Parameter] public string Slug { get; set; } = string.Empty;
 
     private List<MessageItem>? messages;
+    private List<MessageGroup>? groups;
     private MessageItem? selectedMsg;
 
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
@@ -111,8 +139,35 @@ else
 
     protected override void OnInitialized()
     {
-        messages = MessagesService.ListMessages(Slug);
+        Reload();
+        MessageChangedNotifier.Changed += OnMessagesChanged;
     }
+
+    private void Reload()
+    {
+        messages = MessagesService.ListMessages(Slug);
+        var board = BoardService.LoadBoard(Slug);
+        groups = messages
+            .GroupBy(m => string.IsNullOrEmpty(m.TaskId) ? null : m.TaskId)
+            .OrderBy(g => g.Key == null)
+            .ThenByDescending(g => g.Max(m => m.Date))
+            .Select(g =>
+            {
+                var taskTitle = g.Key != null && board.Tasks.TryGetValue(g.Key, out var t)
+                    ? t.Title : g.Key ?? string.Empty;
+                return new MessageGroup(g.Key, taskTitle, g.OrderByDescending(m => m.Date).ToList());
+            })
+            .ToList();
+    }
+
+    private void OnMessagesChanged(ProjectSlug changedProject)
+    {
+        if (changedProject.Value != Slug) return;
+        Reload();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => MessageChangedNotifier.Changed -= OnMessagesChanged;
 
     private void OpenMessage(MessageItem msg) => selectedMsg = msg;
     private void CloseMessage() => selectedMsg = null;

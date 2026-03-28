@@ -5,8 +5,8 @@ namespace AiDevNet.Services;
 /// </summary>
 public class RunningSession
 {
-    public string ProjectSlug { get; set; } = string.Empty;
-    public string AgentSlug { get; set; } = string.Empty;
+    public required ProjectSlug ProjectSlug { get; init; }
+    public required AgentSlug AgentSlug { get; init; }
+    public required string StartedAt { get; init; }
     public int Pid { get; set; }
-    public string StartedAt { get; set; } = string.Empty;
 }
