@@ -8,14 +8,14 @@
 <div class="flex items-center justify-between mb-1">
     <div>
         <h1 class="text-xl font-semibold text-foreground">Board</h1>
-        @if (board != null)
+        @if (_board != null)
         {
-            <p class="text-sm text-muted-foreground mt-0.5">@board.Tasks.Count task@(board.Tasks.Count != 1 ? "s" : "")</p>
+            <p class="text-sm text-muted-foreground mt-0.5">@_board.Tasks.Count task@(_board.Tasks.Count != 1 ? "s" : "")</p>
         }
     </div>
 </div>
 
-@if (board == null)
+@if (_board == null)
 {
     <div class="flex gap-4 mt-5">
         @for (int i = 0; i < 4; i++)
@@ -33,7 +33,7 @@
 else
 {
     <div class="flex gap-4 overflow-x-auto pb-4 mt-5">
-        @foreach (var col in board.Columns)
+        @foreach (var col in _board.Columns)
         {
             <div class="flex-shrink-0 w-64 flex flex-col">
                 <div class="flex items-center justify-between mb-3">
@@ -44,13 +44,13 @@ else
                 <div class="space-y-2 flex-1">
                     @foreach (var taskId in col.TaskIds)
                     {
-                        @if (board.Tasks.TryGetValue(taskId, out var task))
+                        @if (_board.Tasks.TryGetValue(taskId, out var task))
                         {
-                            var colIdx = board.Columns.IndexOf(col);
-                            var prevCol = colIdx > 0 ? board.Columns[colIdx - 1] : null;
-                            var nextCol = colIdx < board.Columns.Count - 1 ? board.Columns[colIdx + 1] : null;
+                            var colIdx = _board.Columns.IndexOf(col);
+                            var prevCol = colIdx > 0 ? _board.Columns[colIdx - 1] : null;
+                            var nextCol = colIdx < _board.Columns.Count - 1 ? _board.Columns[colIdx + 1] : null;
 
-                            <div class="relative w-full rounded-lg border @(openMenuId == taskId ? "border-ring/40" : "border-border") bg-card hover:border-border/80 transition-colors">
+                            <div class="relative w-full rounded-lg border @(_openMenuId == taskId ? "border-ring/40" : "border-border") bg-card hover:border-border/80 transition-colors">
                                 <button class="w-full text-left p-3 pr-7"
                                         @onclick="() => OpenEditTask(task, col.Id)">
                                     <div class="flex items-start gap-2">
@@ -81,7 +81,7 @@ else
                                     <SvgIcon Name="ellipsis" Class="w-3.5 h-3.5" />
                                 </button>
 
-                                @if (openMenuId == taskId)
+                                @if (_openMenuId == taskId)
                                 {
                                     <div class="absolute right-1 top-7 z-20 min-w-44 rounded-md border border-border bg-card shadow-lg py-1"
                                          @onclick:stopPropagation="true">
@@ -148,17 +148,17 @@ else
     </div>
 }
 
-@if (openMenuId != null)
+@if (_openMenuId != null)
 {
     <div class="fixed inset-0 z-10" @onclick="CloseMenu"></div>
 }
 
-@if (showTaskDialog)
+@if (_showTaskDialog)
 {
     <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
         <div class="bg-card border border-border rounded-lg w-full max-w-lg p-6">
             <div class="flex items-start justify-between mb-5">
-                <p class="text-base font-semibold text-foreground">@(editingTaskId == null ? "New Task" : "Edit Task")</p>
+                <p class="text-base font-semibold text-foreground">@(_editingTaskId == null ? "New Task" : "Edit Task")</p>
                 <button @onclick="CloseTaskDialog" class="p-1 text-muted-foreground hover:text-foreground">
                     <SvgIcon Name="x" Class="w-4 h-4" />
                 </button>
@@ -167,15 +167,15 @@ else
             <div class="space-y-4">
                 <div>
                     <label class="block text-xs font-medium text-muted-foreground mb-1.5">Title <span class="text-destructive">*</span></label>
-                    <input value="@taskTitle"
-                           @oninput="e => taskTitle = e.Value?.ToString() ?? string.Empty"
+                    <input value="@_taskTitle"
+                           @oninput="e => _taskTitle = e.Value?.ToString() ?? string.Empty"
                            placeholder="What needs to be done?"
                            class="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-muted-foreground mb-1.5">Description</label>
-                    <textarea value="@taskDescription"
-                              @oninput="e => taskDescription = e.Value?.ToString() ?? string.Empty"
+                    <textarea value="@_taskDescription"
+                              @oninput="e => _taskDescription = e.Value?.ToString() ?? string.Empty"
                               rows="3"
                               placeholder="Optional details, acceptance criteria…"
                               class="w-full resize-none rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"></textarea>
@@ -183,8 +183,8 @@ else
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-medium text-muted-foreground mb-1.5">Priority</label>
-                        <select value="@taskPriority"
-                                @onchange="e => taskPriority = e.Value?.ToString() ?? string.Empty"
+                        <select value="@_taskPriority"
+                                @onchange="e => _taskPriority = e.Value?.ToString() ?? string.Empty"
                                 class="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
                             <option value="low">Low</option>
                             <option value="normal">Normal</option>
@@ -194,36 +194,36 @@ else
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-muted-foreground mb-1.5">Column</label>
-                        <select value="@taskColumnId"
-                                @onchange="e => taskColumnId = e.Value?.ToString() ?? string.Empty"
+                        <select value="@_taskColumnId"
+                                @onchange="e => _taskColumnId = e.Value?.ToString() ?? string.Empty"
                                 class="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-                            @foreach (var col in board?.Columns ?? [])
+                            @foreach (var col in _board?.Columns ?? [])
                             {
-                                <option value="@col.Id" selected="@(col.Id == taskColumnId)">@col.Title</option>
+                                <option value="@col.Id" selected="@(col.Id == _taskColumnId)">@col.Title</option>
                             }
                         </select>
                     </div>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-muted-foreground mb-1.5">Assignee</label>
-                    <select value="@taskAssignee"
-                            @onchange="e => taskAssignee = e.Value?.ToString() ?? string.Empty"
+                    <select value="@_taskAssignee"
+                            @onchange="e => _taskAssignee = e.Value?.ToString() ?? string.Empty"
                             class="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
                         <option value="">Unassigned</option>
-                        @foreach (var a in agents)
+                        @foreach (var a in _agents)
                         {
-                            <option value="@a.Slug" selected="@(a.Slug == taskAssignee)">@a.Name (@a.Role)</option>
+                            <option value="@a.Slug" selected="@(a.Slug == _taskAssignee)">@a.Name (@a.Role)</option>
                         }
                     </select>
                 </div>
-                @if (!string.IsNullOrEmpty(taskError))
+                @if (!string.IsNullOrEmpty(_taskError))
                 {
-                    <p class="text-xs text-destructive">@taskError</p>
+                    <p class="text-xs text-destructive">@_taskError</p>
                 }
             </div>
 
             <div class="flex items-center justify-between mt-5">
-                @if (editingTaskId != null)
+                @if (_editingTaskId != null)
                 {
                     <button @onclick="DeleteTask"
                             class="flex items-center gap-1.5 text-sm text-destructive hover:bg-destructive/10 rounded-md px-3 py-1.5 transition-colors">
@@ -241,10 +241,10 @@ else
                         Cancel
                     </button>
                     <button @onclick="SaveTask"
-                            disabled="@(saving || string.IsNullOrWhiteSpace(taskTitle))"
+                            disabled="@(_saving || string.IsNullOrWhiteSpace(_taskTitle))"
                             class="flex items-center gap-2 rounded-md px-4 py-1.5 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
                         <SvgIcon Name="check" Class="w-3.5 h-3.5" />
-                        @(editingTaskId == null ? "Create Task" : "Save")
+                        @(_editingTaskId == null ? "Create Task" : "Save")
                     </button>
                 </div>
             </div>
@@ -255,32 +255,32 @@ else
 @code {
     [Parameter] public string Slug { get; set; } = string.Empty;
 
-    private BoardData? board;
-    private List<AgentInfo> agents = [];
+    private BoardData? _board;
+    private List<AgentInfo> _agents = [];
 
     // Action menu state
-    private string? openMenuId;
+    private string? _openMenuId;
     private Timer? _pollTimer;
 
     // Task dialog state
-    private bool showTaskDialog;
-    private string? editingTaskId;
-    private string taskTitle = string.Empty;
-    private string taskDescription = string.Empty;
-    private string taskPriority = "normal";
-    private string taskColumnId = string.Empty;
-    private string taskAssignee = string.Empty;
-    private string taskError = string.Empty;
-    private bool saving;
+    private bool _showTaskDialog;
+    private string? _editingTaskId;
+    private string _taskTitle = string.Empty;
+    private string _taskDescription = string.Empty;
+    private string _taskPriority = "normal";
+    private string _taskColumnId = string.Empty;
+    private string _taskAssignee = string.Empty;
+    private string _taskError = string.Empty;
+    private bool _saving;
 
     protected override void OnInitialized()
     {
-        board = BoardService.LoadBoard(Slug);
-        agents = AgentService.ListAgents(Slug);
+        _board = BoardService.LoadBoard(Slug);
+        _agents = AgentService.ListAgents(Slug);
 
         _pollTimer = new Timer(_ =>
         {
-            board = BoardService.LoadBoard(Slug);
+            _board = BoardService.LoadBoard(Slug);
             InvokeAsync(StateHasChanged);
         }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }
@@ -289,83 +289,83 @@ else
 
     private void OpenNewTask(string columnId)
     {
-        editingTaskId = null;
-        taskTitle = string.Empty;
-        taskDescription = string.Empty;
-        taskPriority = "normal";
-        taskColumnId = columnId;
-        taskAssignee = string.Empty;
-        taskError = string.Empty;
-        showTaskDialog = true;
+        _editingTaskId = null;
+        _taskTitle = string.Empty;
+        _taskDescription = string.Empty;
+        _taskPriority = "normal";
+        _taskColumnId = columnId;
+        _taskAssignee = string.Empty;
+        _taskError = string.Empty;
+        _showTaskDialog = true;
     }
 
     private void ToggleMenu(string taskId)
     {
-        openMenuId = openMenuId == taskId ? null : taskId;
+        _openMenuId = _openMenuId == taskId ? null : taskId;
     }
 
-    private void CloseMenu() => openMenuId = null;
+    private void CloseMenu() => _openMenuId = null;
 
     private void QuickMove(string taskId, string targetColumnId)
     {
-        if (board == null || !board.Tasks.TryGetValue(taskId, out var task)) return;
+        if (_board == null || !_board.Tasks.TryGetValue(taskId, out var task)) return;
         BoardService.UpdateTask(Slug, taskId, targetColumnId,
             task.Title, task.Description, task.Priority, task.Assignee);
-        board = BoardService.LoadBoard(Slug);
-        openMenuId = null;
+        _board = BoardService.LoadBoard(Slug);
+        _openMenuId = null;
         StateHasChanged();
     }
 
     private void OpenEditTask(BoardTask task, string columnId)
     {
-        openMenuId = null;
-        editingTaskId = task.Id;
-        taskTitle = task.Title;
-        taskDescription = task.Description ?? string.Empty;
-        taskPriority = task.Priority;
-        taskColumnId = columnId;
-        taskAssignee = task.Assignee ?? string.Empty;
-        taskError = string.Empty;
-        showTaskDialog = true;
+        _openMenuId = null;
+        _editingTaskId = task.Id;
+        _taskTitle = task.Title;
+        _taskDescription = task.Description ?? string.Empty;
+        _taskPriority = task.Priority;
+        _taskColumnId = columnId;
+        _taskAssignee = task.Assignee ?? string.Empty;
+        _taskError = string.Empty;
+        _showTaskDialog = true;
     }
 
     private void CloseTaskDialog()
     {
-        showTaskDialog = false;
-        taskError = string.Empty;
+        _showTaskDialog = false;
+        _taskError = string.Empty;
     }
 
     private void SaveTask()
     {
-        if (string.IsNullOrWhiteSpace(taskTitle)) return;
-        saving = true;
-        taskError = string.Empty;
+        if (string.IsNullOrWhiteSpace(_taskTitle)) return;
+        _saving = true;
+        _taskError = string.Empty;
         string? err;
 
-        if (editingTaskId == null)
+        if (_editingTaskId == null)
         {
-            err = BoardService.CreateTask(Slug, taskColumnId, taskTitle.Trim(),
-                taskDescription, taskPriority, taskAssignee);
+            err = BoardService.CreateTask(Slug, _taskColumnId, _taskTitle.Trim(),
+                _taskDescription, _taskPriority, _taskAssignee);
         }
         else
         {
-            err = BoardService.UpdateTask(Slug, editingTaskId, taskColumnId, taskTitle.Trim(),
-                taskDescription, taskPriority, taskAssignee);
+            err = BoardService.UpdateTask(Slug, _editingTaskId, _taskColumnId, _taskTitle.Trim(),
+                _taskDescription, _taskPriority, _taskAssignee);
         }
 
-        saving = false;
-        if (err != null) { taskError = err; return; }
-        board = BoardService.LoadBoard(Slug);
+        _saving = false;
+        if (err != null) { _taskError = err; return; }
+        _board = BoardService.LoadBoard(Slug);
         CloseTaskDialog();
     }
 
     private void DeleteTask()
     {
-        if (editingTaskId == null) return;
-        saving = true;
-        BoardService.DeleteTask(Slug, editingTaskId);
-        saving = false;
-        board = BoardService.LoadBoard(Slug);
+        if (_editingTaskId == null) return;
+        _saving = true;
+        BoardService.DeleteTask(Slug, _editingTaskId);
+        _saving = false;
+        _board = BoardService.LoadBoard(Slug);
         CloseTaskDialog();
     }
 
