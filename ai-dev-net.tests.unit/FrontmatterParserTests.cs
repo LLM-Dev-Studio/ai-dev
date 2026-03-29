@@ -121,10 +121,10 @@ public class FrontmatterParserTests
     {
         var original = new Dictionary<string, string>
         {
-            ["from"]     = "system",
-            ["re"]       = "task update",
+            ["from"] = "system",
+            ["re"] = "task update",
             ["priority"] = "high",
-            ["task-id"]  = "task-123-abcde",
+            ["task-id"] = "task-123-abcde",
         };
         var originalBody = "Please review this task.";
 
