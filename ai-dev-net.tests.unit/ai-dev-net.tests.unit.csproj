@@ -24,12 +24,12 @@
     <Using Include="Xunit" />
     <Using Include="Shouldly" />
     <Using Include="NSubstitute" />
-    <Using Include="AiDevNet.Services" />
-    <Using Include="AiDevNet.Features.Agent" />
-    <Using Include="AiDevNet.Features.Board" />
-    <Using Include="AiDevNet.Features.Decision" />
-    <Using Include="AiDevNet.Features.Workspace" />
-    <Using Include="AiDevNet.Models.Types" />
+    <Using Include="AiDev.Services" />
+    <Using Include="AiDev.Features.Agent" />
+    <Using Include="AiDev.Features.Board" />
+    <Using Include="AiDev.Features.Decision" />
+    <Using Include="AiDev.Features.Workspace" />
+    <Using Include="AiDev.Models.Types" />
   </ItemGroup>
 
 </Project>

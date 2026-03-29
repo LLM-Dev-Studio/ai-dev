@@ -55,7 +55,7 @@ public class AgentSlugTests
     public void ImplicitToString_ReturnsValue()
     {
         AgentSlug slug = new("my-agent");
-        string s = slug;
+        string s = slug!;
         s.ShouldBe("my-agent");
     }
 
