@@ -1,3 +1,5 @@
+@using AiDev.Features.Agent
+@using AiDev.Models.Types
 @inject AgentTemplatesService TemplatesService
 @inject AgentService AgentService
 
@@ -81,7 +83,7 @@
     [Parameter, EditorRequired] public EventCallback OnClose { get; set; }
 
     private List<AgentTemplate> templates = [];
-    private string selectedTemplate = string.Empty;
+    private AgentSlug? selectedTemplate;
     private AgentTemplate? selectedTemplateObj;
     private string name = string.Empty;
     private string agentSlug = string.Empty;
@@ -94,7 +96,7 @@
         if (templates.Count > 0) SelectTemplate(templates[0].Slug);
     }
 
-    private void SelectTemplate(string slug)
+    private void SelectTemplate(AgentSlug? slug)
     {
         selectedTemplate = slug;
         selectedTemplateObj = templates.FirstOrDefault(t => t.Slug == slug);

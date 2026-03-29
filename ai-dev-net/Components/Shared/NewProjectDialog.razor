@@ -1,3 +1,5 @@
+@using AiDev.Features.Agent
+@using AiDev.Models.Types
 @inject AgentTemplatesService TemplatesService
 
 <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -106,7 +108,7 @@
     private string slug = string.Empty;
     private string description = string.Empty;
     private string codebasePath = string.Empty;
-    private readonly HashSet<string> selectedTemplateSlugs = [];
+    private readonly HashSet<AgentSlug> selectedTemplateSlugs = [];
     private List<AgentTemplate> templates = [];
     private bool saving;
     private bool _slugManuallyEdited;
@@ -136,10 +138,11 @@
         _slugManuallyEdited = true;
     }
 
-    private readonly Dictionary<string, string> selectedTemplates = [];
+    private readonly Dictionary<AgentSlug, string> selectedTemplates = [];
 
-    private void ToggleTemplate(string templateSlug, string templateName)
+    private void ToggleTemplate(AgentSlug? templateSlug, string templateName)
     {
+        if (templateSlug == null) return;
         if (!selectedTemplateSlugs.Add(templateSlug))
         {
             selectedTemplateSlugs.Remove(templateSlug);
@@ -163,7 +166,7 @@
             var serverError = await OnCreated(new NewProjectRequest(
                 slug, name, description,
                 string.IsNullOrWhiteSpace(codebasePath) ? null : codebasePath,
-                new Dictionary<string, string>(selectedTemplates)));
+                selectedTemplates.ToDictionary(kv => kv.Key.Value, kv => kv.Value)));
             if (serverError != null)
                 error = serverError;
         }

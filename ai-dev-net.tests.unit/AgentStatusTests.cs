@@ -1,5 +1,3 @@
-using AiDevNet.Models.Types;
-
 namespace AiDevNet.Tests.Unit;
 
 public class AgentStatusTests
@@ -23,11 +21,11 @@ public class AgentStatusTests
     [Theory]
     [InlineData("running", "running")]
     [InlineData("RUNNING", "running")]   // case-insensitive
-    [InlineData("error",   "error")]
-    [InlineData("ERROR",   "error")]
-    [InlineData("idle",    "idle")]
-    [InlineData(null,      "idle")]      // null → idle
-    [InlineData("",        "idle")]      // empty → idle
+    [InlineData("error", "error")]
+    [InlineData("ERROR", "error")]
+    [InlineData("idle", "idle")]
+    [InlineData(null, "idle")]      // null → idle
+    [InlineData("", "idle")]      // empty → idle
     [InlineData("unknown", "idle")]      // unknown → idle
     public void From_MapsToExpectedStatus(string? input, string expectedValue)
     {

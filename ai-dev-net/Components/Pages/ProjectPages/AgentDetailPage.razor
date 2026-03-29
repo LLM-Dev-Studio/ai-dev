@@ -4,6 +4,10 @@
 @inject MessagesService MessagesService
 @inject AgentRunnerService RunnerService
 @inject NavigationManager NavigationManager
+@using AiDev.Features.Agent
+@using AiDev.Models
+@using AiDev.Models.Types
+@using AiDev.Services
 @implements IDisposable
 
 <a href="@($"/projects/{Slug}")"

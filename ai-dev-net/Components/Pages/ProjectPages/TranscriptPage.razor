@@ -3,6 +3,8 @@
 @inject AgentService AgentService
 @inject AgentRunnerService RunnerService
 @inject IJSRuntime JS
+@using AiDev.Features.Agent
+@using AiDev.Models.Types
 @implements IDisposable
 
 <a href="@($"/projects/{Slug}/agents/{AgentSlug}")"

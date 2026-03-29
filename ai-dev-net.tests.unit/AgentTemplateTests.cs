@@ -20,12 +20,12 @@ public class AgentTemplateTests
     {
         var t = new AgentTemplate
         {
-            Slug        = "backend-dev",
-            Name        = "Backend Developer",
-            Role        = "You are a backend developer.",
-            Model       = "opus",
+            Slug = "backend-dev",
+            Name = "Backend Developer",
+            Role = "You are a backend developer.",
+            Model = "opus",
             Description = "Handles API work.",
-            Content     = "# Backend Developer\n\nYou write APIs.",
+            Content = "# Backend Developer\n\nYou write APIs.",
         };
 
         t.Slug.Value.ShouldBe("backend-dev");

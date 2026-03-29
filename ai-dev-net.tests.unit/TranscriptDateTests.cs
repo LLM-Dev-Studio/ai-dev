@@ -1,5 +1,3 @@
-using AiDevNet.Models.Types;
-
 namespace AiDevNet.Tests.Unit;
 
 public class TranscriptDateTests
@@ -117,7 +115,7 @@ public class TranscriptDateTests
     public void CompareTo_Earlier_ReturnsNegative()
     {
         var earlier = new TranscriptDate("2024-01-01");
-        var later   = new TranscriptDate("2024-12-31");
+        var later = new TranscriptDate("2024-12-31");
         earlier.CompareTo(later).ShouldBeLessThan(0);
     }
 
@@ -125,7 +123,7 @@ public class TranscriptDateTests
     public void CompareTo_Later_ReturnsPositive()
     {
         var earlier = new TranscriptDate("2024-01-01");
-        var later   = new TranscriptDate("2024-12-31");
+        var later = new TranscriptDate("2024-12-31");
         later.CompareTo(earlier).ShouldBeGreaterThan(0);
     }
 

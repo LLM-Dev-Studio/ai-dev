@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ai-dev-net\ai-dev-net.csproj" />
+    <ProjectReference Include="..\ai-dev.core\ai-dev.core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

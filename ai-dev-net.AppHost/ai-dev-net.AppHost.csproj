@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ai-dev-net\ai-dev-net.csproj" />
+    <ProjectReference Include="..\ai-dev-net\ai-dev.ui.web.csproj" />
   </ItemGroup>
 
 </Project>

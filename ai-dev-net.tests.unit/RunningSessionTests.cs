@@ -1,5 +1,3 @@
-using AiDevNet.Models;
-
 namespace AiDevNet.Tests.Unit;
 
 public class RunningSessionTests
