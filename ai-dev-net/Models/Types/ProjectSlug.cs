@@ -30,7 +30,7 @@ public sealed partial record ProjectSlug : IParsable<ProjectSlug>
     static bool IParsable<ProjectSlug>.TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, [MaybeNullWhen(false)] out ProjectSlug result)
         => TryParse(s, out result);
 
-    public static implicit operator string(ProjectSlug slug) => slug.Value;
+    public static implicit operator string?(ProjectSlug? slug) => slug?.Value;
     public static implicit operator ProjectSlug(string value) => new(value);
 
     public override string ToString() => Value;
