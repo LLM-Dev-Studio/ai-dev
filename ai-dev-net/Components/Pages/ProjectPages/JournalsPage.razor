@@ -68,7 +68,7 @@
     [Parameter] public string Slug { get; set; } = string.Empty;
 
     private List<AgentInfo> agents = [];
-    private string selectedAgent = string.Empty;
+    private AgentSlug? selectedAgent;
     private List<JournalEntry> entries = [];
     private string selectedDate = string.Empty;
     private string entryContent = string.Empty;
@@ -79,7 +79,7 @@
         agents = AgentService.ListAgents(Slug);
     }
 
-    private void LoadAgent(string agentSlug)
+    private void LoadAgent(AgentSlug agentSlug)
     {
         selectedAgent = agentSlug;
         entries = [];
@@ -96,6 +96,7 @@
 
     private void LoadEntry(string date)
     {
+        if (selectedAgent == null) return;
         selectedDate = date;
         loading = true;
         entryContent = JournalsService.GetEntry(Slug, selectedAgent, date);
