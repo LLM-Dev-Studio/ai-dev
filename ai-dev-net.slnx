@@ -4,5 +4,6 @@
   </Folder>
   <Project Path="ai-dev-net.AppHost/ai-dev-net.AppHost.csproj" />
   <Project Path="ai-dev-net.ServiceDefaults/ai-dev-net.ServiceDefaults.csproj" />
+  <Project Path="ai-dev-net.tests.unit/ai-dev-net.tests.unit.csproj" />
   <Project Path="ai-dev-net/ai-dev-net.csproj" />
 </Solution>

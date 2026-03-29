@@ -38,7 +38,7 @@ public class DispatcherService(
 
         var projects = workspace.ListProjects();
         foreach (var project in projects)
-            if (ProjectSlug.TryParse(project.Slug, out var ps)) WatchProject(ps);
+            WatchProject(project.Slug);
 
         var workspaceRoot = paths.Root;
         if (Directory.Exists(workspaceRoot))
@@ -94,7 +94,7 @@ public class DispatcherService(
 
             foreach (var agentDir in Directory.GetDirectories(agentsDir))
             {
-                if (AgentSlug.TryParse(Path.GetFileName(agentDir), out var agentSlug))
+                if (Models.AgentSlug.TryParse(Path.GetFileName(agentDir), out var agentSlug))
                     WatchAgentInbox(projectSlug, agentSlug);
             }
         }
@@ -122,7 +122,7 @@ public class DispatcherService(
         _watchers.Add(w);
     }
 
-    private void WatchAgentInbox(ProjectSlug projectSlug, AgentSlug agentSlug)
+    private void WatchAgentInbox(ProjectSlug projectSlug, Models.AgentSlug agentSlug)
     {
         var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
         Directory.CreateDirectory(inboxDir);
@@ -146,7 +146,7 @@ public class DispatcherService(
         logger.LogInformation("[dispatcher] Watching inbox: {InboxDir}", inboxDir);
     }
 
-    private void OnWatcherError(FileSystemWatcher w, ProjectSlug projectSlug, AgentSlug agentSlug, Exception ex)
+    private void OnWatcherError(FileSystemWatcher w, ProjectSlug projectSlug, Models.AgentSlug agentSlug, Exception ex)
     {
         logger.LogError(ex,
             "[dispatcher] FSW error for {Project}/{Agent} — restarting watcher and scanning inbox",
@@ -178,7 +178,7 @@ public class DispatcherService(
         };
         w.Created += (_, e) =>
         {
-            if (!AgentSlug.TryParse(Path.GetFileName(e.FullPath), out var agentSlug)) return;
+            if (!Models.AgentSlug.TryParse(Path.GetFileName(e.FullPath), out var agentSlug)) return;
             logger.LogInformation("[dispatcher] New agent detected: {Project}/{Agent}", projectSlug, agentSlug);
             // Brief delay so the agent folder structure is fully written before watching
             Task.Delay(500).ContinueWith(_ => WatchAgentInbox(projectSlug, agentSlug));
@@ -211,7 +211,7 @@ public class DispatcherService(
     // Inbox event handling
     // -------------------------------------------------------------------------
 
-    private void OnInboxMessage(ProjectSlug projectSlug, AgentSlug agentSlug, string fullPath, string source)
+    private void OnInboxMessage(ProjectSlug projectSlug, Models.AgentSlug agentSlug, string fullPath, string source)
     {
         if (fullPath.Contains(Path.DirectorySeparatorChar + "processed" + Path.DirectorySeparatorChar,
                 StringComparison.OrdinalIgnoreCase))
@@ -255,7 +255,7 @@ public class DispatcherService(
     private void PollAllProjects()
     {
         foreach (var project in workspace.ListProjects())
-            if (ProjectSlug.TryParse(project.Slug, out var ps)) ScanAndLaunchAgents(ps, source: "poll");
+            ScanAndLaunchAgents(project.Slug, source: "poll");
     }
 
     private void ScanAndLaunchAgents(ProjectSlug projectSlug, string source)
@@ -265,7 +265,7 @@ public class DispatcherService(
 
         foreach (var agentDir in Directory.GetDirectories(agentsDir))
         {
-            if (!AgentSlug.TryParse(Path.GetFileName(agentDir), out var agentSlug)) continue;
+            if (!Models.AgentSlug.TryParse(Path.GetFileName(agentDir), out var agentSlug)) continue;
             var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
             if (!inboxDir.Exists()) continue;
 

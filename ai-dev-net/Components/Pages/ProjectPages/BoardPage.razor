@@ -259,12 +259,12 @@ else
     private List<AgentInfo> _agents = [];
 
     // Action menu state
-    private string? _openMenuId;
+    private TaskId? _openMenuId;
     private Timer? _pollTimer;
 
     // Task dialog state
     private bool _showTaskDialog;
-    private string? _editingTaskId;
+    private TaskId? _editingTaskId;
     private string _taskTitle = string.Empty;
     private string _taskDescription = string.Empty;
     private string _taskPriority = "normal";
@@ -299,14 +299,14 @@ else
         _showTaskDialog = true;
     }
 
-    private void ToggleMenu(string taskId)
+    private void ToggleMenu(TaskId taskId)
     {
         _openMenuId = _openMenuId == taskId ? null : taskId;
     }
 
     private void CloseMenu() => _openMenuId = null;
 
-    private void QuickMove(string taskId, string targetColumnId)
+    private void QuickMove(TaskId taskId, string targetColumnId)
     {
         if (_board == null || !_board.Tasks.TryGetValue(taskId, out var task)) return;
         BoardService.UpdateTask(Slug, taskId, targetColumnId,

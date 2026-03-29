@@ -1,3 +1,8 @@
+using AiDevNet.Features.Agent;
+using AiDevNet.Features.Board;
+using AiDevNet.Features.Decision;
+using AiDevNet.Features.Workspace;
+
 namespace AiDevNet.Services;
 
 /// <summary>
@@ -22,8 +27,8 @@ public class OverwatchService(
     private static readonly ActivitySource ActivitySource = new("AiDevNet.Overwatch");
 
     private static readonly TimeSpan StallThreshold = TimeSpan.FromMinutes(30);
-    private static readonly TimeSpan NudgeCooldown  = TimeSpan.FromMinutes(20);
-    private static readonly TimeSpan ScanInterval   = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan NudgeCooldown = TimeSpan.FromMinutes(20);
+    private static readonly TimeSpan ScanInterval = TimeSpan.FromMinutes(5);
 
     private Timer? _timer;
 
@@ -65,8 +70,7 @@ public class OverwatchService(
 
         foreach (var project in projects)
         {
-            if (!ProjectSlug.TryParse(project.Slug, out var ps)) continue;
-            try { ScanProject(ps, activity?.Id); }
+            try { ScanProject(project.Slug, activity?.Id); }
             catch (Exception ex)
             {
                 logger.LogError(ex, "[overwatch] Error scanning project {Project}", project.Slug);
@@ -98,22 +102,17 @@ public class OverwatchService(
             if (!taskColumn.TryGetValue(taskId, out var column)) continue;
 
             // Skip completed tasks
-            if (column.Id == "done" || !string.IsNullOrEmpty(task.CompletedAt)) continue;
+            if (column.Id == "done" || task.CompletedAt != null) continue;
 
             // How long in current column? Fall back to CreatedAt for legacy tasks without MovedAt.
-            var sinceStr = task.MovedAt ?? task.CreatedAt;
-            if (!DateTime.TryParse(sinceStr, null,
-                    System.Globalization.DateTimeStyles.RoundtripKind, out var sinceTime))
-                continue;
+            var sinceTime = task.MovedAt ?? task.CreatedAt;
+            if (sinceTime == null) continue;
 
-            var age = now - sinceTime;
+            var age = now - sinceTime.Value;
             if (age < StallThreshold) continue;
 
             // Respect nudge cooldown
-            if (!string.IsNullOrEmpty(task.NudgedAt) &&
-                DateTime.TryParse(task.NudgedAt, null,
-                    System.Globalization.DateTimeStyles.RoundtripKind, out var lastNudge) &&
-                now - lastNudge < NudgeCooldown)
+            if (task.NudgedAt.HasValue && now - task.NudgedAt.Value < NudgeCooldown)
             {
                 skipped++;
                 continue;
@@ -165,7 +164,7 @@ public class OverwatchService(
 
     private string NudgeAgent(ProjectSlug projectSlug, BoardTask task, string columnTitle, TimeSpan age)
     {
-        if (!AgentSlug.TryParse(task.Assignee, out var assigneeSlug))
+        if (!Models.AgentSlug.TryParse(task.Assignee, out var assigneeSlug))
         {
             logger.LogWarning("[overwatch] Task \"{Title}\" has invalid assignee slug: {Assignee}",
                 task.Title, task.Assignee);

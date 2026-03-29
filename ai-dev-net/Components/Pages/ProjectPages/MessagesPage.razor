@@ -124,7 +124,7 @@ else
 }
 
 @code {
-    private record MessageGroup(string? TaskId, string TaskTitle, List<MessageItem> Messages);
+    private record MessageGroup(TaskId? TaskId, string TaskTitle, List<MessageItem> Messages);
 
     [Parameter] public string Slug { get; set; } = string.Empty;
 
@@ -148,13 +148,13 @@ else
         messages = MessagesService.ListMessages(Slug);
         var board = BoardService.LoadBoard(Slug);
         groups = messages
-            .GroupBy(m => string.IsNullOrEmpty(m.TaskId) ? null : m.TaskId)
+            .GroupBy(m => m.TaskId)
             .OrderBy(g => g.Key == null)
             .ThenByDescending(g => g.Max(m => m.Date))
             .Select(g =>
             {
-                var taskTitle = g.Key != null && board.Tasks.TryGetValue(g.Key, out var t)
-                    ? t.Title : g.Key ?? string.Empty;
+                var taskTitle = g.Key != null && board.Tasks.TryGetValue(g.Key!, out var t)
+                    ? t.Title : g.Key?.ToString() ?? string.Empty;
                 return new MessageGroup(g.Key, taskTitle, g.OrderByDescending(m => m.Date).ToList());
             })
             .ToList();
@@ -182,10 +182,6 @@ else
         _          => "text-muted-foreground",
     };
 
-    private static string FormatDateTime(string? iso)
-    {
-        if (string.IsNullOrEmpty(iso)) return string.Empty;
-        if (DateTime.TryParse(iso, out var dt)) return dt.ToLocalTime().ToString("MMM d HH:mm");
-        return iso;
-    }
+    private static string FormatDateTime(DateTime? dt) =>
+        dt.HasValue ? dt.Value.ToLocalTime().ToString("MMM d HH:mm") : string.Empty;
 }

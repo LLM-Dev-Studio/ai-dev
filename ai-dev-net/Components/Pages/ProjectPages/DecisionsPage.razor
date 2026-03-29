@@ -103,10 +103,6 @@ else
         ? "border-orange-400/20 text-orange-400"
         : "border-border text-muted-foreground";
 
-    private static string FormatDateTime(string? iso)
-    {
-        if (string.IsNullOrEmpty(iso)) return string.Empty;
-        if (DateTime.TryParse(iso, out var dt)) return dt.ToLocalTime().ToString("MMM d HH:mm");
-        return iso;
-    }
+    private static string FormatDateTime(DateTime? dt) =>
+        dt.HasValue ? dt.Value.ToLocalTime().ToString("MMM d HH:mm") : string.Empty;
 }

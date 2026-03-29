@@ -21,9 +21,9 @@
 </a>
 
 @code {
-    [Parameter] public string Href { get; set; }
-    [Parameter] public string Icon { get; set; }
-    [Parameter] public string Label { get; set; }
+    [Parameter] public string Href { get; set; } = string.Empty;
+    [Parameter] public string Icon { get; set; } = string.Empty;
+    [Parameter] public string Label { get; set; } = string.Empty;
     [Parameter] public int? Badge { get; set; }
 
     protected override void OnInitialized()

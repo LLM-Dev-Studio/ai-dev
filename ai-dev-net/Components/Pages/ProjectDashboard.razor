@@ -11,7 +11,7 @@
         {
             <p class="text-sm text-muted-foreground mt-0.5">
                 @agents.Count agent@(agents.Count != 1 ? "s" : "")
-                · @agents.Count(a => a.Status == "running") running
+                · @agents.Count(a => a.Status.IsRunning) running
                 · @agents.Count(a => a.InboxCount > 0) with pending inbox
             </p>
         }
@@ -64,7 +64,7 @@ else
                                     Run
                                 </button>
                             }
-                            <StatusBadge Status="@(running ? "running" : agent.Status)" />
+                            <StatusBadge Status="@(running ? AgentStatus.Running : agent.Status)" />
                             <ModelBadge Model="@agent.Model" />
                         </div>
                     </div>
@@ -123,11 +123,6 @@ else
         StateHasChanged();
     }
 
-    private static string FormatDate(string? iso)
-    {
-        if (string.IsNullOrEmpty(iso)) return "—";
-        if (DateTime.TryParse(iso, out var dt))
-            return dt.ToLocalTime().ToString("MMM d");
-        return "—";
-    }
+    private static string FormatDate(DateTime? dt) =>
+        dt.HasValue ? dt.Value.ToLocalTime().ToString("MMM d") : "—";
 }

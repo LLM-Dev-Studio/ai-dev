@@ -10,7 +10,13 @@
       "Bash(done)",
       "Bash(find M:/ai-dev/app/src -name dispatch* -o -name *dispatcher* -o -name *orchestrat*)",
       "Bash(find M:/ai-dev/app/src/lib/fs -name agents*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(dotnet new:*)",
+      "Bash(dotnet package:*)",
+      "Bash(dotnet sln:*)",
+      "Bash(dotnet restore:*)",
+      "Bash(dotnet run:*)",
+      "Bash(dotnet test:*)"
     ]
   }
 }

@@ -22,7 +22,7 @@ else
         <div class="flex-1">
             <div class="flex items-center gap-2 mb-1">
                 <h1 class="text-xl font-semibold text-foreground">@agent.Name</h1>
-                <StatusBadge Status="@(isRunning ? "running" : "idle")" />
+                <StatusBadge Status="@(isRunning ? AgentStatus.Running : AgentStatus.Idle)" />
                 <ModelBadge Model="@agent.Model" />
             </div>
             <p class="text-sm text-muted-foreground">@agent.Description</p>
@@ -304,17 +304,9 @@ else
         claudeStatus = SaveStatus.Idle;
     }
 
-    private static string FormatDate(string? iso)
-    {
-        if (string.IsNullOrEmpty(iso)) return "—";
-        if (DateTime.TryParse(iso, out var dt)) return dt.ToLocalTime().ToString("MMM d");
-        return "—";
-    }
+    private static string FormatDate(DateTime? dt) =>
+        dt.HasValue ? dt.Value.ToLocalTime().ToString("MMM d") : "—";
 
-    private static string FormatDateTime(string? iso)
-    {
-        if (string.IsNullOrEmpty(iso)) return string.Empty;
-        if (DateTime.TryParse(iso, out var dt)) return dt.ToLocalTime().ToString("MMM d HH:mm");
-        return iso;
-    }
+    private static string FormatDateTime(DateTime? dt) =>
+        dt.HasValue ? dt.Value.ToLocalTime().ToString("MMM d HH:mm") : string.Empty;
 }
