@@ -31,6 +31,9 @@ public class AgentRunnerService(
 
     private readonly ConcurrentDictionary<string, SessionInfo> _sessions = new();
 
+    // Per-agent rate-limit suppression: maps session key → UTC time after which launches are allowed again.
+    private readonly ConcurrentDictionary<string, DateTime> _rateLimitedUntil = new();
+
     private static string Key(ProjectSlug project, Models.AgentSlug agent) => $"{project.Value}/{agent.Value}";
 
     // -------------------------------------------------------------------------
@@ -39,6 +42,9 @@ public class AgentRunnerService(
 
     public bool IsRunning(ProjectSlug projectSlug, Models.AgentSlug agentSlug) =>
         _sessions.ContainsKey(Key(projectSlug, agentSlug));
+
+    public bool IsRateLimited(ProjectSlug projectSlug, Models.AgentSlug agentSlug) =>
+        _rateLimitedUntil.TryGetValue(Key(projectSlug, agentSlug), out var until) && DateTime.UtcNow < until;
 
     public IReadOnlyList<RunningSession> GetRunningSessions() =>
         _sessions.Values.Select(s => new RunningSession
@@ -50,7 +56,7 @@ public class AgentRunnerService(
         }).ToList();
 
     /// <summary>
-    /// Launches an agent. Returns false if already running.
+    /// Launches an agent. Returns false if already running or rate-limited.
     /// The process runs in the background — this method returns quickly.
     /// </summary>
     public bool LaunchAgent(ProjectSlug projectSlug, Models.AgentSlug agentSlug)
@@ -59,6 +65,12 @@ public class AgentRunnerService(
         if (_sessions.ContainsKey(key))
         {
             logger.LogInformation("[runner] Agent already running: {Key}", key);
+            return false;
+        }
+
+        if (_rateLimitedUntil.TryGetValue(key, out var until) && DateTime.UtcNow < until)
+        {
+            logger.LogInformation("[runner] Agent rate-limited until {Until}, skipping launch: {Key}", until, key);
             return false;
         }
 
@@ -223,27 +235,44 @@ public class AgentRunnerService(
                 ["sessionStartedAt"] = null,
             });
 
-            ArchiveInbox(inboxDir, inboxSnapshot);
-            if (inboxSnapshot.Length > 0) messageNotifier.Notify(projectSlug);
-
-            // Messages can arrive in the inbox while the session is running and the
-            // FileSystemWatcher skips them (agent already running). Check after archiving
-            // so we only count messages that arrived AFTER the session snapshot was taken.
-            var pendingAfterSession = Directory.Exists(inboxDir)
-                ? Directory.GetFiles(inboxDir, "*.md")
-                    .Count(f => !f.Contains(
-                        Path.DirectorySeparatorChar + "processed" + Path.DirectorySeparatorChar,
-                        StringComparison.OrdinalIgnoreCase))
-                : 0;
-
-            if (pendingAfterSession > 0)
+            // Detect a rate-limited session: transcript only contains the rate-limit message,
+            // session exited almost immediately. Don't archive the inbox (messages were never read)
+            // and suppress re-launches until the limit resets.
+            if (exitCode == 0 && SessionWasRateLimited(transcriptPath))
             {
-                logger.LogInformation(
-                    "[runner] {Count} message(s) arrived during session for {Key} — re-launching",
-                    pendingAfterSession, key);
-                activity?.SetTag("agent.relaunch", true);
-                activity?.SetTag("agent.relaunchReason", "inbox-messages-during-session");
-                LaunchAgent(projectSlug, agentSlug);
+                var suppressUntil = DateTime.UtcNow.AddMinutes(30);
+                _rateLimitedUntil[key] = suppressUntil;
+                logger.LogWarning(
+                    "[runner] Agent {Key} hit a rate limit — inbox NOT archived, launches suppressed until {Until}",
+                    key, suppressUntil);
+                activity?.SetTag("agent.rateLimited", true);
+                messageNotifier.Notify(projectSlug); // let the UI refresh status
+            }
+            else
+            {
+                _rateLimitedUntil.TryRemove(key, out _); // clear any prior rate-limit state on successful run
+                ArchiveInbox(inboxDir, inboxSnapshot);
+                if (inboxSnapshot.Length > 0) messageNotifier.Notify(projectSlug);
+
+                // Messages can arrive in the inbox while the session is running and the
+                // FileSystemWatcher skips them (agent already running). Check after archiving
+                // so we only count messages that arrived AFTER the session snapshot was taken.
+                var pendingAfterSession = Directory.Exists(inboxDir)
+                    ? Directory.GetFiles(inboxDir, "*.md")
+                        .Count(f => !f.Contains(
+                            Path.DirectorySeparatorChar + "processed" + Path.DirectorySeparatorChar,
+                            StringComparison.OrdinalIgnoreCase))
+                    : 0;
+
+                if (pendingAfterSession > 0)
+                {
+                    logger.LogInformation(
+                        "[runner] {Count} message(s) arrived during session for {Key} — re-launching",
+                        pendingAfterSession, key);
+                    activity?.SetTag("agent.relaunch", true);
+                    activity?.SetTag("agent.relaunchReason", "inbox-messages-during-session");
+                    LaunchAgent(projectSlug, agentSlug);
+                }
             }
         }
     }
@@ -285,6 +314,24 @@ public class AgentRunnerService(
                 JsonDefaults.Write));
         }
         catch { /* don't crash session if status write fails */ }
+    }
+
+    /// <summary>
+    /// Reads the session transcript and returns true if the session ended immediately
+    /// due to a rate limit (no real work was performed and the inbox should NOT be archived).
+    /// </summary>
+    private static bool SessionWasRateLimited(string transcriptPath)
+    {
+        try
+        {
+            var text = File.ReadAllText(transcriptPath);
+            // Claude CLI prints one of these and exits immediately when rate-limited.
+            return text.Contains("hit your limit", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("rate limit", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("RateLimitError", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
     }
 
     private void ArchiveInbox(string inboxDir, string[] snapshot)

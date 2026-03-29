@@ -1,0 +1,8 @@
+{
+  "slug": "designer-standard",
+  "name": "Designer",
+  "role": "designer",
+  "model": "sonnet",
+  "description": "Produces detailed UI/UX specs covering user flows, component states, copy, and accessibility.",
+  "content": ""
+}

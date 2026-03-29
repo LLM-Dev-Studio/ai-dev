@@ -2,11 +2,104 @@
 @rendermode InteractiveServer
 
 <h1 class="text-xl font-semibold text-foreground mb-1">Process</h1>
-<p class="text-sm text-muted-foreground mb-6">Workflow and process configuration</p>
+<p class="text-sm text-muted-foreground mb-6">How work flows through this project</p>
 
-<EmptyState Icon="git-branch"
-            Title="Process configuration coming soon"
-            Description="This area will allow you to configure agent workflows, triggers, and automation rules." />
+<div class="max-w-3xl space-y-8">
+
+    <!-- Current workflow -->
+    <section>
+        <h2 class="text-sm font-semibold text-foreground mb-3">Current Workflow</h2>
+        <div class="rounded-lg border border-border bg-card p-5 space-y-4 text-sm text-foreground/80 leading-relaxed">
+            <p>
+                Work flows through this project via a filesystem-based message bus. Agents run as isolated
+                sessions and communicate by writing Markdown files to each other's inboxes. The dispatcher
+                watches for new inbox files and launches the relevant agent automatically.
+            </p>
+            <ol class="list-decimal list-inside space-y-1.5 text-sm text-foreground/70 pl-1">
+                <li>A human sends a brief to the PM agent's inbox (or creates board tasks directly)</li>
+                <li>The PM decomposes the brief into tasks on the board and dispatches work to agents</li>
+                <li>Each agent processes its inbox, performs work, and messages the next agent in the chain</li>
+                <li>Before any task moves to Done: security review (Riley) and QA (Sage) run in parallel</li>
+                <li>On completion the PM sends a report to the human inbox</li>
+            </ol>
+        </div>
+    </section>
+
+    <!-- Trigger model -->
+    <section>
+        <h2 class="text-sm font-semibold text-foreground mb-3">How Agent Launches Are Triggered</h2>
+        <div class="grid grid-cols-2 gap-3">
+            <div class="rounded-lg border border-border bg-card p-4">
+                <p class="text-xs font-semibold text-foreground mb-1">FileSystemWatcher</p>
+                <p class="text-xs text-muted-foreground">Fires immediately when a <code class="font-mono bg-muted px-1 rounded">*.md</code> file is created or renamed in an agent's inbox. Zero-latency dispatch for most messages.</p>
+            </div>
+            <div class="rounded-lg border border-border bg-card p-4">
+                <p class="text-xs font-semibold text-foreground mb-1">10-Second Poll</p>
+                <p class="text-xs text-muted-foreground">Safety net that scans all inboxes every 10 seconds. Catches anything the FSW missed due to buffer overflow, OS error, or race conditions.</p>
+            </div>
+            <div class="rounded-lg border border-border bg-card p-4">
+                <p class="text-xs font-semibold text-foreground mb-1">Overwatch (every 5 min)</p>
+                <p class="text-xs text-muted-foreground">Scans the board for tasks stalled &gt;30 min. Nudges the assigned agent or raises a decision for unassigned tasks.</p>
+            </div>
+            <div class="rounded-lg border border-border bg-card p-4">
+                <p class="text-xs font-semibold text-foreground mb-1">Re-launch on new inbox</p>
+                <p class="text-xs text-muted-foreground">If messages arrive while an agent is running, the runner automatically re-launches the agent after the current session exits.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quality gate -->
+    <section>
+        <h2 class="text-sm font-semibold text-foreground mb-3">Quality Gate</h2>
+        <div class="rounded-lg border border-border bg-card p-5 text-sm text-foreground/80 leading-relaxed">
+            <p class="mb-3">Before any task moves to <span class="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">done</span>, two checks must pass in parallel:</p>
+            <div class="grid grid-cols-2 gap-3">
+                <div class="rounded border border-border bg-background p-3">
+                    <p class="text-xs font-semibold text-foreground mb-1">Security Review — Riley</p>
+                    <p class="text-xs text-muted-foreground">Checks for OWASP top-10 issues, dependency vulnerabilities, secrets in code, and auth/authz problems.</p>
+                </div>
+                <div class="rounded border border-border bg-background p-3">
+                    <p class="text-xs font-semibold text-foreground mb-1">QA — Sage</p>
+                    <p class="text-xs text-muted-foreground">Validates against acceptance criteria, runs tests, and checks for regressions and edge cases.</p>
+                </div>
+            </div>
+            <p class="mt-3 text-xs text-muted-foreground">
+                If either reviewer finds issues, findings go to Alex for one fix attempt, then both reviewers re-run.
+                If still failing after one cycle, the PM escalates to Decisions.
+            </p>
+        </div>
+    </section>
+
+    <!-- Rate limit behaviour -->
+    <section>
+        <h2 class="text-sm font-semibold text-foreground mb-3">Rate Limit Handling</h2>
+        <div class="rounded-lg border border-border bg-card p-5 text-sm text-foreground/80 leading-relaxed space-y-2">
+            <p>
+                When a Claude agent hits its API rate limit the session exits immediately. The runner detects
+                this, leaves inbox messages unarchived (so they will be processed when the limit resets),
+                and suppresses further launches for that agent for 30 minutes.
+            </p>
+            <p class="text-xs text-muted-foreground">
+                Check an agent's <strong>Transcript</strong> to confirm whether a session was rate-limited
+                vs. completing normally. Rate-limited sessions will show "hit your limit" as their only output.
+            </p>
+        </div>
+    </section>
+
+    <!-- Coming soon -->
+    <section>
+        <h2 class="text-sm font-semibold text-foreground mb-3">Planned Automation Features</h2>
+        <div class="rounded-lg border border-dashed border-border bg-card/50 p-5">
+            <ul class="space-y-1.5 text-sm text-muted-foreground">
+                <li class="flex items-center gap-2"><SvgIcon Name="circle" Class="w-2 h-2 text-muted-foreground/40 flex-shrink-0" />Configurable trigger rules — launch agents on schedule, board event, or decision resolution</li>
+                <li class="flex items-center gap-2"><SvgIcon Name="circle" Class="w-2 h-2 text-muted-foreground/40 flex-shrink-0" />Visual workflow builder — define agent chains with conditional branches</li>
+                <li class="flex items-center gap-2"><SvgIcon Name="circle" Class="w-2 h-2 text-muted-foreground/40 flex-shrink-0" />SLA configuration — per-column stall thresholds and escalation paths</li>
+                <li class="flex items-center gap-2"><SvgIcon Name="circle" Class="w-2 h-2 text-muted-foreground/40 flex-shrink-0" />Retry policies — configurable backoff for failed sessions</li>
+            </ul>
+        </div>
+    </section>
+
+</div>
 
 @code {
     [Parameter] public string Slug { get; set; } = string.Empty;

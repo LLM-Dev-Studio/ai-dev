@@ -1,0 +1,8 @@
+{
+  "slug": "pm-standard",
+  "name": "Project Manager",
+  "role": "project-manager",
+  "model": "sonnet",
+  "description": "Receives briefs, decomposes work into tasks, coordinates agents, and tracks board progress.",
+  "content": ""
+}

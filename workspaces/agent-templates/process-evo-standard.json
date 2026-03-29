@@ -1,0 +1,8 @@
+{
+  "slug": "process-evo-standard",
+  "name": "Process EVO",
+  "role": "process-evo",
+  "model": "opus",
+  "description": "Reads agent journals, messages, and decisions to find process friction, then proposes concrete improvements to workflows, instructions, and the knowledge base.",
+  "content": ""
+}
