@@ -1,8 +1,13 @@
 namespace AiDev.Executors;
 
 /// <summary>
-/// Runs agents via the Claude CLI (`claude -p &lt;prompt&gt; --model &lt;id&gt; --dangerously-skip-permissions`).
+/// Runs agents via the Claude CLI (`claude -p &lt;prompt&gt; --model &lt;id&gt; --allowedTools ...`).
 /// On Windows, wraps the call in `cmd.exe /c` because the `claude` npm global is a .cmd file.
+///
+/// Permission model (safest-first):
+///   1. Default: --allowedTools scopes Read/Write/Edit to the workspace root (2 levels up from agentDir)
+///      and allows read-only git inspection. Nothing outside the workspace can be written.
+///   2. Fallback: set CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=1 to bypass all controls (dev only).
 /// </summary>
 public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentExecutor
 {
@@ -77,12 +82,55 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         psi.ArgumentList.Add("--model");
         psi.ArgumentList.Add(modelId);
 
-        // SECURITY: --dangerously-skip-permissions grants unrestricted filesystem/shell access.
-        // Enabled only when CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=1 is explicitly set.
-        // Set this env var in development; leave it unset in restricted or multi-tenant deployments.
         if (Environment.GetEnvironmentVariable("CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS") == "1")
+        {
+            // Full bypass — dev/testing only.
             psi.ArgumentList.Add("--dangerously-skip-permissions");
+        }
+        else
+        {
+            // Scope permissions to the workspace root (2 levels up: agents/{slug}/ → project root)
+            // plus the project's configured codebase path (read from project.json).
+            // Each rule is a separate argument.
+            var workspaceRoot = Path.GetFullPath(Path.Combine(workingDir, "..", ".."));
+            var workspaceGlob = ToGlob(workspaceRoot);
+
+            psi.ArgumentList.Add("--allowedTools");
+            psi.ArgumentList.Add($"Read(*)");
+            psi.ArgumentList.Add($"Write({workspaceGlob})");
+            psi.ArgumentList.Add($"Edit({workspaceGlob})");
+
+            // If the project has a codebase path configured, grant read/write there too.
+            var codebasePath = ReadCodebasePath(workspaceRoot);
+            if (!string.IsNullOrEmpty(codebasePath))
+            {
+                var codebaseGlob = ToGlob(codebasePath);
+                psi.ArgumentList.Add($"Write({codebaseGlob})");
+                psi.ArgumentList.Add($"Edit({codebaseGlob})");
+            }
+
+            psi.ArgumentList.Add("Bash(git log *)");
+            psi.ArgumentList.Add("Bash(git diff *)");
+            psi.ArgumentList.Add("Bash(git add *)");
+            psi.ArgumentList.Add("Bash(git commit *)");
+            psi.ArgumentList.Add("Bash(git status)");
+        }
 
         return psi;
+    }
+
+    private static string ToGlob(string path) =>
+        Path.GetFullPath(path).Replace('\\', '/').TrimEnd('/') + "/**";
+
+    private static string? ReadCodebasePath(string workspaceRoot)
+    {
+        var projectJson = Path.Combine(workspaceRoot, "project.json");
+        if (!File.Exists(projectJson)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(projectJson));
+            return doc.RootElement.TryGetProperty("codebasePath", out var val) ? val.GetString() : null;
+        }
+        catch { return null; }
     }
 }

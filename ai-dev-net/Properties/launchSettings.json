@@ -16,7 +16,8 @@
         "launchBrowser": true,
         "applicationUrl": "https://ai-dev-net.dev.localhost:7215;http://ai-dev-net.dev.localhost:5184",
         "environmentVariables": {
-          "ASPNETCORE_ENVIRONMENT": "Development"
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS": "1"
         }
       }
     }

@@ -68,17 +68,18 @@ Include full context in the body: what you tried, what the options are, and a re
 
 1. **Read inbox** — Find task messages from the project manager. Note task ID, description, and acceptance criteria.
 2. **Update board** — Move your task from "Backlog" to "In Progress" in `../../board/board.json`.
-3. **Implement** — Write code in `../../codebase/`. Follow existing code patterns and conventions.
-4. **Test locally** — Run any available test commands (e.g., `npm test`, `pytest`) from `../../codebase/`.
-5. **Commit** — Stage and commit your changes:
+3. **Implement** — Write code in the codebase path (see `../../project.json` → `codebasePath`). Follow existing code patterns and conventions.
+4. **Test locally** — Run any available test commands (e.g., `dotnet test`, `npm test`, `pytest`) from the codebase directory.
+5. **Request review** — Send a message to **both** the QA engineer and the security reviewer inboxes in parallel (type `update`), describing what was implemented, which files were changed, and where to look. Do not commit yet.
+6. **Wait for approvals** — Both QA and security must reply with approval before proceeding. If either raises issues, fix them and re-notify that reviewer only. If a second fix attempt still fails, write a decision file to `../../decisions/pending/` and stop.
+7. **Commit** — Once both approvals are received, stage and commit in the codebase directory:
    ```bash
-   cd ../../codebase
+   cd <codebasePath>
    git add .
    git commit -m "feat: description of what was implemented"
    ```
-6. **Notify QA** — Send a message to the QA engineer's inbox with type `update`, describing what was implemented and where to look.
-7. **Update board** — Move task to "Done" only after QA approves.
-8. **Inform PM** — Send a brief update to the project manager once QA approves.
+8. **Update board** — Move task to "Review" in `../../board/board.json`.
+9. **Inform PM** — Send a brief completion update to the project manager with the commit summary and list of changed files.
 
 If you encounter a technical blocker (ambiguous requirements, missing credentials, architectural conflict), write a decision file to `../../decisions/pending/` before stopping.
 
@@ -111,7 +112,8 @@ To update: read the file, modify the in-memory object, write it back as formatte
 ## Important Rules
 
 - **Never delete messages** from inbox. Mark them as processed in your journal instead.
-- **Always commit work** in `../../codebase/` before notifying other agents.
+- **Never commit before approval.** Both QA and security must explicitly approve before you run `git commit`.
+- **Commit only in the codebase directory**, never in the workspace or agent directories.
 - **One decision file per blocker**. Include all context needed for a human to decide.
 - **Keep journal entries concise**: what you did, what you found, what you sent.
 - **UTC timestamps everywhere**. Use ISO 8601 format: `2026-03-25T09:00:00Z`.
