@@ -76,6 +76,14 @@
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script>
+        window.decisionInterop = {
+            setLastRead: function (projectSlug, timestamp) {
+                localStorage.setItem('decisions-last-read-' + projectSlug, timestamp);
+            },
+            getLastRead: function (projectSlug) {
+                return localStorage.getItem('decisions-last-read-' + projectSlug);
+            }
+        };
         window.scrollToBottom = function (id) {
             var el = document.getElementById(id);
             if (el) el.scrollTop = el.scrollHeight;

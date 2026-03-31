@@ -1,7 +1,11 @@
 @page "/projects/{Slug}/decisions"
 @using AiDev.Features.Decision
+@using AiDev.Models.Types
 @rendermode InteractiveServer
+@implements IDisposable
 @inject DecisionsService DecisionsService
+@inject AiDev.Services.DecisionChangedNotifier DecisionChangedNotifier
+@inject IJSRuntime JSRuntime
 
 <h1 class="text-xl font-semibold text-foreground mb-1">Decisions</h1>
 
@@ -73,8 +77,41 @@ else
 
     private List<DecisionItem>? decisions;
     private string tab = "pending";
+    private bool _isInteractive;
 
-    protected override void OnInitialized() => Load();
+    private async Task MarkAllAsReadAsync()
+    {
+        if (!_isInteractive || tab != "pending" || decisions == null || decisions.Count == 0) return;
+        var latest = decisions.Max(d => d.Date) ?? DateTime.UtcNow;
+        await JSRuntime.InvokeVoidAsync("decisionInterop.setLastRead", Slug, latest.ToString("o"));
+    }
+
+    protected override Task OnInitializedAsync()
+    {
+        Load();
+        DecisionChangedNotifier.Changed += OnDecisionsChanged;
+        return Task.CompletedTask;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _isInteractive = true;
+            await MarkAllAsReadAsync();
+        }
+    }
+
+    private void OnDecisionsChanged(ProjectSlug changedProject)
+    {
+        if (changedProject.Value != Slug) return;
+        Load();
+        InvokeAsync(async () =>
+        {
+            await MarkAllAsReadAsync();
+            StateHasChanged();
+        });
+    }
 
     private void SetTabPending() => SetTab("pending");
     private void SetTabResolved() => SetTab("resolved");
@@ -84,6 +121,10 @@ else
         tab = newTab;
         decisions = null;
         Load();
+        if (tab == "pending")
+        {
+            _ = MarkAllAsReadAsync();
+        }
     }
 
     private void Load() => decisions = DecisionsService.ListDecisions(Slug, tab);
@@ -106,4 +147,6 @@ else
 
     private static string FormatDateTime(DateTime? dt) =>
         dt.HasValue ? dt.Value.ToLocalTime().ToString("MMM d HH:mm") : string.Empty;
+
+    public void Dispose() => DecisionChangedNotifier.Changed -= OnDecisionsChanged;
 }

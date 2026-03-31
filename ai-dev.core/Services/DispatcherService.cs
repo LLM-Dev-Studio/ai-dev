@@ -17,6 +17,7 @@ public class DispatcherService(
     WorkspaceService workspace,
     AgentRunnerService runner,
     MessageChangedNotifier messageNotifier,
+    DecisionChangedNotifier decisionNotifier,
     ILogger<DispatcherService> logger)
     : IHostedService, IDisposable
 {
@@ -120,8 +121,17 @@ public class DispatcherService(
             EnableRaisingEvents = true,
         };
         w.Created += (_, e) =>
+        {
             logger.LogInformation("[dispatcher] New decision in {Project}: {File}",
                 projectSlug, Path.GetFileName(e.FullPath));
+            decisionNotifier.Notify(projectSlug);
+        };
+        w.Deleted += (_, e) =>
+        {
+            logger.LogInformation("[dispatcher] Decision resolved in {Project}: {File}",
+                projectSlug, Path.GetFileName(e.FullPath));
+            decisionNotifier.Notify(projectSlug);
+        };
         _watchers.Add(w);
     }
 
@@ -249,6 +259,8 @@ public class DispatcherService(
         activity?.SetTag("dispatch.outcome", launched ? "launched" : "already-launched");
         logger.LogInformation("[dispatcher] {Outcome} {Project}/{Agent}",
             launched ? "Launched" : "Already running —", projectSlug, agentSlug);
+
+        decisionNotifier.Notify(projectSlug);
     }
 
     // -------------------------------------------------------------------------

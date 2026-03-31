@@ -26,6 +26,7 @@ public static class CoreServiceExtensions
                 sp.GetRequiredService<AgentRunnerService>(),
                 sp.GetRequiredService<ILogger<BoardService>>()));
         services.AddSingleton<MessageChangedNotifier>();
+        services.AddSingleton<DecisionChangedNotifier>();
         services.AddSingleton<MessagesService>();
         services.AddSingleton<DecisionsService>();
         services.AddSingleton<JournalsService>();
@@ -39,7 +40,7 @@ public static class CoreServiceExtensions
 
         services.AddHostedService<DispatcherService>();
         services.AddHostedService<OverwatchService>();
-
+        
         return services;
     }
 }
