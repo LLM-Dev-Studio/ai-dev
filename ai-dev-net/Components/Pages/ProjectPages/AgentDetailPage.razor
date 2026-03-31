@@ -25,7 +25,7 @@ else
     <div class="flex items-start gap-3 mb-6">
         <div class="flex-1">
             <div class="flex items-center gap-2 mb-1">
-                <h1 class="text-xl font-semibold text-foreground">@agent.Name</h1>
+                <h1 class="text-xl font-semibold text-primary">@agent.Name</h1>
                 <StatusBadge Status="@(isRunning ? AgentStatus.Running : AgentStatus.Idle)" />
                 <ModelBadge Model="@agent.Model" />
             </div>
