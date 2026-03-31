@@ -171,6 +171,7 @@ public class AgentRunnerService(
             await using var transcript = new StreamWriter(transcriptPath, append: true, System.Text.Encoding.UTF8);
             await transcript.WriteLineAsync();
             await transcript.WriteLineAsync($"## Session started at {startedAt:o}");
+            await transcript.WriteLineAsync($"executor: {executorName} · model: {modelId}");
             await transcript.WriteLineAsync();
             await transcript.FlushAsync();
             await foreach (var line in outputChannel.Reader.ReadAllAsync())

@@ -23,12 +23,16 @@ public class DigestService(WorkspacePaths paths)
 
                 var jsonPath = paths.AgentJsonPath(projectSlug, agentSlug);
                 var name = agentSlug.Value;
+                var executor = string.Empty;
+                var model = string.Empty;
                 if (jsonPath.Exists())
                 {
                     try
                     {
                         using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(jsonPath));
                         if (doc.RootElement.TryGetProperty("name", out var n)) name = n.GetString() ?? agentSlug.Value;
+                        if (doc.RootElement.TryGetProperty("executor", out var e)) executor = e.GetString() ?? string.Empty;
+                        if (doc.RootElement.TryGetProperty("model", out var m)) model = m.GetString() ?? string.Empty;
                     }
                     catch { }
                 }
@@ -41,6 +45,8 @@ public class DigestService(WorkspacePaths paths)
                 {
                     AgentSlug = agentSlug.Value,
                     AgentName = name,
+                    Executor = executor,
+                    Model = model,
                     MessagesSent = sent,
                     MessagesReceived = received,
                 });

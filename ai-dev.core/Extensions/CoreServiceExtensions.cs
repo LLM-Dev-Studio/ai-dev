@@ -33,13 +33,15 @@ public static class CoreServiceExtensions
         services.AddSingleton<KbService>();
         services.AddSingleton<DigestService>();
         services.AddSingleton<GitService>();
-        services.AddHttpClient("ollama");
+        services.AddHttpClient("ollama", client => client.Timeout = TimeSpan.FromMinutes(10));
         services.AddSingleton<IAgentExecutor, ClaudeAgentExecutor>();
         services.AddSingleton<IAgentExecutor, OllamaAgentExecutor>();
         services.AddSingleton<AgentRunnerService>();
+        services.AddSingleton<OllamaHealthService>();
 
         services.AddHostedService<DispatcherService>();
         services.AddHostedService<OverwatchService>();
+        services.AddHostedService(sp => sp.GetRequiredService<OllamaHealthService>());
         
         return services;
     }

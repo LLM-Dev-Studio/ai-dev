@@ -1,0 +1,51 @@
+@using AiDev.Services
+@implements IDisposable
+@inject OllamaHealthService OllamaHealthService
+
+<div class="px-3 py-2 flex items-center gap-2 text-xs text-muted-foreground" title="@Tooltip">
+    <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 @DotClass"></span>
+    <span>Local AI</span>
+    <span class="ml-auto @LabelClass">@Label</span>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        OllamaHealthService.Changed += OnChanged;
+    }
+
+    private void OnChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string DotClass => OllamaHealthService.Status switch
+    {
+        OllamaHealthStatus.Connected    => "bg-emerald-400",
+        OllamaHealthStatus.Unreachable  => "bg-red-400",
+        _                               => "bg-zinc-500",
+    };
+
+    private string Label => OllamaHealthService.Status switch
+    {
+        OllamaHealthStatus.Connected    => "Online",
+        OllamaHealthStatus.Unreachable  => "Offline",
+        _                               => "Checking…",
+    };
+
+    private string LabelClass => OllamaHealthService.Status switch
+    {
+        OllamaHealthStatus.Connected    => "text-emerald-400",
+        OllamaHealthStatus.Unreachable  => "text-red-400",
+        _                               => "",
+    };
+
+    private string Tooltip => OllamaHealthService.LastChecked is { } t
+        ? $"Last checked {t.ToLocalTime():HH:mm:ss}"
+        : "Checking…";
+
+    public void Dispose()
+    {
+        OllamaHealthService.Changed -= OnChanged;
+    }
+}
