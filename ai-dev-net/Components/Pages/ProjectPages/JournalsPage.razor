@@ -2,6 +2,7 @@
 @using AiDev.Features.Agent
 @using AiDev.Features.Journal
 @using AiDev.Models.Types
+@using Markdig
 @rendermode InteractiveServer
 @inject AgentService AgentService
 @inject JournalsService JournalsService
@@ -58,7 +59,14 @@
                     else
                     {
                         <div class="rounded-lg border border-border bg-card p-5">
-                            <pre class="whitespace-pre-wrap text-sm text-foreground/90 font-sans leading-relaxed">@(string.IsNullOrEmpty(entryContent) ? "No content." : entryContent)</pre>
+                            @if (string.IsNullOrEmpty(entryContent))
+                            {
+                                <p class="text-sm text-muted-foreground italic">No content.</p>
+                            }
+                            else
+                            {
+                                <div class="markdown-body">@((MarkupString)RenderMarkdown(entryContent))</div>
+                            }
                         </div>
                     }
                 </div>
@@ -76,6 +84,14 @@
     private string selectedDate = string.Empty;
     private string entryContent = string.Empty;
     private bool loading;
+
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .DisableHtml()
+        .Build();
+
+    private static string RenderMarkdown(string markdown) =>
+        Markdig.Markdown.ToHtml(markdown, Pipeline);
 
     protected override void OnInitialized()
     {
