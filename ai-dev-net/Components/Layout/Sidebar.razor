@@ -51,7 +51,7 @@
         {
             <div class="flex-1 overflow-y-auto min-h-0 border-t border-sidebar-border">
                 <nav class="px-2 py-3 space-y-0.5">
-                    <NavItem Href="@basePath" Icon="bot" Label="Agents" />
+                    <NavItem Href="@basePath" ActivePrefix="@($"{basePath}/agents")" Icon="bot" Label="Agents" />
                     <NavItem Href="@($"{basePath}/board")" Icon="layout-grid" Label="Board" />
                     <NavItem Href="@($"{basePath}/messages")" Icon="message-square" Label="Messages" />
                     <NavItem Href="@($"{basePath}/decisions")" Icon="circle-alert" Label="Decisions" />

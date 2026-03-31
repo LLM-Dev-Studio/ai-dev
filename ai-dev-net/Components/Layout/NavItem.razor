@@ -3,7 +3,8 @@
 
 @{
     var currentPath = new Uri(NavigationManager.Uri).AbsolutePath;
-    var isActive = currentPath == Href || currentPath.StartsWith(Href.TrimEnd('/') + "/");
+    var activePrefix = ActivePrefix ?? Href;
+    var isActive = currentPath == Href || currentPath.StartsWith(activePrefix.TrimEnd('/') + "/");
     var linkClass = isActive
         ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
         : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground";
@@ -25,6 +26,7 @@
     [Parameter] public string Icon { get; set; } = string.Empty;
     [Parameter] public string Label { get; set; } = string.Empty;
     [Parameter] public int? Badge { get; set; }
+    [Parameter] public string? ActivePrefix { get; set; }
 
     protected override void OnInitialized()
     {

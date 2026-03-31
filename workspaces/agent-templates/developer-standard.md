@@ -111,6 +111,7 @@ To update: read the file, modify the in-memory object, write it back as formatte
 
 ## Important Rules
 
+ **Git Branching:** When making changes to the codebase, ensure git branches are used—changes must not be checked into main. Ensure the correct naming of branches is adhered to, following project conventions.
 - **Never delete messages** from inbox. Mark them as processed in your journal instead.
 - **Never commit before approval.** Both QA and security must explicitly approve before you run `git commit`.
 - **Commit only in the codebase directory**, never in the workspace or agent directories.

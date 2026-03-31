@@ -176,7 +176,10 @@ public class AgentService(WorkspacePaths paths, StudioSettingsService settings, 
     public string ReadTranscript(ProjectSlug projectSlug, AgentSlug agentSlug, TranscriptDate date)
     {
         var path = paths.TranscriptPath(projectSlug, agentSlug, date);
-        return path.Exists() ? File.ReadAllText(path.Value) : string.Empty;
+        if (!path.Exists()) return string.Empty;
+        using var stream = new FileStream(path.Value, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 
     public List<string> GetModelAliases() => [.. settings.GetSettings().Models.Keys];

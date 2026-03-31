@@ -15,6 +15,7 @@ secrets.json
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
+.serena/
 
 # Mono auto generated files
 mono_crash.*
