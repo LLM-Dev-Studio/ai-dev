@@ -10,7 +10,7 @@
 
 <div class="flex items-center justify-between mb-1">
     <div>
-        <h1 class="text-xl font-semibold text-foreground">Board</h1>
+        <h1 class="text-xl font-semibold text-primary">Board</h1>
         @if (_board != null)
         {
             <p class="text-sm text-muted-foreground mt-0.5">@_board.Tasks.Count task@(_board.Tasks.Count != 1 ? "s" : "")</p>
@@ -215,7 +215,7 @@ else
                         <option value="">Unassigned</option>
                         @foreach (var a in _agents)
                         {
-                            <option value="@a.Slug" selected="@(a.Slug == _taskAssignee)">@a.Name (@a.Role)</option>
+                            <option value="@a.Slug" selected="@((string?)a.Slug == _taskAssignee)">@a.Name (@a.Role)</option>
                         }
                     </select>
                 </div>
