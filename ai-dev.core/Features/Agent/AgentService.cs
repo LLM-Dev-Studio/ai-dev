@@ -113,23 +113,14 @@ public class AgentService(WorkspacePaths paths, StudioSettingsService settings, 
 
         try
         {
-            paths.AgentInboxDir(projectSlug, slug).Create();
-            paths.AgentOutboxDir(projectSlug, slug).Create();
-            paths.AgentJournalDir(projectSlug, slug).Create();
+            var resolvedSlug = !string.IsNullOrEmpty(templateSlug) ? templateSlug : "generic-standard";
+            var tmpl = templates.GetTemplate(resolvedSlug);
+            if (tmpl == null) return $"Template '{resolvedSlug}' not found.";
 
-            string? role = null, description = null, model = "sonnet", claudeContent = null;
-
-            if (!string.IsNullOrEmpty(templateSlug))
-            {
-                var tmpl = templates.GetTemplate(templateSlug);
-                if (tmpl != null)
-                {
-                    role = tmpl.Role;
-                    description = tmpl.Description;
-                    model = tmpl.Model;
-                    claudeContent = tmpl.Content;
-                }
-            }
+            var role = tmpl.Role;
+            var description = tmpl.Description;
+            var model = tmpl.Model;
+            var claudeContent = tmpl.Content;
 
             var agentJson = new
             {
@@ -140,6 +131,9 @@ public class AgentService(WorkspacePaths paths, StudioSettingsService settings, 
                 status = "idle",
                 description = description ?? string.Empty,
             };
+            paths.AgentInboxDir(projectSlug, slug).Create();
+            paths.AgentOutboxDir(projectSlug, slug).Create();
+            paths.AgentJournalDir(projectSlug, slug).Create();
             File.WriteAllText(paths.AgentJsonPath(projectSlug, slug), JsonSerializer.Serialize(agentJson, JsonDefaults.Write));
             File.WriteAllText(paths.AgentClaudeMdPath(projectSlug, slug), claudeContent ?? $"# {name}\n\nYou are {name}.\n");
 

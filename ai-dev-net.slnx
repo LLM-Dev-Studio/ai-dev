@@ -2,6 +2,34 @@
   <Folder Name="/Solution Items/">
     <File Path=".gitignore" />
   </Folder>
+  <Folder Name="/workspaces/">
+    <File Path="workspaces/workspaces.json" />
+  </Folder>
+  <Folder Name="/workspaces/agent-templates/">
+    <File Path="workspaces/agent-templates/analyst-standard.json" />
+    <File Path="workspaces/agent-templates/analyst-standard.md" />
+    <File Path="workspaces/agent-templates/architect-standard.json" />
+    <File Path="workspaces/agent-templates/architect-standard.md" />
+    <File Path="workspaces/agent-templates/designer-standard.json" />
+    <File Path="workspaces/agent-templates/designer-standard.md" />
+    <File Path="workspaces/agent-templates/developer-standard.json" />
+    <File Path="workspaces/agent-templates/developer-standard.md" />
+    <File Path="workspaces/agent-templates/devops-standard.json" />
+    <File Path="workspaces/agent-templates/devops-standard.md" />
+    <File Path="workspaces/agent-templates/generic-standard.json" />
+    <File Path="workspaces/agent-templates/generic-standard.md" />
+    <File Path="workspaces/agent-templates/growth-marketing-standard.json" />
+    <File Path="workspaces/agent-templates/growth-marketing-standard.md" />
+    <File Path="workspaces/agent-templates/growth-standard.json" />
+    <File Path="workspaces/agent-templates/guard-standard.json" />
+    <File Path="workspaces/agent-templates/guard-standard.md" />
+    <File Path="workspaces/agent-templates/pm-standard.json" />
+    <File Path="workspaces/agent-templates/pm-standard.md" />
+    <File Path="workspaces/agent-templates/process-evo-standard.json" />
+    <File Path="workspaces/agent-templates/process-evo-standard.md" />
+    <File Path="workspaces/agent-templates/qa-standard.json" />
+    <File Path="workspaces/agent-templates/qa-standard.md" />
+  </Folder>
   <Project Path="ai-dev-net.AppHost/ai-dev-net.AppHost.csproj" />
   <Project Path="ai-dev-net.ServiceDefaults/ai-dev-net.ServiceDefaults.csproj" />
   <Project Path="ai-dev-net.tests.unit/ai-dev-net.tests.unit.csproj" />

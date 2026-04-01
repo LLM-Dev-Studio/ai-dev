@@ -13,6 +13,6 @@ global using System.Text.Json.Serialization;
 global using System.Text.RegularExpressions;
 global using System.Threading.Channels;
 
-global using AgentSlug = AiDev.Models.Types.AgentSlug;
-global using ProjectSlug = AiDev.Models.Types.ProjectSlug;
-global using TaskId = AiDev.Models.Types.TaskId;
+// global using AgentSlug = AiDev.Models.Types.AgentSlug;
+// global using ProjectSlug = AiDev.Models.Types.ProjectSlug;
+// global using TaskId = AiDev.Models.Types.TaskId;

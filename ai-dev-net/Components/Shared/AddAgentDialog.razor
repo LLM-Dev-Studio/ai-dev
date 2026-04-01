@@ -93,10 +93,11 @@
     protected override void OnInitialized()
     {
         templates = TemplatesService.ListTemplates();
-        if (templates.Count > 0) SelectTemplate(templates[0].Slug);
+        var preferred = templates.FirstOrDefault(t => t.Slug == "generic-standard") ?? templates.FirstOrDefault();
+        if (preferred != null) SelectTemplate(preferred.Slug);
     }
 
-    private void SelectTemplate(AgentSlug? slug)
+    private void SelectTemplate(AgentSlug slug)
     {
         selectedTemplate = slug;
         selectedTemplateObj = templates.FirstOrDefault(t => t.Slug == slug);
@@ -118,6 +119,11 @@
         if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(agentSlug))
         {
             error = "Name and slug are required.";
+            return;
+        }
+        if (selectedTemplate == null)
+        {
+            error = "A template is required.";
             return;
         }
         saving = true;

@@ -54,7 +54,7 @@
                 <div>
                     <label class="block text-xs text-muted-foreground mb-2">
                         Agents
-                        <span class="opacity-60 ml-1">(select templates to add)</span>
+                        <span class="opacity-60 ml-1">(deselect any you don't need)</span>
                     </label>
                     <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                         @foreach (var t in templates)
@@ -117,6 +117,11 @@
     protected override void OnInitialized()
     {
         templates = TemplatesService.ListTemplates();
+        foreach (var t in templates)
+        {
+            selectedTemplateSlugs.Add(t.Slug);
+            selectedTemplates[t.Slug] = t.Name;
+        }
     }
 
     private void OnNameInput(ChangeEventArgs e)
