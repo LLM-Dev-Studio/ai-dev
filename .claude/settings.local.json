@@ -11,7 +11,9 @@
       "Bash(dotnet sln:*)",
       "Bash(dotnet restore:*)",
       "Bash(dotnet run:*)",
-      "Bash(dotnet test:*)"
+      "Bash(dotnet test:*)",
+      "Bash(find /m/ai-dev-net/workspaces/ai-dev-studio -type f -name *.log -o -type f -name *execution*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }
