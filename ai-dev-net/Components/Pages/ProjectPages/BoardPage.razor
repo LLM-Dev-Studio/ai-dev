@@ -2,10 +2,12 @@
 @rendermode InteractiveServer
 @inject BoardService BoardService
 @inject AgentService AgentService
+@inject PromptEnhancerService EnhancerService
 @inject NavigationManager NavigationManager
 @using AiDev.Features.Agent
 @using AiDev.Features.Board
 @using AiDev.Models.Types
+@using AiDev.Services
 @implements IDisposable
 
 <div class="flex items-center justify-between mb-1">
@@ -176,12 +178,35 @@ else
                            class="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-muted-foreground mb-1.5">Description</label>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="text-xs font-medium text-muted-foreground">Description</label>
+                        <button @onclick="EnhancePrompt"
+                                disabled="@(_enhancing || string.IsNullOrWhiteSpace(_taskTitle))"
+                                class="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-40 transition-colors">
+                            @if (_enhancing)
+                            {
+                                <svg class="w-3.5 h-3.5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                                </svg>
+                                <span>Enhancing…</span>
+                            }
+                            else
+                            {
+                                <SvgIcon Name="sparkles" Class="w-3.5 h-3.5" />
+                                <span>Enhance</span>
+                            }
+                        </button>
+                    </div>
                     <textarea value="@_taskDescription"
                               @oninput="e => _taskDescription = e.Value?.ToString() ?? string.Empty"
-                              rows="3"
+                              rows="6"
                               placeholder="Optional details, acceptance criteria…"
-                              class="w-full resize-none rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"></textarea>
+                              class="w-full resize-y rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"></textarea>
+                    @if (!string.IsNullOrEmpty(_enhanceError))
+                    {
+                        <p class="text-xs text-destructive mt-1">@_enhanceError</p>
+                    }
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
@@ -275,6 +300,8 @@ else
     private string _taskAssignee = string.Empty;
     private string _taskError = string.Empty;
     private bool _saving;
+    private bool _enhancing;
+    private string _enhanceError = string.Empty;
 
     protected override void OnInitialized()
     {
@@ -336,6 +363,33 @@ else
     {
         _showTaskDialog = false;
         _taskError = string.Empty;
+        _enhanceError = string.Empty;
+    }
+
+    private async Task EnhancePrompt()
+    {
+        if (string.IsNullOrWhiteSpace(_taskTitle)) return;
+        _enhancing = true;
+        _enhanceError = string.Empty;
+        StateHasChanged();
+
+        if (!ProjectSlug.TryParse(Slug, out var projectSlug))
+        {
+            _enhanceError = "Invalid project.";
+            _enhancing = false;
+            return;
+        }
+
+        var result = await EnhancerService.EnhanceAsync(projectSlug, _taskTitle, _taskDescription);
+        if (result == null)
+            _enhanceError = "Enhancement failed. Check that the Claude CLI is installed and authenticated.";
+        else
+        {
+            _taskTitle = result.Title;
+            _taskDescription = result.Description;
+        }
+
+        _enhancing = false;
     }
 
     private void SaveTask()

@@ -35,6 +35,7 @@ public static class CoreServiceExtensions
         services.AddSingleton<GitService>();
         services.AddHttpClient("ollama", client => client.Timeout = TimeSpan.FromMinutes(10));
         services.AddHttpClient("ollama-health", client => client.Timeout = TimeSpan.FromSeconds(5));
+        services.AddSingleton<PromptEnhancerService>();
         services.AddSingleton<IAgentExecutor, ClaudeAgentExecutor>();
         services.AddSingleton<IAgentExecutor, OllamaAgentExecutor>();
         services.AddSingleton<AgentRunnerService>();

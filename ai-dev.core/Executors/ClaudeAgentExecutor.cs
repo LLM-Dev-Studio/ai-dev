@@ -1,7 +1,8 @@
 namespace AiDev.Executors;
 
 /// <summary>
-/// Runs agents via the Claude CLI (`claude -p &lt;prompt&gt; --model &lt;id&gt; --allowedTools ...`).
+/// Runs agents via the Claude CLI (`claude -p --model &lt;id&gt; --allowedTools ...`).
+/// The prompt is written to stdin to avoid Windows command-line length and newline-escaping issues.
 /// On Windows, wraps the call in `cmd.exe /c` because the `claude` npm global is a .cmd file.
 ///
 /// Permission model (safest-first):
@@ -16,7 +17,7 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
     public async Task<int> RunAsync(string workingDir, string modelId, string prompt,
         ChannelWriter<string> output, Action<int>? reportPid, CancellationToken ct)
     {
-        var psi = BuildProcessStartInfo(workingDir, modelId, prompt);
+        var psi = BuildProcessStartInfo(workingDir, modelId);
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
         process.OutputDataReceived += (_, e) =>
@@ -36,6 +37,12 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         process.Start();
         reportPid?.Invoke(process.Id);
 
+        // Write the prompt to stdin then close it so the process sees EOF.
+        // This avoids Windows cmd.exe command-line length limits and newline-escaping issues
+        // that occur when the prompt is passed as a quoted argument.
+        await process.StandardInput.WriteAsync(prompt);
+        process.StandardInput.Close();
+
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
@@ -51,14 +58,16 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         }
     }
 
-    private static ProcessStartInfo BuildProcessStartInfo(string workingDir, string modelId, string prompt)
+    private static ProcessStartInfo BuildProcessStartInfo(string workingDir, string modelId)
     {
         var psi = new ProcessStartInfo
         {
             WorkingDirectory = workingDir,
             UseShellExecute = false,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardInputEncoding = System.Text.Encoding.UTF8,
             StandardOutputEncoding = System.Text.Encoding.UTF8,
             StandardErrorEncoding = System.Text.Encoding.UTF8,
             CreateNoWindow = true,
@@ -78,7 +87,6 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         }
 
         psi.ArgumentList.Add("-p");
-        psi.ArgumentList.Add(prompt);
         psi.ArgumentList.Add("--model");
         psi.ArgumentList.Add(modelId);
 
@@ -100,13 +108,16 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
             psi.ArgumentList.Add($"Write({workspaceGlob})");
             psi.ArgumentList.Add($"Edit({workspaceGlob})");
 
-            // If the project has a codebase path configured, grant read/write there too.
+            // If the project has a codebase path configured, grant read/write there too
+            // and add it as an extra context directory so its CLAUDE.md (if any) is loaded.
             var codebasePath = ReadCodebasePath(workspaceRoot);
             if (!string.IsNullOrEmpty(codebasePath))
             {
                 var codebaseGlob = ToGlob(codebasePath);
                 psi.ArgumentList.Add($"Write({codebaseGlob})");
                 psi.ArgumentList.Add($"Edit({codebaseGlob})");
+                psi.ArgumentList.Add("--add-dir");
+                psi.ArgumentList.Add(codebasePath);
             }
 
             psi.ArgumentList.Add("Bash(git log *)");
