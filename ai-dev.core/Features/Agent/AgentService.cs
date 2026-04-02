@@ -60,7 +60,7 @@ public class AgentService(WorkspacePaths paths, StudioSettingsService settings, 
         catch { return null; }
     }
 
-    public string? SaveAgentMeta(ProjectSlug projectSlug, AgentSlug agentSlug, string name, string description, string model)
+    public string? SaveAgentMeta(ProjectSlug projectSlug, AgentSlug agentSlug, string name, string description, string model, string executor)
     {
         try { _ = paths.AgentDir(projectSlug, agentSlug); }
         catch (ArgumentException) { return "Invalid agent slug."; }
@@ -76,6 +76,7 @@ public class AgentService(WorkspacePaths paths, StudioSettingsService settings, 
             updated["name"] = name;
             updated["description"] = description;
             updated["model"] = model;
+            updated["executor"] = executor;
             File.WriteAllText(jsonPath, JsonSerializer.Serialize(updated, JsonDefaults.Write));
             return null;
         }

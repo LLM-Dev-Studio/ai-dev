@@ -1,3 +1,6 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+
 namespace AiDev.Services;
 
 public enum OllamaHealthStatus { Unknown, Connected, Unreachable }
@@ -14,6 +17,7 @@ public class OllamaHealthService(
 {
     public OllamaHealthStatus Status { get; private set; } = OllamaHealthStatus.Unknown;
     public DateTimeOffset? LastChecked { get; private set; }
+    public IReadOnlyList<string> Models { get; private set; } = [];
 
     public event Action? Changed;
 
@@ -35,16 +39,33 @@ public class OllamaHealthService(
         OllamaHealthStatus newStatus;
         try
         {
-            // Use a short-lived client with a tight timeout — this is a health probe, not inference.
-            var http = httpClientFactory.CreateClient();
-            http.Timeout = TimeSpan.FromSeconds(5);
+            var http = httpClientFactory.CreateClient("ollama-health");
             var response = await http.GetAsync(url, ct).ConfigureAwait(false);
-            newStatus = response.IsSuccessStatusCode ? OllamaHealthStatus.Connected : OllamaHealthStatus.Unreachable;
+            if (response.IsSuccessStatusCode)
+            {
+                newStatus = OllamaHealthStatus.Connected;
+                try
+                {
+                    var doc = await response.Content.ReadFromJsonAsync<JsonDocument>(ct).ConfigureAwait(false);
+                    Models = doc?.RootElement.GetProperty("models")
+                        .EnumerateArray()
+                        .Select(m => m.GetProperty("name").GetString() ?? string.Empty)
+                        .Where(n => n.Length > 0)
+                        .ToList() ?? [];
+                }
+                catch { Models = []; }
+            }
+            else
+            {
+                newStatus = OllamaHealthStatus.Unreachable;
+                Models = [];
+            }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException or TaskCanceledException)
         {
             logger.LogDebug(ex, "[ollama-health] Probe failed: {Message}", ex.Message);
             newStatus = OllamaHealthStatus.Unreachable;
+            Models = [];
         }
 
         LastChecked = DateTimeOffset.UtcNow;

@@ -5,15 +5,16 @@
       "Bash(for agent:*)",
       "Bash(do echo:*)",
       "Bash(done)",
-      "Bash(xargs grep:*)",
+      "Bash(xargs *)",
       "Bash(dotnet new:*)",
       "Bash(dotnet package:*)",
       "Bash(dotnet sln:*)",
       "Bash(dotnet restore:*)",
       "Bash(dotnet run:*)",
       "Bash(dotnet test:*)",
-      "Bash(find /m/ai-dev-net/workspaces/ai-dev-studio -type f -name *.log -o -type f -name *execution*)",
-      "Bash(npx tsc:*)"
+      "Bash(find *)",
+      "Bash(npx tsc:*)",
+      "Bash(find ~/.nuget/packages/microsoft.extensions.http.resilience/10.1.0/ -name *.dll)"
     ]
   }
 }

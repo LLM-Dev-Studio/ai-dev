@@ -7,7 +7,7 @@
 @inject AgentService AgentService
 @inject JournalsService JournalsService
 
-<h1 class="text-xl font-semibold text-foreground mb-4">Journals</h1>
+<h1 class="text-xl font-semibold text-primary mb-4">Journals</h1>
 
 <div class="flex gap-4">
     <div class="w-48 flex-shrink-0 space-y-1">
@@ -26,7 +26,7 @@
     </div>
 
     <div class="flex-1 min-w-0">
-        @if (string.IsNullOrEmpty(selectedAgent))
+        @if (selectedAgent is null)
         {
             <EmptyState Icon="book-open" Title="Select an agent to view their journal" />
         }

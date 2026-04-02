@@ -1,3 +1,4 @@
+using AiDev.Executors;
 using AiDev.Features.Agent;
 using AiDev.Features.Board;
 using AiDev.Features.Decision;
@@ -20,6 +21,8 @@ public class OverwatchService(
     WorkspaceService workspace,
     BoardService boardService,
     AgentRunnerService runner,
+    AgentService agentService,
+    OllamaHealthService ollamaHealth,
     DecisionsService decisionsService,
     ILogger<OverwatchService> logger)
     : IHostedService, IDisposable
@@ -180,6 +183,17 @@ public class OverwatchService(
             return "skip-agent-running";
         }
 
+        // If the agent requires Local AI and the server is offline, warn the human rather
+        // than nudging — the agent would fail immediately on launch anyway.
+        var agentInfo = agentService.LoadAgent(projectSlug, assigneeSlug);
+        if (agentInfo?.Executor == "ollama" && ollamaHealth.Status == OllamaHealthStatus.Unreachable)
+        {
+            logger.LogWarning(
+                "[overwatch] Agent {Agent} requires Local AI but server is offline — raising decision for \"{Title}\"",
+                assigneeSlug, task.Title);
+            return RaiseLocalAiOfflineDecision(projectSlug, task, assigneeSlug);
+        }
+
         var ageStr = FormatAge(age);
         var body = $"""
             Task "{task.Title}" has been stalled in **{columnTitle}** for {ageStr} with no progress.
@@ -240,6 +254,41 @@ public class OverwatchService(
 
         logger.LogInformation("[overwatch] Raised decision for unassigned stalled task \"{Title}\" ({Age})",
             task.Title, ageStr);
+        boardService.SetTaskNudged(projectSlug, task.Id);
+        return "decision-raised";
+    }
+
+    private string RaiseLocalAiOfflineDecision(ProjectSlug projectSlug, BoardTask task, AgentSlug agentSlug)
+    {
+        var body = $"""
+            Agent **{agentSlug}** requires Local AI (Ollama) to run, but the local AI server is currently offline.
+
+            Task **"{task.Title}"** cannot be progressed until the local AI server is back online.
+
+            **Task ID:** {task.Id}
+            **Priority:** {task.Priority}
+
+            Please start the local AI server, or reassign this task to an agent that does not require it.
+            """;
+
+        var err = decisionsService.CreateDecision(
+            projectSlug,
+            from: "overwatch",
+            subject: $"Local AI offline — {agentSlug} cannot process \"{task.Title}\"",
+            priority: task.Priority is "critical" or "high" ? task.Priority : "high",
+            blocks: task.Id,
+            body: body);
+
+        if (err != null)
+        {
+            logger.LogError("[overwatch] Failed to raise Local AI offline decision for \"{Title}\": {Error}",
+                task.Title, err);
+            return "decision-failed";
+        }
+
+        logger.LogInformation(
+            "[overwatch] Raised Local AI offline decision for agent {Agent}, task \"{Title}\"",
+            agentSlug, task.Title);
         boardService.SetTaskNudged(projectSlug, task.Id);
         return "decision-raised";
     }

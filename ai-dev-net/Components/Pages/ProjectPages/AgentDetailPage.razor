@@ -4,6 +4,8 @@
 @inject MessagesService MessagesService
 @inject AgentRunnerService RunnerService
 @inject NavigationManager NavigationManager
+@inject OllamaHealthService OllamaHealth
+@using AiDev.Executors
 @using AiDev.Features.Agent
 @using AiDev.Models
 @using AiDev.Models.Types
@@ -82,25 +84,65 @@ else
                            @oninput="e => editName = e.Value?.ToString() ?? string.Empty"
                            class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
                 </div>
-                <div>
-                    <label class="block text-xs text-muted-foreground mb-1">Model</label>
-                    @if (modelAliases.Count > 0)
-                    {
-                        <select value="@editModel"
-                                @onchange="e => editModel = e.Value?.ToString() ?? string.Empty"
-                                class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-                            @foreach (var alias in modelAliases)
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs text-muted-foreground mb-1">Executor</label>
+                        <div class="flex gap-2">
+                            <button @onclick='() => SetExecutor("claude")'
+                                    class="flex-1 px-3 py-1.5 rounded-md border text-xs transition-colors @(editExecutor == "claude" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent/50")">
+                                Cloud (Claude)
+                            </button>
+                            <button @onclick='() => SetExecutor("ollama")'
+                                    disabled="@(OllamaHealth.Status != OllamaHealthStatus.Connected)"
+                                    class="flex-1 px-3 py-1.5 rounded-md border text-xs transition-colors @(editExecutor == "ollama" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent/50") disabled:opacity-40 disabled:cursor-not-allowed">
+                                Local (Ollama)
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-muted-foreground mb-1">Model</label>
+                        @if (editExecutor == "ollama")
+                        {
+                            @if (OllamaHealth.Models.Count > 0)
                             {
-                                <option value="@alias" selected="@(alias == editModel)">@alias</option>
+                                <select value="@editModel"
+                                        @onchange="e => editModel = e.Value?.ToString() ?? string.Empty"
+                                        class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                    @foreach (var m in OllamaHealth.Models)
+                                    {
+                                        <option value="@m" selected="@(m == editModel)">@m</option>
+                                    }
+                                </select>
                             }
-                        </select>
-                    }
-                    else
-                    {
-                        <input value="@editModel"
-                               @oninput="e => editModel = e.Value?.ToString() ?? string.Empty"
-                               class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
-                    }
+                            else
+                            {
+                                <input value="@editModel"
+                                       @oninput="e => editModel = e.Value?.ToString() ?? string.Empty"
+                                       placeholder="e.g. llama3.2"
+                                       class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
+                            }
+                        }
+                        else
+                        {
+                            @if (modelAliases.Count > 0)
+                            {
+                                <select value="@editModel"
+                                        @onchange="e => editModel = e.Value?.ToString() ?? string.Empty"
+                                        class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                    @foreach (var alias in modelAliases)
+                                    {
+                                        <option value="@alias" selected="@(alias == editModel)">@alias</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <input value="@editModel"
+                                       @oninput="e => editModel = e.Value?.ToString() ?? string.Empty"
+                                       class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
+                            }
+                        }
+                    </div>
                 </div>
                 <div class="col-span-2">
                     <label class="block text-xs text-muted-foreground mb-1">Description</label>
@@ -217,9 +259,11 @@ else
     private string editName = string.Empty;
     private string editDescription = string.Empty;
     private string editModel = string.Empty;
+    private string editExecutor = IAgentExecutor.Default;
     private string originalName = string.Empty;
     private string originalDescription = string.Empty;
     private string originalModel = string.Empty;
+    private string originalExecutor = IAgentExecutor.Default;
     private bool savingMeta;
     private SaveStatus metaStatus;
 
@@ -232,7 +276,7 @@ else
 
     private enum SaveStatus { Idle, Saved, Error }
 
-    private bool IsMetaDirty => editName != originalName || editDescription != originalDescription || editModel != originalModel;
+    private bool IsMetaDirty => editName != originalName || editDescription != originalDescription || editModel != originalModel || editExecutor != originalExecutor;
     private bool IsClaudeDirty => claudeContent != claudeOriginal;
 
     protected override void OnInitialized()
@@ -243,6 +287,7 @@ else
         editName = originalName = agent.Name;
         editDescription = originalDescription = agent.Description;
         editModel = originalModel = agent.Model;
+        editExecutor = originalExecutor = agent.Executor;
 
         claudeContent = claudeOriginal = AgentService.GetClaudeMd(Slug, AgentSlug);
         modelAliases = AgentService.GetModelAliases();
@@ -259,6 +304,16 @@ else
                 InvokeAsync(StateHasChanged);
             }
         }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
+    private void SetExecutor(string executor)
+    {
+        editExecutor = executor;
+        // Reset model to a sensible default when switching executor
+        if (executor == "ollama")
+            editModel = OllamaHealth.Models.Count > 0 ? OllamaHealth.Models[0] : string.Empty;
+        else
+            editModel = modelAliases.Count > 0 ? modelAliases[0] : string.Empty;
     }
 
     private void LaunchAgent()
@@ -278,12 +333,13 @@ else
     {
         savingMeta = true;
         metaStatus = SaveStatus.Idle;
-        var err = AgentService.SaveAgentMeta(Slug, AgentSlug, editName, editDescription, editModel);
+        var err = AgentService.SaveAgentMeta(Slug, AgentSlug, editName, editDescription, editModel, editExecutor);
         savingMeta = false;
         if (err != null) { metaStatus = SaveStatus.Error; return; }
         originalName = editName;
         originalDescription = editDescription;
         originalModel = editModel;
+        originalExecutor = editExecutor;
         agent = AgentService.LoadAgent(Slug, AgentSlug);
         metaStatus = SaveStatus.Saved;
         Task.Delay(2000).ContinueWith(_ => { metaStatus = SaveStatus.Idle; InvokeAsync(StateHasChanged); });

@@ -42,8 +42,8 @@ public sealed partial record AgentSlug : IParsable<AgentSlug>
         && !value.Contains('/')
         && !value.Contains('\\');
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"^[a-z0-9][a-z0-9\-]*[a-z0-9]$")]
-    private static partial System.Text.RegularExpressions.Regex SlugPattern();
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9\-]*[a-z0-9]$")]
+    private static partial Regex SlugPattern();
 }
 
 internal sealed class AgentSlugJsonConverter : JsonConverter<AgentSlug>
