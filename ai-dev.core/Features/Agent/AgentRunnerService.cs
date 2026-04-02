@@ -1,4 +1,5 @@
 using AiDev.Executors;
+using AiDev.Features.KnowledgeBase;
 using AiDev.Models;
 using AiDev.Services;
 
@@ -13,6 +14,7 @@ public class AgentRunnerService(
     StudioSettingsService settings,
     IEnumerable<IAgentExecutor> executors,
     MessageChangedNotifier messageNotifier,
+    KbService kbService,
     ILogger<AgentRunnerService> logger)
 {
 
@@ -181,10 +183,20 @@ public class AgentRunnerService(
             }
         });
 
+        // Build prompt: inject matching KB articles before the standard instruction.
+        var effectivePrompt = AgentPrompt;
+        var inboxText = ReadInboxText(inboxDir, inboxSnapshot);
+        var kbContext = kbService.BuildInjectionContext(projectSlug, inboxText);
+        if (!string.IsNullOrEmpty(kbContext))
+        {
+            effectivePrompt = kbContext + "\n\n---\n\n" + AgentPrompt;
+            logger.LogInformation("[runner] Injected KB context into prompt for {Key}", key);
+        }
+
         try
         {
             exitCode = await resolvedExecutor.RunAsync(
-                agentDir, modelId, AgentPrompt, outputChannel.Writer,
+                agentDir, modelId, effectivePrompt, outputChannel.Writer,
                 pid =>
                 {
                     info.Pid = pid;
@@ -356,6 +368,27 @@ public class AgentRunnerService(
         {
             logger.LogWarning(ex, "[runner] Failed to archive inbox");
         }
+    }
+
+    /// <summary>
+    /// Reads the content of pending inbox files so trigger matching can compare
+    /// KB article triggers against the actual task text.
+    /// </summary>
+    private static string ReadInboxText(string inboxDir, string[] snapshot)
+    {
+        if (snapshot.Length == 0) return string.Empty;
+        var sb = new System.Text.StringBuilder();
+        foreach (var filename in snapshot)
+        {
+            try
+            {
+                var path = Path.Combine(inboxDir, filename);
+                if (File.Exists(path))
+                    sb.AppendLine(File.ReadAllText(path));
+            }
+            catch { /* ignore unreadable files */ }
+        }
+        return sb.ToString();
     }
 
     /// <summary>
