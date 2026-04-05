@@ -69,6 +69,7 @@ public class MessagesService(WorkspacePaths paths)
                 Body = body.Trim(),
                 IsProcessed = isProcessed,
                 TaskId = TaskId.TryParse(fields.GetValueOrDefault("task-id"), out var tid) ? tid : null,
+                Playbook = fields.TryGetValue("playbook", out var pb) && !string.IsNullOrWhiteSpace(pb) ? pb.Trim() : null,
             };
         }
         catch { return null; }

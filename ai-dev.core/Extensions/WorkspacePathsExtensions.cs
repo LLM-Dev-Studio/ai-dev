@@ -29,6 +29,7 @@ public static class WorkspacePathsExtensions
             FilePathConstants.DecisionsDirName, FilePathConstants.ResolvedDirName));
 
         public KbDir KbDir() => new(Path.Combine(dir.Value, FilePathConstants.KbDirName));
+        public PlaybooksDir PlaybooksDir() => new(Path.Combine(dir.Value, FilePathConstants.PlaybooksDirName));
     }
 
     extension(AgentsDir dir)
@@ -66,6 +67,16 @@ public static class WorkspacePathsExtensions
     /// <summary>Returns the transcript .md path for a validated date. Cannot escape the directory.</summary>
     public static TranscriptFile TranscriptFile(this AgentTranscriptsDir dir, TranscriptDate date) =>
     new(Path.Combine(dir.Value, $"{date}.md"));
+
+    /// <summary>Returns the playbook .md path for a user-supplied slug, or null if it escapes the directory.</summary>
+    public static PlaybookArticleFile? SafePlaybookFile(this PlaybooksDir dir, string slug)
+    {
+        if (string.IsNullOrWhiteSpace(slug)) return null;
+        var fullDir = dir.FullPath;
+        var resolved = Path.GetFullPath(Path.Combine(fullDir, $"{slug}.md"));
+        return resolved.StartsWith(fullDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            ? new(resolved) : null;
+    }
 
     /// <summary>Returns the KB article .md path for a user-supplied slug, or null if it escapes the directory.</summary>
     public static KbArticleFile? SafeKbArticleFile(this KbDir dir, string slug)

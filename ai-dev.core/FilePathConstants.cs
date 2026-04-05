@@ -14,6 +14,7 @@ public static class FilePathConstants
     public const string PendingDirName = "pending";
     public const string ResolvedDirName = "resolved";
     public const string KbDirName = "kb";
+    public const string PlaybooksDirName = "playbooks";
     public const string AgentJsonFileName = "agent.json";
     public const string AgentClaudeMdFileName = "CLAUDE.md";
     public const string AgentInboxDirName = "inbox";

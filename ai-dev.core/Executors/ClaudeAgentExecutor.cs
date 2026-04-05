@@ -5,10 +5,11 @@ namespace AiDev.Executors;
 /// The prompt is written to stdin to avoid Windows command-line length and newline-escaping issues.
 /// On Windows, wraps the call in `cmd.exe /c` because the `claude` npm global is a .cmd file.
 ///
-/// Permission model (safest-first):
-///   1. Default: --allowedTools scopes Read/Write/Edit to the workspace root (2 levels up from agentDir)
-///      and allows read-only git inspection. Nothing outside the workspace can be written.
-///   2. Fallback: set CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=1 to bypass all controls (dev only).
+/// Permission model:
+///   Agents connect to the ai-dev.mcp MCP server registered in .claude/settings.json.
+///   The MCP server enforces path boundaries and logs all operations. Raw Read/Write/Edit/Bash
+///   tools are denied by settings.json — agents can only use workspace operations exposed by the
+///   MCP server. The --allowedTools flag grants git inspection commands directly.
 /// </summary>
 public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentExecutor
 {
@@ -90,48 +91,27 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         psi.ArgumentList.Add("--model");
         psi.ArgumentList.Add(modelId);
 
-        if (Environment.GetEnvironmentVariable("CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS") == "1")
+        // MCP server (registered in .claude/settings.json) handles workspace I/O.
+        // Only grant git inspection and commit tools directly.
+        psi.ArgumentList.Add("--allowedTools");
+        psi.ArgumentList.Add("Bash(git log *)");
+        psi.ArgumentList.Add("Bash(git diff *)");
+        psi.ArgumentList.Add("Bash(git add *)");
+        psi.ArgumentList.Add("Bash(git commit *)");
+        psi.ArgumentList.Add("Bash(git status)");
+
+        // If the project has a codebase path, add it as a context directory
+        // so its CLAUDE.md (if any) is loaded by the CLI.
+        var workspaceRoot = Path.GetFullPath(Path.Combine(workingDir, "..", ".."));
+        var codebasePath = ReadCodebasePath(workspaceRoot);
+        if (!string.IsNullOrEmpty(codebasePath))
         {
-            // Full bypass — dev/testing only.
-            psi.ArgumentList.Add("--dangerously-skip-permissions");
-        }
-        else
-        {
-            // Scope permissions to the workspace root (2 levels up: agents/{slug}/ → project root)
-            // plus the project's configured codebase path (read from project.json).
-            // Each rule is a separate argument.
-            var workspaceRoot = Path.GetFullPath(Path.Combine(workingDir, "..", ".."));
-            var workspaceGlob = ToGlob(workspaceRoot);
-
-            psi.ArgumentList.Add("--allowedTools");
-            psi.ArgumentList.Add($"Read(*)");
-            psi.ArgumentList.Add($"Write({workspaceGlob})");
-            psi.ArgumentList.Add($"Edit({workspaceGlob})");
-
-            // If the project has a codebase path configured, grant read/write there too
-            // and add it as an extra context directory so its CLAUDE.md (if any) is loaded.
-            var codebasePath = ReadCodebasePath(workspaceRoot);
-            if (!string.IsNullOrEmpty(codebasePath))
-            {
-                var codebaseGlob = ToGlob(codebasePath);
-                psi.ArgumentList.Add($"Write({codebaseGlob})");
-                psi.ArgumentList.Add($"Edit({codebaseGlob})");
-                psi.ArgumentList.Add("--add-dir");
-                psi.ArgumentList.Add(codebasePath);
-            }
-
-            psi.ArgumentList.Add("Bash(git log *)");
-            psi.ArgumentList.Add("Bash(git diff *)");
-            psi.ArgumentList.Add("Bash(git add *)");
-            psi.ArgumentList.Add("Bash(git commit *)");
-            psi.ArgumentList.Add("Bash(git status)");
+            psi.ArgumentList.Add("--add-dir");
+            psi.ArgumentList.Add(codebasePath);
         }
 
         return psi;
     }
-
-    private static string ToGlob(string path) =>
-        Path.GetFullPath(path).Replace('\\', '/').TrimEnd('/') + "/**";
 
     private static string? ReadCodebasePath(string workspaceRoot)
     {

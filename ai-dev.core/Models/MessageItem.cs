@@ -13,4 +13,5 @@ public class MessageItem
     public string Body { get; set; } = string.Empty;
     public bool IsProcessed { get; set; }
     public TaskId? TaskId { get; set; }
+    public string? Playbook { get; set; }
 }

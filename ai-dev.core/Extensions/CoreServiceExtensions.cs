@@ -5,6 +5,7 @@ using AiDev.Features.Decision;
 using AiDev.Features.Digest;
 using AiDev.Features.Journal;
 using AiDev.Features.KnowledgeBase;
+using AiDev.Features.Playbook;
 using AiDev.Features.Workspace;
 using AiDev.Services;
 
@@ -31,6 +32,7 @@ public static class CoreServiceExtensions
         services.AddSingleton<DecisionsService>();
         services.AddSingleton<JournalsService>();
         services.AddSingleton<KbService>();
+        services.AddSingleton<PlaybookService>();
         services.AddSingleton<DigestService>();
         services.AddSingleton<GitService>();
         services.AddHttpClient("ollama", client => client.Timeout = TimeSpan.FromMinutes(10));

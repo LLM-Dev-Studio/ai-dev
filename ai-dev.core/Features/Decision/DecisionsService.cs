@@ -29,6 +29,11 @@ public class DecisionsService(WorkspacePaths paths)
 
             var pendingDir = paths.DecisionsPendingDir(projectSlug);
             Directory.CreateDirectory(pendingDir);
+
+            // Skip if a pending decision with the same subject already exists
+            if (Directory.GetFiles(pendingDir, $"*-{slug}.md").Length > 0)
+                return null;
+
             File.WriteAllText(Path.Combine(pendingDir, filename),
                 FrontmatterParser.Stringify(fields, body));
             return null;

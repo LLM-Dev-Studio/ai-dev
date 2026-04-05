@@ -1,5 +1,6 @@
 using AiDev.Executors;
 using AiDev.Features.KnowledgeBase;
+using AiDev.Features.Playbook;
 using AiDev.Models;
 using AiDev.Services;
 
@@ -15,6 +16,7 @@ public class AgentRunnerService(
     IEnumerable<IAgentExecutor> executors,
     MessageChangedNotifier messageNotifier,
     KbService kbService,
+    PlaybookService playbookService,
     ILogger<AgentRunnerService> logger)
 {
 
@@ -183,14 +185,31 @@ public class AgentRunnerService(
             }
         });
 
-        // Build prompt: inject matching KB articles before the standard instruction.
+        // Build prompt: optionally inject a playbook (specified in message frontmatter),
+        // then any matching KB articles, before the standard instruction.
         var effectivePrompt = AgentPrompt;
         var inboxText = ReadInboxText(inboxDir, inboxSnapshot);
+
         var kbContext = kbService.BuildInjectionContext(projectSlug, inboxText);
         if (!string.IsNullOrEmpty(kbContext))
         {
-            effectivePrompt = kbContext + "\n\n---\n\n" + AgentPrompt;
+            effectivePrompt = kbContext + "\n\n---\n\n" + effectivePrompt;
             logger.LogInformation("[runner] Injected KB context into prompt for {Key}", key);
+        }
+
+        var playbookSlug = ExtractPlaybookSlug(inboxDir, inboxSnapshot);
+        if (playbookSlug != null)
+        {
+            var playbookContext = playbookService.GetInjectionContext(projectSlug, playbookSlug);
+            if (!string.IsNullOrEmpty(playbookContext))
+            {
+                effectivePrompt = playbookContext + "\n\n---\n\n" + effectivePrompt;
+                logger.LogInformation("[runner] Injected playbook '{Slug}' into prompt for {Key}", playbookSlug, key);
+            }
+            else
+            {
+                logger.LogWarning("[runner] Playbook '{Slug}' specified in inbox message not found for {Key}", playbookSlug, key);
+            }
         }
 
         try
@@ -368,6 +387,28 @@ public class AgentRunnerService(
         {
             logger.LogWarning(ex, "[runner] Failed to archive inbox");
         }
+    }
+
+    /// <summary>
+    /// Scans inbox messages for a <c>playbook:</c> frontmatter field and returns the
+    /// first non-empty slug found, or <c>null</c> if no message specifies a playbook.
+    /// </summary>
+    private static string? ExtractPlaybookSlug(string inboxDir, string[] snapshot)
+    {
+        foreach (var filename in snapshot)
+        {
+            try
+            {
+                var path = Path.Combine(inboxDir, filename);
+                if (!File.Exists(path)) continue;
+                var content = File.ReadAllText(path);
+                var (fields, _) = FrontmatterParser.Parse(content);
+                if (fields.TryGetValue("playbook", out var slug) && !string.IsNullOrWhiteSpace(slug))
+                    return slug.Trim();
+            }
+            catch { /* ignore unreadable files */ }
+        }
+        return null;
     }
 
     /// <summary>

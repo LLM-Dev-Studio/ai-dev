@@ -33,6 +33,8 @@ public record BoardFile(string Value) : FilePath(Value);
 public record DecisionsPendingDir(string Value) : DirPath(Value);
 public record DecisionsResolvedDir(string Value) : DirPath(Value);
 public record KbDir(string Value) : DirPath(Value);
+public record PlaybooksDir(string Value) : DirPath(Value);
+public record PlaybookFile(string Value) : FilePath(Value);
 
 public record AgentDir(string Value) : DirPath(Value);
 public record AgentJsonFile(string Value) : FilePath(Value);
@@ -45,6 +47,7 @@ public record AgentTranscriptsDir(string Value) : DirPath(Value);
 
 public record TranscriptFile(string Value) : FilePath(Value);
 public record KbArticleFile(string Value) : FilePath(Value);
+public record PlaybookArticleFile(string Value) : FilePath(Value);
 public record TemplateFile(string Value) : FilePath(Value);
 
 /// <summary>
@@ -80,6 +83,7 @@ public class WorkspacePaths
     public DecisionsPendingDir DecisionsPendingDir(ProjectSlug p) => ProjectDir(p).DecisionsPendingDir();
     public DecisionsResolvedDir DecisionsResolvedDir(ProjectSlug p) => ProjectDir(p).DecisionsResolvedDir();
     public KbDir KbDir(ProjectSlug p) => ProjectDir(p).KbDir();
+    public PlaybooksDir PlaybooksDir(ProjectSlug p) => ProjectDir(p).PlaybooksDir();
 
     public AgentDir AgentDir(ProjectSlug p, AgentSlug a) => AgentsDir(p).AgentDir(a);
     public AgentJsonFile AgentJsonPath(ProjectSlug p, AgentSlug a) => AgentDir(p, a).AgentJsonFile();
@@ -92,5 +96,6 @@ public class WorkspacePaths
 
     public TranscriptFile TranscriptPath(ProjectSlug p, AgentSlug a, TranscriptDate date) => AgentTranscriptsDir(p, a).TranscriptFile(date);
     public KbArticleFile? SafeKbArticlePath(ProjectSlug p, string slug) => KbDir(p).SafeKbArticleFile(slug);
+    public PlaybookArticleFile? SafePlaybookPath(ProjectSlug p, string slug) => PlaybooksDir(p).SafePlaybookFile(slug);
     public TemplateFile? SafeTemplatePath(string slug, string extension) => AgentTemplatesDir.SafeTemplateFile(slug, extension);
 }
