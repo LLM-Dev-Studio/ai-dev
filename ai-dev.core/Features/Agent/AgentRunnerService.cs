@@ -7,8 +7,9 @@ using AiDev.Services;
 namespace AiDev.Features.Agent;
 
 /// <summary>
-/// Manages launching and stopping Claude CLI processes for agents.
-/// Each agent runs in its own directory with its CLAUDE.md as context.
+/// Manages launching and stopping agent sessions.
+/// Selects the appropriate IAgentExecutor, builds the ExecutorContext (prompt, skills, model),
+/// streams output to a transcript file, and handles inbox archiving and rate-limit suppression.
 /// </summary>
 public class AgentRunnerService(
     WorkspacePaths paths,
@@ -19,7 +20,6 @@ public class AgentRunnerService(
     PlaybookService playbookService,
     ILogger<AgentRunnerService> logger)
 {
-
     private static readonly ActivitySource ActivitySource = new("AiDevNet.AgentRunner");
     private readonly Dictionary<string, IAgentExecutor> _executors =
         executors.GroupBy(e => e.Name).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
@@ -35,9 +35,10 @@ public class AgentRunnerService(
         public CancellationTokenSource Cts { get; } = cts;
     }
 
-    private readonly ConcurrentDictionary<string, SessionInfo> _sessions = new();
+    // Holds config loaded from agent.json that is needed across the session lifecycle.
+    private sealed record AgentConfig(string ModelAlias, string ExecutorName, IReadOnlyList<string> Skills);
 
-    // Per-agent rate-limit suppression: maps session key → UTC time after which launches are allowed again.
+    private readonly ConcurrentDictionary<string, SessionInfo> _sessions = new();
     private readonly ConcurrentDictionary<string, DateTime> _rateLimitedUntil = new();
 
     private static string Key(ProjectSlug project, AgentSlug agent) => $"{project.Value}/{agent.Value}";
@@ -92,7 +93,6 @@ public class AgentRunnerService(
         if (!_sessions.TryAdd(key, info))
             return false; // race condition — another caller won
 
-        // Start an OTEL activity for agent launch
         using var activity = ActivitySource.StartActivity("Agent.Launch", ActivityKind.Server);
         activity?.SetTag("agent.project", projectSlug);
         activity?.SetTag("agent.slug", agentSlug);
@@ -122,10 +122,10 @@ public class AgentRunnerService(
         activity?.SetTag("agent.project", projectSlug);
         activity?.SetTag("agent.slug", agentSlug);
         activity?.SetTag("agent.sessionStartedAt", startedAt.ToString("o"));
+
         var agentDir = paths.AgentDir(projectSlug, agentSlug);
         var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
 
-        // Snapshot inbox files present at launch so we can archive them on exit
         var inboxSnapshot = Array.Empty<string>();
         if (Directory.Exists(inboxDir))
         {
@@ -133,14 +133,10 @@ public class AgentRunnerService(
             catch { /* ignore */ }
         }
 
-        // Resolve model alias → full model ID
-        var agentInfo = LoadAgentJson(agentDir);
-        var modelAlias = agentInfo?.GetValueOrDefault("model")?.ToString() ?? "sonnet";
-        var modelId = settings.GetSettings().Models.GetValueOrDefault(modelAlias, modelAlias);
-
-        // Resolve executor
-        var executorName = agentInfo?.GetValueOrDefault("executor")?.ToString();
-        if (string.IsNullOrWhiteSpace(executorName)) executorName = IAgentExecutor.Default;
+        // Load agent config and resolve model alias + executor
+        var agentConfig = LoadAgentConfig(agentDir);
+        var modelId = settings.GetSettings().Models.GetValueOrDefault(agentConfig.ModelAlias, agentConfig.ModelAlias);
+        var executorName = agentConfig.ExecutorName;
         activity?.SetTag("agent.executor", executorName);
 
         if (!_executors.TryGetValue(executorName, out var resolvedExecutor))
@@ -152,7 +148,6 @@ public class AgentRunnerService(
             return;
         }
 
-        // Update agent.json: status = running
         await UpdateAgentStatusAsync(agentDir, new()
         {
             ["status"] = "running",
@@ -160,15 +155,11 @@ public class AgentRunnerService(
             ["sessionStartedAt"] = startedAt.ToString("o"),
         });
 
-        var exitCode = 0;
-
-        // Channel decouples executor output from the async transcript writer.
-        // The consumer task owns the StreamWriter entirely — no transcript reference leaks into
-        // the outer scope or across a Task.Run boundary.
         var transcriptDir = paths.AgentTranscriptsDir(projectSlug, agentSlug);
         Directory.CreateDirectory(transcriptDir);
         var transcriptDate = TranscriptDate.From(startedAt);
         var transcriptPath = paths.TranscriptPath(projectSlug, agentSlug, transcriptDate).Value;
+
         var outputChannel = Channel.CreateUnbounded<string>(new() { SingleReader = true });
         var consumerTask = Task.Run(async () =>
         {
@@ -185,8 +176,7 @@ public class AgentRunnerService(
             }
         });
 
-        // Build prompt: optionally inject a playbook (specified in message frontmatter),
-        // then any matching KB articles, before the standard instruction.
+        // Build prompt: inject playbook and KB articles before the standard instruction.
         var effectivePrompt = AgentPrompt;
         var inboxText = ReadInboxText(inboxDir, inboxSnapshot);
 
@@ -212,21 +202,32 @@ public class AgentRunnerService(
             }
         }
 
+        var exitCode = 0;
+        var isRateLimited = false;
+
+        var context = new ExecutorContext(
+            WorkingDir: agentDir,
+            ModelId: modelId,
+            Prompt: effectivePrompt,
+            EnabledSkills: agentConfig.Skills,
+            ReportPid: pid =>
+            {
+                info.Pid = pid;
+                _ = UpdateAgentStatusAsync(agentDir, new() { ["pid"] = pid });
+                logger.LogInformation("[runner] Launched {Key} PID={Pid}", key, pid);
+                activity?.SetTag("agent.pid", pid);
+                activity?.AddEvent(new("process.started"));
+            },
+            CancellationToken: info.Cts.Token);
+
         try
         {
-            exitCode = await resolvedExecutor.RunAsync(
-                agentDir, modelId, effectivePrompt, outputChannel.Writer,
-                pid =>
-                {
-                    info.Pid = pid;
-                    _ = UpdateAgentStatusAsync(agentDir, new() { ["pid"] = pid });
-                    logger.LogInformation("[runner] Launched {Key} PID={Pid}", key, pid);
-                    activity?.SetTag("agent.pid", pid);
-                    activity?.AddEvent(new("process.started"));
-                },
-                info.Cts.Token);
+            var result = await resolvedExecutor.RunAsync(context, outputChannel.Writer);
+            exitCode = result.ExitCode;
+            isRateLimited = result.IsRateLimited;
 
             activity?.SetTag("agent.exitCode", exitCode);
+            activity?.SetTag("agent.rateLimited", isRateLimited);
             activity?.AddEvent(new("process.exited"));
         }
         catch (OperationCanceledException)
@@ -249,12 +250,10 @@ public class AgentRunnerService(
         {
             var exitedAt = DateTime.UtcNow;
 
-            // Route footer through the channel so the consumer writes it in sequence,
-            // then complete and drain before any other cleanup touches the file.
             outputChannel.Writer.TryWrite(string.Empty);
             outputChannel.Writer.TryWrite($"## Session ended at {exitedAt:o} (exit code: {exitCode})");
             outputChannel.Writer.TryComplete();
-            await consumerTask; // StreamWriter is disposed inside here
+            await consumerTask;
 
             activity?.SetTag("agent.finishedAt", exitedAt.ToString("o"));
             activity?.AddEvent(new("session.finished"));
@@ -269,28 +268,21 @@ public class AgentRunnerService(
                 ["sessionStartedAt"] = null,
             });
 
-            // Detect a rate-limited session: transcript only contains the rate-limit message,
-            // session exited almost immediately. Don't archive the inbox (messages were never read)
-            // and suppress re-launches until the limit resets.
-            if (exitCode == 0 && SessionWasRateLimited(transcriptPath))
+            if (isRateLimited)
             {
                 var suppressUntil = DateTime.UtcNow.AddMinutes(30);
                 _rateLimitedUntil[key] = suppressUntil;
                 logger.LogWarning(
                     "[runner] Agent {Key} hit a rate limit — inbox NOT archived, launches suppressed until {Until}",
                     key, suppressUntil);
-                activity?.SetTag("agent.rateLimited", true);
-                messageNotifier.Notify(projectSlug); // let the UI refresh status
+                messageNotifier.Notify(projectSlug);
             }
             else
             {
-                _rateLimitedUntil.TryRemove(key, out _); // clear any prior rate-limit state on successful run
+                _rateLimitedUntil.TryRemove(key, out _);
                 ArchiveInbox(inboxDir, inboxSnapshot);
                 if (inboxSnapshot.Length > 0) messageNotifier.Notify(projectSlug);
 
-                // Messages can arrive in the inbox while the session is running and the
-                // FileSystemWatcher skips them (agent already running). Check after archiving
-                // so we only count messages that arrived AFTER the session snapshot was taken.
                 var pendingAfterSession = Directory.Exists(inboxDir)
                     ? Directory.GetFiles(inboxDir, "*.md")
                         .Count(f => !f.Contains(
@@ -311,18 +303,31 @@ public class AgentRunnerService(
         }
     }
 
-    private static Dictionary<string, object?>? LoadAgentJson(string agentDir)
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    private static AgentConfig LoadAgentConfig(string agentDir)
     {
         var path = Path.Combine(agentDir, "agent.json");
-        if (!File.Exists(path)) return null;
+        if (!File.Exists(path)) return new(ModelAlias: "sonnet", ExecutorName: IAgentExecutor.Default, Skills: []);
         try
         {
             var raw = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(raw,
-                JsonDefaults.Read)
-                ?.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
+            var doc = System.Text.Json.JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+
+            var model = root.TryGetProperty("model", out var m) ? m.GetString() ?? "sonnet" : "sonnet";
+            var executor = root.TryGetProperty("executor", out var e) ? e.GetString() ?? IAgentExecutor.Default : IAgentExecutor.Default;
+            if (string.IsNullOrWhiteSpace(executor)) executor = IAgentExecutor.Default;
+
+            List<string> skills = [];
+            if (root.TryGetProperty("skills", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.Array)
+                skills = s.EnumerateArray().Select(x => x.GetString() ?? string.Empty).Where(x => x.Length > 0).ToList();
+
+            return new(ModelAlias: model, ExecutorName: executor, Skills: skills);
         }
-        catch { return null; }
+        catch { return new(ModelAlias: "sonnet", ExecutorName: IAgentExecutor.Default, Skills: []); }
     }
 
     private static async Task UpdateAgentStatusAsync(string agentDir, Dictionary<string, object?> updates)
@@ -331,10 +336,8 @@ public class AgentRunnerService(
         try
         {
             var existing = File.Exists(path)
-                ? JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
-                    await File.ReadAllTextAsync(path),
-                    JsonDefaults.Read)
-                  ?? []
+                ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(
+                    await File.ReadAllTextAsync(path), JsonDefaults.Read) ?? []
                 : [];
 
             var merged = existing.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
@@ -344,28 +347,9 @@ public class AgentRunnerService(
                 else merged[k] = v;
             }
 
-            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(merged,
-                JsonDefaults.Write));
+            await File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(merged, JsonDefaults.Write));
         }
         catch { /* don't crash session if status write fails */ }
-    }
-
-    /// <summary>
-    /// Reads the session transcript and returns true if the session ended immediately
-    /// due to a rate limit (no real work was performed and the inbox should NOT be archived).
-    /// </summary>
-    private static bool SessionWasRateLimited(string transcriptPath)
-    {
-        try
-        {
-            var text = File.ReadAllText(transcriptPath);
-            // Claude CLI prints one of these and exits immediately when rate-limited.
-            return text.Contains("hit your limit", StringComparison.OrdinalIgnoreCase)
-                || text.Contains("rate limit", StringComparison.OrdinalIgnoreCase)
-                || text.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase)
-                || text.Contains("RateLimitError", StringComparison.OrdinalIgnoreCase);
-        }
-        catch { return false; }
     }
 
     private void ArchiveInbox(string inboxDir, string[] snapshot)
@@ -389,10 +373,6 @@ public class AgentRunnerService(
         }
     }
 
-    /// <summary>
-    /// Scans inbox messages for a <c>playbook:</c> frontmatter field and returns the
-    /// first non-empty slug found, or <c>null</c> if no message specifies a playbook.
-    /// </summary>
     private static string? ExtractPlaybookSlug(string inboxDir, string[] snapshot)
     {
         foreach (var filename in snapshot)
@@ -411,10 +391,6 @@ public class AgentRunnerService(
         return null;
     }
 
-    /// <summary>
-    /// Reads the content of pending inbox files so trigger matching can compare
-    /// KB article triggers against the actual task text.
-    /// </summary>
     private static string ReadInboxText(string inboxDir, string[] snapshot)
     {
         if (snapshot.Length == 0) return string.Empty;
@@ -424,8 +400,7 @@ public class AgentRunnerService(
             try
             {
                 var path = Path.Combine(inboxDir, filename);
-                if (File.Exists(path))
-                    sb.AppendLine(File.ReadAllText(path));
+                if (File.Exists(path)) sb.AppendLine(File.ReadAllText(path));
             }
             catch { /* ignore unreadable files */ }
         }

@@ -1,3 +1,5 @@
+using AiDev.Extensions;
+
 namespace AiDev.Ui.Web.Extensions;
 
 public static class ProgramExtensions
@@ -11,12 +13,8 @@ public static class ProgramExtensions
             new(sp.GetRequiredService<IWebHostEnvironment>().RootDir()));
 
         services.AddAiDevCore();
-
-        // Opt ollama clients out of the global Polly resilience pipeline.
-        // The inference client has a 10-minute timeout — retrying it would be catastrophic.
-        // The health probe client should fail fast on each poll cycle, not retry.
-        services.AddHttpClient("ollama");
-        services.AddHttpClient("ollama-health");
+        services.AddClaudeExecutor();
+        services.AddOllamaExecutor();
 
         return services;
     }

@@ -22,7 +22,7 @@ public class OverwatchService(
     BoardService boardService,
     AgentRunnerService runner,
     AgentService agentService,
-    OllamaHealthService ollamaHealth,
+    ExecutorHealthMonitor executorHealth,
     DecisionsService decisionsService,
     ILogger<OverwatchService> logger)
     : IHostedService, IDisposable
@@ -183,15 +183,17 @@ public class OverwatchService(
             return "skip-agent-running";
         }
 
-        // If the agent requires Local AI and the server is offline, warn the human rather
-        // than nudging — the agent would fail immediately on launch anyway.
+        // If the agent's executor is unhealthy, warn the human rather than nudging —
+        // the agent would fail immediately on launch anyway.
         var agentInfo = agentService.LoadAgent(projectSlug, assigneeSlug);
-        if (agentInfo?.Executor == "ollama" && ollamaHealth.Status == OllamaHealthStatus.Unreachable)
+        var executorName = agentInfo?.Executor ?? IAgentExecutor.Default;
+        var health = executorHealth.GetHealth(executorName);
+        if (!health.IsHealthy)
         {
             logger.LogWarning(
-                "[overwatch] Agent {Agent} requires Local AI but server is offline — raising decision for \"{Title}\"",
-                assigneeSlug, task.Title);
-            return RaiseLocalAiOfflineDecision(projectSlug, task, assigneeSlug);
+                "[overwatch] Executor '{Executor}' for agent {Agent} is unhealthy — raising decision for \"{Title}\"",
+                executorName, assigneeSlug, task.Title);
+            return RaiseExecutorOfflineDecision(projectSlug, task, assigneeSlug, executorName, health.Message);
         }
 
         var ageStr = FormatAge(age);
@@ -258,37 +260,40 @@ public class OverwatchService(
         return "decision-raised";
     }
 
-    private string RaiseLocalAiOfflineDecision(ProjectSlug projectSlug, BoardTask task, AgentSlug agentSlug)
+    private string RaiseExecutorOfflineDecision(ProjectSlug projectSlug, BoardTask task,
+        AgentSlug agentSlug, string executorName, string healthMessage)
     {
         var body = $"""
-            Agent **{agentSlug}** requires Local AI (Ollama) to run, but the local AI server is currently offline.
+            Agent **{agentSlug}** uses the **{executorName}** executor, which is currently unavailable.
 
-            Task **"{task.Title}"** cannot be progressed until the local AI server is back online.
+            Task **"{task.Title}"** cannot be progressed until the executor is healthy again.
 
             **Task ID:** {task.Id}
             **Priority:** {task.Priority}
+            **Executor:** {executorName}
+            **Health status:** {healthMessage}
 
-            Please start the local AI server, or reassign this task to an agent that does not require it.
+            Please investigate the executor, or reassign this task to an agent with a working executor.
             """;
 
         var err = decisionsService.CreateDecision(
             projectSlug,
             from: "overwatch",
-            subject: $"Local AI offline — {agentSlug} cannot process \"{task.Title}\"",
+            subject: $"Executor offline — {agentSlug} ({executorName}) cannot process \"{task.Title}\"",
             priority: task.Priority is "critical" or "high" ? task.Priority : "high",
             blocks: task.Id,
             body: body);
 
         if (err != null)
         {
-            logger.LogError("[overwatch] Failed to raise Local AI offline decision for \"{Title}\": {Error}",
+            logger.LogError("[overwatch] Failed to raise executor offline decision for \"{Title}\": {Error}",
                 task.Title, err);
             return "decision-failed";
         }
 
         logger.LogInformation(
-            "[overwatch] Raised Local AI offline decision for agent {Agent}, task \"{Title}\"",
-            agentSlug, task.Title);
+            "[overwatch] Raised executor offline decision for agent {Agent} ({Executor}), task \"{Title}\"",
+            agentSlug, executorName, task.Title);
         boardService.SetTaskNudged(projectSlug, task.Id);
         return "decision-raised";
     }

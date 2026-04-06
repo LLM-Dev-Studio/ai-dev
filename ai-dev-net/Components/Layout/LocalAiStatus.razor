@@ -1,51 +1,53 @@
+@using AiDev.Executors
 @using AiDev.Services
 @implements IDisposable
-@inject OllamaHealthService OllamaHealthService
+@inject ExecutorHealthMonitor ExecutorHealthMonitor
 
-<div class="px-3 py-2 flex items-center gap-2 text-xs text-muted-foreground" title="@Tooltip">
-    <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 @DotClass"></span>
-    <span>Local AI</span>
-    <span class="ml-auto @LabelClass">@Label</span>
-</div>
+@foreach (var (executor, health) in ExecutorHealthMonitor.GetExecutorHealth())
+{
+    <div class="px-3 py-2 flex items-center gap-2 text-xs text-muted-foreground"
+         title="@Tooltip(health)">
+        <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 @DotClass(health)"></span>
+        <span>@executor.DisplayName</span>
+        <span class="ml-auto @LabelClass(health)">@Label(health)</span>
+    </div>
+}
+
+@if (!ExecutorHealthMonitor.GetExecutorHealth().Any())
+{
+    <div class="px-3 py-2 text-xs text-muted-foreground">No executors registered</div>
+}
 
 @code {
     protected override void OnInitialized()
     {
-        OllamaHealthService.Changed += OnChanged;
+        ExecutorHealthMonitor.Changed += OnChanged;
     }
 
-    private void OnChanged()
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private static string DotClass(ExecutorHealthResult health) => health.IsHealthy
+        ? "bg-emerald-400"
+        : "bg-red-400";
+
+    private static string Label(ExecutorHealthResult health) => health.IsHealthy
+        ? "Online"
+        : "Offline";
+
+    private static string LabelClass(ExecutorHealthResult health) => health.IsHealthy
+        ? "text-emerald-400"
+        : "text-red-400";
+
+    private string Tooltip(ExecutorHealthResult health)
     {
-        InvokeAsync(StateHasChanged);
+        var checkedAt = ExecutorHealthMonitor.LastChecked is { } t
+            ? $" · checked {t.ToLocalTime():HH:mm:ss}"
+            : string.Empty;
+        return $"{health.Message}{checkedAt}";
     }
-
-    private string DotClass => OllamaHealthService.Status switch
-    {
-        OllamaHealthStatus.Connected    => "bg-emerald-400",
-        OllamaHealthStatus.Unreachable  => "bg-red-400",
-        _                               => "bg-zinc-500",
-    };
-
-    private string Label => OllamaHealthService.Status switch
-    {
-        OllamaHealthStatus.Connected    => "Online",
-        OllamaHealthStatus.Unreachable  => "Offline",
-        _                               => "Checking…",
-    };
-
-    private string LabelClass => OllamaHealthService.Status switch
-    {
-        OllamaHealthStatus.Connected    => "text-emerald-400",
-        OllamaHealthStatus.Unreachable  => "text-red-400",
-        _                               => "",
-    };
-
-    private string Tooltip => OllamaHealthService.LastChecked is { } t
-        ? $"Last checked {t.ToLocalTime():HH:mm:ss}"
-        : "Checking…";
 
     public void Dispose()
     {
-        OllamaHealthService.Changed -= OnChanged;
+        ExecutorHealthMonitor.Changed -= OnChanged;
     }
 }

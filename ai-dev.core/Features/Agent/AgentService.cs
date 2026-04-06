@@ -13,6 +13,7 @@ file class AgentJson
     public string? Description { get; init; }
     public string? LastRunAt { get; init; }
     public string? Executor { get; init; }
+    public string[]? Skills { get; init; }
 }
 
 public class AgentService(WorkspacePaths paths, StudioSettingsService settings, AgentTemplatesService templates)
@@ -55,12 +56,14 @@ public class AgentService(WorkspacePaths paths, StudioSettingsService settings, 
                 LastRunAt = DateTime.TryParse(data.LastRunAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastRun) ? lastRun : null,
                 InboxCount = inboxCount,
                 Executor = string.IsNullOrWhiteSpace(data.Executor) ? IAgentExecutor.Default : data.Executor,
+                Skills = data.Skills ?? [],
             };
         }
         catch { return null; }
     }
 
-    public string? SaveAgentMeta(ProjectSlug projectSlug, AgentSlug agentSlug, string name, string description, string model, string executor)
+    public string? SaveAgentMeta(ProjectSlug projectSlug, AgentSlug agentSlug, string name, string description,
+        string model, string executor, IReadOnlyList<string>? skills = null)
     {
         try { _ = paths.AgentDir(projectSlug, agentSlug); }
         catch (ArgumentException) { return "Invalid agent slug."; }
@@ -77,6 +80,10 @@ public class AgentService(WorkspacePaths paths, StudioSettingsService settings, 
             updated["description"] = description;
             updated["model"] = model;
             updated["executor"] = executor;
+            if (skills != null)
+                updated["skills"] = skills;
+            else
+                updated.Remove("skills"); // absent = use executor defaults
             File.WriteAllText(jsonPath, JsonSerializer.Serialize(updated, JsonDefaults.Write));
             return null;
         }

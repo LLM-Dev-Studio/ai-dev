@@ -4,7 +4,7 @@
 @inject MessagesService MessagesService
 @inject AgentRunnerService RunnerService
 @inject NavigationManager NavigationManager
-@inject OllamaHealthService OllamaHealth
+@inject ExecutorHealthMonitor ExecutorHealthMonitor
 @using AiDev.Executors
 @using AiDev.Features.Agent
 @using AiDev.Models
@@ -93,7 +93,7 @@ else
                                 Cloud (Claude)
                             </button>
                             <button @onclick='() => SetExecutor("ollama")'
-                                    disabled="@(OllamaHealth.Status != OllamaHealthStatus.Connected)"
+                                    disabled="@(!ExecutorHealthMonitor.GetHealth("ollama").IsHealthy)"
                                     class="flex-1 px-3 py-1.5 rounded-md border text-xs transition-colors @(editExecutor == "ollama" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent/50") disabled:opacity-40 disabled:cursor-not-allowed">
                                 Local (Ollama)
                             </button>
@@ -103,12 +103,13 @@ else
                         <label class="block text-xs text-muted-foreground mb-1">Model</label>
                         @if (editExecutor == "ollama")
                         {
-                            @if (OllamaHealth.Models.Count > 0)
+                            var ollamaModels = ExecutorHealthMonitor.GetHealth("ollama").Details ?? [];
+                            @if (ollamaModels.Count > 0)
                             {
                                 <select value="@editModel"
                                         @onchange="e => editModel = e.Value?.ToString() ?? string.Empty"
                                         class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-                                    @foreach (var m in OllamaHealth.Models)
+                                    @foreach (var m in ollamaModels)
                                     {
                                         <option value="@m" selected="@(m == editModel)">@m</option>
                                     }
@@ -311,7 +312,10 @@ else
         editExecutor = executor;
         // Reset model to a sensible default when switching executor
         if (executor == "ollama")
-            editModel = OllamaHealth.Models.Count > 0 ? OllamaHealth.Models[0] : string.Empty;
+        {
+            var ollamaModels = ExecutorHealthMonitor.GetHealth("ollama").Details ?? [];
+            editModel = ollamaModels.Count > 0 ? ollamaModels[0] : string.Empty;
+        }
         else
             editModel = modelAliases.Count > 0 ? modelAliases[0] : string.Empty;
     }

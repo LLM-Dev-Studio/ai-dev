@@ -13,4 +13,10 @@ public class AgentInfo
     public DateTime? LastRunAt { get; set; }
     public int InboxCount { get; set; }
     public string Executor { get; set; } = IAgentExecutor.Default;
+
+    /// <summary>
+    /// Skill keys enabled for this agent (e.g. ["git-read", "git-write"]).
+    /// Empty means the executor uses its own defaults (preserves behaviour for existing agents).
+    /// </summary>
+    public IReadOnlyList<string> Skills { get; set; } = [];
 }

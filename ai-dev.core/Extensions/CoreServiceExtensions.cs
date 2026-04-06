@@ -1,4 +1,3 @@
-using AiDev.Executors;
 using AiDev.Features.Agent;
 using AiDev.Features.Board;
 using AiDev.Features.Decision;
@@ -15,6 +14,11 @@ namespace AiDev.Extensions;
 
 public static class CoreServiceExtensions
 {
+    /// <summary>
+    /// Registers all ai-dev.core services. Executor implementations (Claude, Ollama, etc.)
+    /// are registered separately via their own extension methods (AddClaudeExecutor, AddOllamaExecutor)
+    /// so each executor's dependencies stay in its own project.
+    /// </summary>
     public static IServiceCollection AddAiDevCore(this IServiceCollection services)
     {
         services.AddSingleton<WorkspaceService>();
@@ -35,18 +39,17 @@ public static class CoreServiceExtensions
         services.AddSingleton<PlaybookService>();
         services.AddSingleton<DigestService>();
         services.AddSingleton<GitService>();
-        services.AddHttpClient("ollama", client => client.Timeout = TimeSpan.FromMinutes(10));
-        services.AddHttpClient("ollama-health", client => client.Timeout = TimeSpan.FromSeconds(5));
         services.AddSingleton<PromptEnhancerService>();
-        services.AddSingleton<IAgentExecutor, ClaudeAgentExecutor>();
-        services.AddSingleton<IAgentExecutor, OllamaAgentExecutor>();
         services.AddSingleton<AgentRunnerService>();
-        services.AddSingleton<OllamaHealthService>();
+
+        // ExecutorHealthMonitor polls all registered IAgentExecutor implementations.
+        // Registered as both a singleton (so it can be injected by name) and a hosted service.
+        services.AddSingleton<ExecutorHealthMonitor>();
+        services.AddHostedService(sp => sp.GetRequiredService<ExecutorHealthMonitor>());
 
         services.AddHostedService<DispatcherService>();
         services.AddHostedService<OverwatchService>();
-        services.AddHostedService(sp => sp.GetRequiredService<OllamaHealthService>());
-        
+
         return services;
     }
 }

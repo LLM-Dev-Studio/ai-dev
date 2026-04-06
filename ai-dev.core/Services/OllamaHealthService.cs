@@ -1,78 +1,74 @@
-using System.Net.Http.Json;
-using System.Text.Json;
+using AiDev.Executors;
 
 namespace AiDev.Services;
 
-public enum OllamaHealthStatus { Unknown, Connected, Unreachable }
-
 /// <summary>
-/// Background service that periodically checks whether the configured Ollama instance
-/// is reachable by calling GET /api/tags. Exposes the current status and fires
-/// <see cref="Changed"/> whenever the status transitions.
+/// Background service that polls every registered IAgentExecutor's CheckHealthAsync
+/// and caches the results. Replaces the previous Ollama-specific OllamaHealthService.
+///
+/// OverwatchService injects this to decide whether a stalled agent's executor is
+/// available before sending a nudge. The UI uses it to show executor health indicators.
 /// </summary>
-public class OllamaHealthService(
-    IHttpClientFactory httpClientFactory,
-    StudioSettingsService settingsService,
-    ILogger<OllamaHealthService> logger) : BackgroundService
+public class ExecutorHealthMonitor(
+    IEnumerable<IAgentExecutor> executors,
+    ILogger<ExecutorHealthMonitor> logger) : BackgroundService
 {
-    public OllamaHealthStatus Status { get; private set; } = OllamaHealthStatus.Unknown;
-    public DateTimeOffset? LastChecked { get; private set; }
-    public IReadOnlyList<string> Models { get; private set; } = [];
+    private readonly IReadOnlyList<IAgentExecutor> _executors = [.. executors];
+    private readonly ConcurrentDictionary<string, ExecutorHealthResult> _cache = new(StringComparer.Ordinal);
 
+    /// <summary>Fired after every poll cycle (not just on transitions) so the UI stays current.</summary>
     public event Action? Changed;
+
+    public DateTimeOffset? LastChecked { get; private set; }
+
+    /// <summary>Returns the cached health result for the named executor, or an "unknown" result if not yet polled.</summary>
+    public ExecutorHealthResult GetHealth(string executorName)
+        => _cache.TryGetValue(executorName, out var result)
+            ? result
+            : new ExecutorHealthResult(false, "Not yet checked");
+
+    /// <summary>Returns a snapshot of all cached health results keyed by executor name.</summary>
+    public IReadOnlyDictionary<string, ExecutorHealthResult> GetAllHealth()
+        => new Dictionary<string, ExecutorHealthResult>(_cache, StringComparer.Ordinal);
+
+    /// <summary>Returns all registered executors with their current health, for UI rendering.</summary>
+    public IReadOnlyList<(IAgentExecutor Executor, ExecutorHealthResult Health)> GetExecutorHealth()
+        => _executors
+            .Select(e => (e, GetHealth(e.Name)))
+            .ToList();
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        // Check immediately on startup, then every 30 seconds.
+        // Check immediately on startup so the UI has data before the first 30-second tick.
         while (!ct.IsCancellationRequested)
         {
-            await CheckAsync(ct).ConfigureAwait(false);
-            await Task.Delay(TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
+            await PollAllAsync(ct).ConfigureAwait(false);
+            try { await Task.Delay(TimeSpan.FromSeconds(30), ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { break; }
         }
     }
 
-    private async Task CheckAsync(CancellationToken ct)
+    private async Task PollAllAsync(CancellationToken ct)
     {
-        var baseUrl = settingsService.GetSettings().OllamaBaseUrl.TrimEnd('/');
-        var url = $"{baseUrl}/api/tags";
-
-        OllamaHealthStatus newStatus;
-        try
+        foreach (var executor in _executors)
         {
-            var http = httpClientFactory.CreateClient("ollama-health");
-            var response = await http.GetAsync(url, ct).ConfigureAwait(false);
-            if (response.IsSuccessStatusCode)
+            if (ct.IsCancellationRequested) break;
+            try
             {
-                newStatus = OllamaHealthStatus.Connected;
-                try
-                {
-                    var doc = await response.Content.ReadFromJsonAsync<JsonDocument>(ct).ConfigureAwait(false);
-                    Models = doc?.RootElement.GetProperty("models")
-                        .EnumerateArray()
-                        .Select(m => m.GetProperty("name").GetString() ?? string.Empty)
-                        .Where(n => n.Length > 0)
-                        .ToList() ?? [];
-                }
-                catch { Models = []; }
+                var result = await executor.CheckHealthAsync(ct).ConfigureAwait(false);
+                _cache[executor.Name] = result;
+                logger.LogDebug("[executor-health] {Executor}: healthy={Healthy} — {Message}",
+                    executor.Name, result.IsHealthy, result.Message);
             }
-            else
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex)
             {
-                newStatus = OllamaHealthStatus.Unreachable;
-                Models = [];
+                logger.LogDebug(ex, "[executor-health] Check failed for {Executor}", executor.Name);
+                _cache[executor.Name] = new ExecutorHealthResult(false, ex.Message);
             }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException or TaskCanceledException)
-        {
-            logger.LogDebug(ex, "[ollama-health] Probe failed: {Message}", ex.Message);
-            newStatus = OllamaHealthStatus.Unreachable;
-            Models = [];
         }
 
         LastChecked = DateTimeOffset.UtcNow;
-        var previous = Status;
-        Status = newStatus;
-
-        if (newStatus != previous)
-            Changed?.Invoke();
+        Changed?.Invoke();
     }
 }
