@@ -38,6 +38,7 @@
   </Folder>
   <Project Path="ai-dev-net.AppHost/ai-dev-net.AppHost.csproj" />
   <Project Path="ai-dev-net.ServiceDefaults/ai-dev-net.ServiceDefaults.csproj" />
+  <Project Path="ai-dev-net.tests.integration/ai-dev-net.tests.integration.csproj" />
   <Project Path="ai-dev-net.tests.unit/ai-dev-net.tests.unit.csproj" />
   <Project Path="ai-dev-net/ai-dev.ui.web.csproj" />
   <Project Path="ai-dev.core/ai-dev.core.csproj" Id="c5884869-1690-4cc5-b2d5-fba00997cf78" />

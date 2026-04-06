@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//m/PaperClip.ai/paperclip/**)",
+      "Read(//m/PaperClip.ai/**)",
+      "Bash(dotnet tool:*)",
+      "Read(//c/Users/Allan/.nuget/packages/xunit.v3.core/3.2.2/lib/**)",
+      "Read(//c/Users/Allan/.nuget/packages/**)",
+      "Bash(dotnet nuget:*)",
+      "Read(//m/.nuget/packages/**)",
+      "Bash(powershell -Command '[System.Reflection.Assembly]::LoadFile\\('\\\\''M:/.nuget/packages/xunit.v3.assert/3.2.2/lib/net8.0/xunit.v3.assert.dll'\\\\''\\).GetTypes\\(\\) | Where-Object { $_.Name -match '\\\\''Skip'\\\\'' } | Select-Object FullName')",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(\"m:/ai-dev-net/ai-dev-net.tests.integration/bin/Debug/net10.0/ai-dev-net.tests.integration.exe\" -notrait \"Category=Integration\")",
+      "Bash(taskkill /F /IM \"ai-dev-net.tests.integration.exe\")"
+    ]
+  }
+}
