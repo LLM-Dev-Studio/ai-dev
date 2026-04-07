@@ -61,4 +61,22 @@ public static class ClaudeSkills
             yield return "Bash(git commit *)";
         }
     }
+
+    /// <summary>
+    /// Translates resolved skill keys into --disallowedTools argument values for the Claude CLI.
+    /// Used to enforce the use of MCP tools by removing built-in alternatives.
+    /// </summary>
+    internal static IEnumerable<string> ToDisallowedTools(HashSet<string> skills)
+    {
+        if (skills.Contains("mcp-workspace"))
+        {
+            yield return "Read";
+            yield return "Write";
+            yield return "Edit";
+            yield return "Glob";
+            yield return "Grep";
+            yield return "NotebookRead";
+            yield return "NotebookEdit";
+        }
+    }
 }

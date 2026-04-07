@@ -18,8 +18,8 @@ namespace AiDev.Executors;
 /// and re-invokes the model — continuing until the model produces a final response
 /// with no further tool calls.
 ///
-/// Tool implementations live in <see cref="WorkspaceTools"/> and mirror the MCP
-/// server tools, called directly without the MCP protocol.
+/// Tool implementations live in <see cref="WorkspaceTools"/> and delegate directly
+/// to the MCP server implementation without the protocol overhead.
 /// </summary>
 public class OllamaAgentExecutor(
     IHttpClientFactory httpClientFactory,
