@@ -2,8 +2,8 @@ namespace AiDev.Features.Playbook;
 
 public class PlaybookItem
 {
-    public string Slug { get; set; } = string.Empty;
-    public string Title { get; set; } = string.Empty;
+    public required string Slug { get; set; }
+    public required string Title { get; set; }
     /// <summary>
     /// Optional macro shorthand from frontmatter (e.g. <c>!deploy-check</c>).
     /// </summary>

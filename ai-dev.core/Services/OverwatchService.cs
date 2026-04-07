@@ -105,7 +105,7 @@ public class OverwatchService(
             if (!taskColumn.TryGetValue(taskId, out var column)) continue;
 
             // Skip completed tasks
-            if (column.Id == "done" || task.CompletedAt != null) continue;
+                if (column.Id == ColumnId.Done || task.CompletedAt != null) continue;
 
             // How long in current column? Fall back to CreatedAt for legacy tasks without MovedAt.
             var sinceTime = task.MovedAt ?? task.CreatedAt;
@@ -211,7 +211,7 @@ public class OverwatchService(
             from: "overwatch",
             re: $"Stalled task: {task.Title}",
             type: "overwatch-nudge",
-            priority: task.Priority is "critical" or "high" ? task.Priority : "high",
+            priority: task.Priority.IsUrgent ? task.Priority.Value : Priority.High.Value,
             body: body,
             taskId: task.Id);
 
@@ -243,7 +243,7 @@ public class OverwatchService(
             projectSlug,
             from: "overwatch",
             subject: $"Unassigned stalled task: {task.Title}",
-            priority: task.Priority is "critical" or "high" ? task.Priority : "high",
+            priority: task.Priority.IsUrgent ? task.Priority.Value : Priority.High.Value,
             blocks: task.Id,
             body: body);
 
@@ -280,7 +280,7 @@ public class OverwatchService(
             projectSlug,
             from: "overwatch",
             subject: $"Executor offline — {agentSlug} ({executorName}) cannot process \"{task.Title}\"",
-            priority: task.Priority is "critical" or "high" ? task.Priority : "high",
+            priority: task.Priority.IsUrgent ? task.Priority.Value : Priority.High.Value,
             blocks: task.Id,
             body: body);
 

@@ -47,14 +47,12 @@ public class WorkspaceService(WorkspacePaths paths)
                     ? Directory.GetDirectories(agentsDir).Length
                     : 0;
 
-                projects.Add(new()
-                {
-                    Slug = entrySlug,
-                    Name = entry.Name,
-                    Description = description,
-                    CreatedAt = createdAt,
-                    AgentCount = agentCount,
-                });
+                projects.Add(new WorkspaceProject(
+                    slug: entrySlug,
+                    name: entry.Name,
+                    description: description,
+                    createdAt: createdAt,
+                    agentCount: agentCount));
             }
 
             return projects;

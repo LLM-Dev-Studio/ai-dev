@@ -64,9 +64,9 @@ else
                                             {
                                                 <span class="text-xs px-1.5 py-0.5 rounded border border-border text-muted-foreground flex-shrink-0">@msg.Type</span>
                                             }
-                                            @if (!msg.IsProcessed && msg.Priority is "high" or "critical")
+                                            @if (!msg.IsProcessed && msg.Priority.IsUrgent)
                                             {
-                                                <span class="text-xs flex-shrink-0 @PriorityColor(msg.Priority)">@msg.Priority</span>
+                                                <span class="text-xs flex-shrink-0 @PriorityColor(msg.Priority)">@msg.Priority.Value</span>
                                             }
                                         </div>
                                         <p class="text-xs text-muted-foreground mt-0.5">
@@ -179,10 +179,10 @@ else
     private static string RenderMarkdown(string markdown) =>
         Markdig.Markdown.ToHtml(markdown, Pipeline);
 
-    private static string PriorityColor(string priority) => priority switch
+    private static string PriorityColor(Priority priority) => priority switch
     {
-        "critical" => "text-red-400",
-        "high"     => "text-orange-400",
+        var value when value.IsCritical => "text-red-400",
+        var value when value.IsHigh     => "text-orange-400",
         _          => "text-muted-foreground",
     };
 

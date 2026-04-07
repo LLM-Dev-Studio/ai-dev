@@ -6,6 +6,7 @@
 @inject NavigationManager NavigationManager
 @using AiDev.Features.Agent
 @using AiDev.Features.Board
+@using AiDev.Models
 @using AiDev.Models.Types
 @using AiDev.Services
 @implements IDisposable
@@ -38,8 +39,9 @@
 else
 {
     <div class="flex gap-4 overflow-x-auto pb-4 mt-5">
-        @foreach (var col in _board.Columns)
+        @for (var colIdx = 0; colIdx < _board.Columns.Count; colIdx++)
         {
+            var col = _board.Columns[colIdx];
             <div class="flex-shrink-0 w-64 flex flex-col">
                 <div class="flex items-center justify-between mb-3">
                     <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">@col.Title</p>
@@ -51,7 +53,6 @@ else
                     {
                         @if (_board.Tasks.TryGetValue(taskId, out var task))
                         {
-                            var colIdx = _board.Columns.IndexOf(col);
                             var prevCol = colIdx > 0 ? _board.Columns[colIdx - 1] : null;
                             var nextCol = colIdx < _board.Columns.Count - 1 ? _board.Columns[colIdx + 1] : null;
 
@@ -59,7 +60,7 @@ else
                                 <button class="w-full text-left p-3 pr-7"
                                         @onclick="() => OpenEditTask(task, col.Id)">
                                     <div class="flex items-start gap-2">
-                                        <span class="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 @PriorityDot(task.Priority)"></span>
+                                        <span class="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 @PriorityDot(task.Priority.Value)"></span>
                                         <p class="text-sm text-foreground leading-snug">@task.Title</p>
                                     </div>
                                     @if (!string.IsNullOrEmpty(task.Assignee) || !string.IsNullOrEmpty(task.Description))
@@ -72,7 +73,7 @@ else
                                             @if (!string.IsNullOrEmpty(task.Assignee))
                                             {
                                                 <div class="flex items-center gap-1.5">
-                                                    <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium @PriorityBadge(task.Priority)">@task.Priority</span>
+                                                    <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium @PriorityBadge(task.Priority.Value)">@task.Priority.Value</span>
                                                     <span class="text-xs text-muted-foreground">@task.Assignee</span>
                                                 </div>
                                             }
@@ -283,7 +284,7 @@ else
 @code {
     [Parameter] public string Slug { get; set; } = string.Empty;
 
-    private BoardData? _board;
+    private Board? _board;
     private List<AgentInfo> _agents = [];
 
     // Action menu state
@@ -339,8 +340,11 @@ else
     private void QuickMove(TaskId taskId, string targetColumnId)
     {
         if (_board == null || !_board.Tasks.TryGetValue(taskId, out var task)) return;
-        BoardService.UpdateTask(Slug, taskId, targetColumnId,
-            task.Title, task.Description, task.Priority, task.Assignee);
+        var error = BoardService.UpdateTask(Slug, taskId, targetColumnId,
+            task.Title, task.Description, task.Priority.Value, task.Assignee)
+            .Match(_ => (string?)null, resultError => resultError.Message);
+        if (error != null) return;
+
         _board = BoardService.LoadBoard(Slug);
         _openMenuId = null;
         StateHasChanged();
@@ -352,7 +356,7 @@ else
         _editingTaskId = task.Id;
         _taskTitle = task.Title;
         _taskDescription = task.Description ?? string.Empty;
-        _taskPriority = task.Priority;
+        _taskPriority = task.Priority.Value;
         _taskColumnId = columnId;
         _taskAssignee = task.Assignee ?? string.Empty;
         _taskError = string.Empty;
@@ -402,12 +406,14 @@ else
         if (_editingTaskId == null)
         {
             err = BoardService.CreateTask(Slug, _taskColumnId, _taskTitle.Trim(),
-                _taskDescription, _taskPriority, _taskAssignee);
+                _taskDescription, _taskPriority, _taskAssignee)
+                .Match(_ => (string?)null, error => error.Message);
         }
         else
         {
             err = BoardService.UpdateTask(Slug, _editingTaskId, _taskColumnId, _taskTitle.Trim(),
-                _taskDescription, _taskPriority, _taskAssignee);
+                _taskDescription, _taskPriority, _taskAssignee)
+                .Match(_ => (string?)null, error => error.Message);
         }
 
         _saving = false;
@@ -420,25 +426,27 @@ else
     {
         if (_editingTaskId == null) return;
         _saving = true;
-        BoardService.DeleteTask(Slug, _editingTaskId);
+        var result = BoardService.DeleteTask(Slug, _editingTaskId);
         _saving = false;
+        _taskError = result.Match(_ => string.Empty, error => error.Message);
+        if (!string.IsNullOrEmpty(_taskError)) return;
         _board = BoardService.LoadBoard(Slug);
         CloseTaskDialog();
     }
 
-    private static string PriorityDot(string priority) => priority switch
+    private static string PriorityDot(string priority) => Priority.From(priority) switch
     {
-        "critical" => "bg-red-400",
-        "high"     => "bg-orange-400",
-        "normal"   => "bg-blue-400",
+        var p when p.IsCritical => "bg-red-400",
+        var p when p.IsHigh     => "bg-orange-400",
+        var p when p.IsNormal   => "bg-blue-400",
         _          => "bg-zinc-500",
     };
 
-    private static string PriorityBadge(string priority) => priority switch
+    private static string PriorityBadge(string priority) => Priority.From(priority) switch
     {
-        "critical" => "text-red-400 bg-red-400/10",
-        "high"     => "text-orange-400 bg-orange-400/10",
-        "normal"   => "text-blue-400 bg-blue-400/10",
+        var p when p.IsCritical => "text-red-400 bg-red-400/10",
+        var p when p.IsHigh     => "text-orange-400 bg-orange-400/10",
+        var p when p.IsNormal   => "text-blue-400 bg-blue-400/10",
         _          => "text-zinc-400 bg-zinc-400/10",
     };
 }

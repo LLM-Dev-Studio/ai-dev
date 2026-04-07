@@ -45,19 +45,17 @@ public class AgentService(WorkspacePaths paths, StudioSettingsService settings, 
             var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
             var inboxCount = inboxDir.Exists() ? Directory.GetFiles(inboxDir, "*.md").Length : 0;
 
-            return new()
-            {
-                Slug = data.Slug ?? agentSlug,
-                Name = data.Name ?? agentSlug,
-                Role = data.Role ?? string.Empty,
-                Model = data.Model ?? "sonnet",
-                Status = AgentStatus.From(data.Status),
-                Description = data.Description ?? string.Empty,
-                LastRunAt = DateTime.TryParse(data.LastRunAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastRun) ? lastRun : null,
-                InboxCount = inboxCount,
-                Executor = string.IsNullOrWhiteSpace(data.Executor) ? IAgentExecutor.Default : data.Executor,
-                Skills = data.Skills ?? [],
-            };
+            return new(
+                slug: data.Slug ?? agentSlug,
+                name: data.Name ?? agentSlug,
+                role: data.Role ?? string.Empty,
+                description: data.Description ?? string.Empty,
+                model: data.Model,
+                status: AgentStatus.From(data.Status),
+                lastRunAt: DateTime.TryParse(data.LastRunAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastRun) ? lastRun : null,
+                inboxCount: inboxCount,
+                executor: data.Executor,
+                skills: data.Skills ?? []);
         }
         catch { return null; }
     }

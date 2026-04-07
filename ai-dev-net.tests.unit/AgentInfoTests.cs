@@ -2,6 +2,12 @@ namespace AiDevNet.Tests.Unit;
 
 public class AgentInfoTests
 {
+    private static AgentInfo CreateInfo() => new(
+        slug: new AgentSlug("my-agent"),
+        name: "My Agent",
+        role: "Assistant",
+        description: "Handles agent workflows");
+
     // -------------------------------------------------------------------------
     // Defaults
     // -------------------------------------------------------------------------
@@ -9,13 +15,13 @@ public class AgentInfoTests
     [Fact]
     public void Defaults_AreCorrect()
     {
-        var info = new AgentInfo { Slug = new AgentSlug("my-agent") };
+        var info = CreateInfo();
 
-        info.Name.ShouldBe(string.Empty);
-        info.Role.ShouldBe(string.Empty);
+        info.Name.ShouldBe("My Agent");
+        info.Role.ShouldBe("Assistant");
         info.Model.ShouldBe("sonnet");
         info.Status.ShouldBe(AgentStatus.Idle);
-        info.Description.ShouldBe(string.Empty);
+        info.Description.ShouldBe("Handles agent workflows");
         info.LastRunAt.ShouldBeNull();
         info.InboxCount.ShouldBe(0);
         info.Executor.ShouldBe(IAgentExecutor.Default);
@@ -28,14 +34,16 @@ public class AgentInfoTests
     [Fact]
     public void Status_CanBeSetToRunning()
     {
-        var info = new AgentInfo { Slug = new AgentSlug("my-agent"), Status = AgentStatus.Running };
+        var info = CreateInfo();
+        info.MarkRunning(DateTime.UtcNow);
         info.Status.IsRunning.ShouldBeTrue();
     }
 
     [Fact]
     public void Status_CanBeSetToError()
     {
-        var info = new AgentInfo { Slug = new AgentSlug("my-agent"), Status = AgentStatus.Error };
+        var info = CreateInfo();
+        info.MarkError();
         info.Status.IsError.ShouldBeTrue();
     }
 
@@ -47,7 +55,8 @@ public class AgentInfoTests
     public void LastRunAt_WhenSet_ReturnsCorrectDateTime()
     {
         var now = DateTime.UtcNow;
-        var info = new AgentInfo { Slug = new AgentSlug("my-agent"), LastRunAt = now };
+        var info = CreateInfo();
+        info.MarkRunning(now);
         info.LastRunAt.ShouldBe(now);
     }
 
@@ -58,7 +67,8 @@ public class AgentInfoTests
     [Fact]
     public void InboxCount_ReflectsAssignedValue()
     {
-        var info = new AgentInfo { Slug = new AgentSlug("my-agent"), InboxCount = 5 };
+        var info = CreateInfo();
+        info.SetInboxCount(5);
         info.InboxCount.ShouldBe(5);
     }
 
@@ -69,7 +79,25 @@ public class AgentInfoTests
     [Fact]
     public void Executor_DefaultMatchesIAgentExecutorDefault()
     {
-        var info = new AgentInfo { Slug = new AgentSlug("my-agent") };
+        var info = CreateInfo();
         info.Executor.ShouldBe(IAgentExecutor.Default);
+    }
+
+    [Fact]
+    public void Constructor_WhenNameMissing_ThrowsArgumentException()
+    {
+        Should.Throw<ArgumentException>(() => new AgentInfo(
+            slug: new AgentSlug("my-agent"),
+            name: " ",
+            role: "Assistant",
+            description: "Handles agent workflows"));
+    }
+
+    [Fact]
+    public void SetInboxCount_WhenNegative_ThrowsArgumentOutOfRangeException()
+    {
+        var info = CreateInfo();
+
+        Should.Throw<ArgumentOutOfRangeException>(() => info.SetInboxCount(-1));
     }
 }

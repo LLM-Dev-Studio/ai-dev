@@ -2,7 +2,7 @@ using AiDev.Services;
 
 namespace AiDev.Features.Decision;
 
-public class DecisionsService(WorkspacePaths paths)
+public class DecisionsService(WorkspacePaths paths, ILogger<DecisionsService> logger)
 {
     private const string ResponseSeparator = "\n\n---\n\n## Human Response\n\n";
 
@@ -70,29 +70,39 @@ public class DecisionsService(WorkspacePaths paths)
         return null;
     }
 
-    public string? ResolveDecision(ProjectSlug projectSlug, string id, string response)
+    public Result<Unit> ResolveDecision(ProjectSlug projectSlug, string id, string response)
+        => GetPendingDecision(projectSlug, id)
+            .Then(decision => PersistResolvedDecision(projectSlug, decision, response));
+
+    private Result<DecisionItem> GetPendingDecision(ProjectSlug projectSlug, string id)
     {
         var decision = GetDecision(projectSlug, id);
-        if (decision == null) return "Decision not found.";
-        if (decision.Status != "pending") return "Decision is already resolved.";
+        if (decision == null) return new Err<DecisionItem>(new DomainError("DECISION_NOT_FOUND", "Decision not found."));
+        if (!decision.Status.IsPending) return new Err<DecisionItem>(new DomainError("DECISION_ALREADY_RESOLVED", "Decision is already resolved."));
 
+        return new Ok<DecisionItem>(decision);
+    }
+
+    private Result<Unit> PersistResolvedDecision(ProjectSlug projectSlug, DecisionItem decision, string response)
+    {
         try
         {
             var resolvedAt = DateTime.UtcNow;
+            decision.Resolve("human", response, resolvedAt);
             var updatedFields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["from"] = decision.From,
                 ["date"] = decision.Date?.ToString("o") ?? string.Empty,
-                ["priority"] = decision.Priority,
+                ["priority"] = decision.Priority.Value,
                 ["subject"] = decision.Subject,
-                ["status"] = "resolved",
-                ["resolvedAt"] = resolvedAt.ToString("o"),
-                ["resolvedBy"] = "human",
+                ["status"] = decision.Status.Value,
+                ["resolvedAt"] = decision.ResolvedAt?.ToString("o") ?? string.Empty,
+                ["resolvedBy"] = decision.ResolvedBy ?? string.Empty,
             };
             if (!string.IsNullOrEmpty(decision.Blocks)) updatedFields["blocks"] = decision.Blocks;
 
             var mainContent = FrontmatterParser.Stringify(updatedFields, decision.Body);
-            var fullContent = mainContent + ResponseSeparator + response;
+            var fullContent = mainContent + ResponseSeparator + decision.Response;
 
             var resolvedDir = paths.DecisionsResolvedDir(projectSlug);
             Directory.CreateDirectory(resolvedDir);
@@ -103,9 +113,24 @@ public class DecisionsService(WorkspacePaths paths)
             var pendingPath = Path.Combine(paths.DecisionsPendingDir(projectSlug), decision.Filename);
             if (File.Exists(pendingPath)) File.Delete(pendingPath);
 
-            return null;
+            DispatchDecisionEvents(decision.DequeueDomainEvents());
+            return new Ok<Unit>(Unit.Value);
         }
-        catch (Exception ex) { return ex.Message; }
+        catch (ArgumentException ex) { return new Err<Unit>(new DomainError("DECISION_INVALID_RESPONSE", ex.Message)); }
+        catch (IOException ex) { return new Err<Unit>(new DomainError("DECISION_IO_ERROR", ex.Message)); }
+        catch (UnauthorizedAccessException ex) { return new Err<Unit>(new DomainError("DECISION_IO_ERROR", ex.Message)); }
+    }
+
+    private void DispatchDecisionEvents(IReadOnlyList<DomainEvent> domainEvents)
+    {
+        foreach (var domainEvent in domainEvents)
+        {
+            if (domainEvent is not DecisionResolved resolved)
+                continue;
+
+            logger.LogInformation("[decisions] Dispatched DecisionResolved for {DecisionId} by {ResolvedBy}",
+                resolved.DecisionId, resolved.ResolvedBy);
+        }
     }
 
     private static DecisionItem? ParseDecisionFile(string path)
@@ -129,21 +154,19 @@ public class DecisionsService(WorkspacePaths paths)
 
             var dateStr = fields.GetValueOrDefault("date");
             var resolvedAtStr = fields.GetValueOrDefault("resolvedAt");
-            return new()
-            {
-                Filename = filename,
-                Id = id,
-                From = fields.GetValueOrDefault("from", string.Empty),
-                Date = DateTime.TryParse(dateStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : null,
-                Priority = fields.GetValueOrDefault("priority", "normal"),
-                Subject = fields.GetValueOrDefault("subject", filename),
-                Status = fields.GetValueOrDefault("status", "pending"),
-                Blocks = fields.TryGetValue("blocks", out var blocks) ? blocks : null,
-                ResolvedAt = DateTime.TryParse(resolvedAtStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var rat) ? rat : null,
-                ResolvedBy = fields.TryGetValue("resolvedBy", out var resolvedBy) ? resolvedBy : null,
-                Body = body.Trim(),
-                Response = response,
-            };
+            return new(
+                filename: filename,
+                id: id,
+                from: fields.GetValueOrDefault("from", string.Empty),
+                subject: fields.GetValueOrDefault("subject", filename),
+                body: body.Trim(),
+                date: DateTime.TryParse(dateStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : null,
+                priority: Priority.From(fields.GetValueOrDefault("priority", Priority.Normal.Value)),
+                status: DecisionStatus.From(fields.GetValueOrDefault("status", DecisionStatus.Pending.Value)),
+                blocks: fields.TryGetValue("blocks", out var blocks) ? blocks : null,
+                resolvedAt: DateTime.TryParse(resolvedAtStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var rat) ? rat : null,
+                resolvedBy: fields.TryGetValue("resolvedBy", out var resolvedBy) ? resolvedBy : null,
+                response: response);
         }
         catch { return null; }
     }

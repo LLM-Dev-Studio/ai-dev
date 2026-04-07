@@ -1,3 +1,4 @@
+global using AiDev.Models;
 global using AiDev.Models.Types;
 
 global using Microsoft.Extensions.DependencyInjection;
