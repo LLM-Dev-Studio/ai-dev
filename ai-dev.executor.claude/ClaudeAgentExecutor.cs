@@ -171,6 +171,14 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
             psi.ArgumentList.Add(tool);
         }
 
+        // Force uniformity by denying built-in tools so that Claude MUST fall back to MCP workspace tools
+        var disallowedTools = ClaudeSkills.ToDisallowedTools(skills).ToList();
+        if (disallowedTools.Count > 0)
+        {
+            psi.ArgumentList.Add("--disallowedTools");
+            psi.ArgumentList.Add(string.Join(",", disallowedTools));
+        }
+
         // If the project has a codebase path, add it as a context directory
         // so its CLAUDE.md (if any) is loaded by the CLI.
         var workspaceRoot = Path.GetFullPath(Path.Combine(workingDir, "..", ".."));
