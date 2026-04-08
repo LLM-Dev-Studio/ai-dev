@@ -336,6 +336,39 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_KnownUnsupportedToolsModel_FailsBeforeSendingRequest()
+    {
+        var h = new FakeHttpMessageHandler();
+
+        var (result, output) = await RunAsync(
+            _fx.Build(h),
+            Ctx() with { ModelId = "gemma3:27b", EnabledSkills = [OllamaToolSupport.WorkspaceToolSkill] });
+
+        result.ExitCode.ShouldBe(1);
+        result.PreserveInbox.ShouldBeTrue();
+        result.ErrorMessage.ShouldContain("does not support workspace tools");
+        h.Requests.ShouldBeEmpty();
+        output.ShouldContain(l => l.Contains("does not support workspace tools"));
+    }
+
+    [Fact]
+    public async Task RunAsync_UnsupportedToolsResponse_ReturnsFriendlyConfigurationError()
+    {
+        var h = new FakeHttpMessageHandler();
+        h.Enqueue(OllamaStream.Error(HttpStatusCode.BadRequest,
+            "registry.ollama.ai/library/gemma3:27b does not support tools"));
+
+        var (result, output) = await RunAsync(
+            _fx.Build(h),
+            Ctx() with { ModelId = "custom-model", EnabledSkills = [OllamaToolSupport.WorkspaceToolSkill] });
+
+        result.ExitCode.ShouldBe(1);
+        result.PreserveInbox.ShouldBeTrue();
+        result.ErrorMessage.ShouldContain("does not support workspace tools");
+        output.ShouldContain(l => l.Contains("does not support workspace tools"));
+    }
+
+    [Fact]
     public async Task RunAsync_InvalidBaseUrl_FailsBeforeSendingAnyHttpRequest()
     {
         // StudioSettingsService.GetSettings() always returns the default OllamaBaseUrl

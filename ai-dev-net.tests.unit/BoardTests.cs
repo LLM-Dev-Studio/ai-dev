@@ -2,7 +2,10 @@ namespace AiDevNet.Tests.Unit;
 
 public class BoardTests
 {
+    private static readonly ProjectSlug ProjectSlug = new("demo-project");
+
     private static Board CreateBoard() => new(
+        ProjectSlug,
         columns:
         [
             new BoardColumn(ColumnId.Backlog, "Backlog"),
@@ -12,7 +15,7 @@ public class BoardTests
     [Fact]
     public void Constructor_InitializesEmptyCollections()
     {
-        var board = new Board();
+        var board = new Board(ProjectSlug);
 
         board.Columns.Select(c => c.Id).ShouldBe([ColumnId.Backlog, ColumnId.InProgress, ColumnId.Review, ColumnId.Done]);
         board.Tasks.ShouldBeEmpty();
@@ -21,7 +24,7 @@ public class BoardTests
     [Fact]
     public void Constructor_WhenColumnsEmpty_InitializesDefaultColumns()
     {
-        var board = new Board(columns: [], tasks: []);
+        var board = new Board(ProjectSlug, columns: [], tasks: []);
 
         board.Columns.Select(c => c.Id).ShouldBe([ColumnId.Backlog, ColumnId.InProgress, ColumnId.Review, ColumnId.Done]);
     }
@@ -48,6 +51,7 @@ public class BoardTests
 
         result.ShouldBeOfType<Ok<BoardTask>>();
         domainEvent.ShouldBeOfType<TaskAssigned>();
+        ((TaskAssigned)domainEvent).ProjectSlug.ShouldBe(ProjectSlug);
     }
 
     [Fact]

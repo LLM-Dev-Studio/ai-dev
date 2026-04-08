@@ -210,7 +210,8 @@ else
 
         savingDetails = true;
         var err = WorkspaceService.UpdateProject(Slug, editName, editDescription,
-            string.IsNullOrWhiteSpace(editCodebasePath) ? null : editCodebasePath);
+            string.IsNullOrWhiteSpace(editCodebasePath) ? null : editCodebasePath)
+            .ToErrorMessage();
         savingDetails = false;
 
         if (err != null) { detailsError = err; return; }
@@ -226,7 +227,8 @@ else
         if (string.IsNullOrWhiteSpace(newAgentName)) { agentError = "Name is required."; return; }
 
         var templateSlug = string.IsNullOrWhiteSpace(newAgentTemplate) ? null : newAgentTemplate;
-        var err = AgentService.CreateAgent(Slug, newAgentSlug, newAgentName, templateSlug);
+        var err = AgentService.CreateAgent(Slug, newAgentSlug, newAgentName, templateSlug)
+            .ToErrorMessage();
         if (err != null) { agentError = err; return; }
 
         agents = AgentService.ListAgents(Slug);

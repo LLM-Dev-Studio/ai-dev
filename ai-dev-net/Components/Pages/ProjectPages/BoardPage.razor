@@ -9,6 +9,8 @@
 @using AiDev.Models
 @using AiDev.Models.Types
 @using AiDev.Services
+@using System.Diagnostics
+@inject AgentRunnerService RunnerService
 @implements IDisposable
 
 <div class="flex items-center justify-between mb-1">
@@ -337,12 +339,15 @@ else
 
     private void CloseMenu() => _openMenuId = null;
 
-    private void QuickMove(TaskId taskId, string targetColumnId)
+    private async Task QuickMove(TaskId taskId, string targetColumnId)
     {
         if (_board == null || !_board.Tasks.TryGetValue(taskId, out var task)) return;
-        var error = BoardService.UpdateTask(Slug, taskId, targetColumnId,
+        using var activity = StartUiActivity("UI.Board.QuickMove", Slug, taskId: taskId, columnId: targetColumnId, assignee: task.Assignee);
+        var error = (await BoardService.UpdateTaskAsync(Slug, taskId, targetColumnId,
             task.Title, task.Description, task.Priority.Value, task.Assignee)
-            .Match(_ => (string?)null, resultError => resultError.Message);
+            ).ToErrorMessage();
+        activity?.SetTag("ui.outcome", string.IsNullOrEmpty(error) ? "success" : "error");
+        activity?.SetTag("ui.trace_id", activity?.TraceId.ToString());
         if (error != null) return;
 
         _board = BoardService.LoadBoard(Slug);
@@ -396,42 +401,68 @@ else
         _enhancing = false;
     }
 
-    private void SaveTask()
+    private async Task SaveTask()
     {
         if (string.IsNullOrWhiteSpace(_taskTitle)) return;
         _saving = true;
         _taskError = string.Empty;
-        string? err;
+        using var activity = StartUiActivity(
+            _editingTaskId == null ? "UI.Board.CreateTask" : "UI.Board.UpdateTask",
+            Slug,
+            taskId: _editingTaskId,
+            columnId: _taskColumnId,
+            assignee: _taskAssignee);
+        activity?.SetTag("task.title", _taskTitle.Trim());
 
         if (_editingTaskId == null)
         {
-            err = BoardService.CreateTask(Slug, _taskColumnId, _taskTitle.Trim(),
+            _taskError = (await BoardService.CreateTaskAsync(Slug, _taskColumnId, _taskTitle.Trim(),
                 _taskDescription, _taskPriority, _taskAssignee)
-                .Match(_ => (string?)null, error => error.Message);
+                ).ToErrorMessage() ?? string.Empty;
         }
         else
         {
-            err = BoardService.UpdateTask(Slug, _editingTaskId, _taskColumnId, _taskTitle.Trim(),
+            _taskError = (await BoardService.UpdateTaskAsync(Slug, _editingTaskId, _taskColumnId, _taskTitle.Trim(),
                 _taskDescription, _taskPriority, _taskAssignee)
-                .Match(_ => (string?)null, error => error.Message);
+                ).ToErrorMessage() ?? string.Empty;
         }
 
+        activity?.SetTag("ui.outcome", string.IsNullOrEmpty(_taskError) ? "success" : "error");
+        activity?.SetTag("ui.trace_id", activity?.TraceId.ToString());
+
         _saving = false;
-        if (err != null) { _taskError = err; return; }
+        if (!string.IsNullOrEmpty(_taskError)) return;
         _board = BoardService.LoadBoard(Slug);
         CloseTaskDialog();
     }
 
-    private void DeleteTask()
+    private async Task DeleteTask()
     {
         if (_editingTaskId == null) return;
         _saving = true;
-        var result = BoardService.DeleteTask(Slug, _editingTaskId);
+        using var activity = StartUiActivity("UI.Board.DeleteTask", Slug, taskId: _editingTaskId);
+        var result = await BoardService.DeleteTaskAsync(Slug, _editingTaskId);
         _saving = false;
-        _taskError = result.Match(_ => string.Empty, error => error.Message);
+        _taskError = result.ToErrorMessage() ?? string.Empty;
+        activity?.SetTag("ui.outcome", string.IsNullOrEmpty(_taskError) ? "success" : "error");
+        activity?.SetTag("ui.trace_id", activity?.TraceId.ToString());
         if (!string.IsNullOrEmpty(_taskError)) return;
         _board = BoardService.LoadBoard(Slug);
         CloseTaskDialog();
+    }
+
+    private static Activity? StartUiActivity(string name, string projectSlug, TaskId? taskId = null, string? columnId = null, string? assignee = null)
+    {
+        var activity = AiDevTelemetry.ActivitySource.StartActivity(name, ActivityKind.Internal);
+        activity?.SetTag("ui.page", "board");
+        activity?.SetTag("project.slug", projectSlug);
+        if (taskId != null)
+            activity?.SetTag("task.id", taskId.Value);
+        if (!string.IsNullOrWhiteSpace(columnId))
+            activity?.SetTag("board.column", columnId);
+        if (!string.IsNullOrWhiteSpace(assignee))
+            activity?.SetTag("task.assignee", assignee);
+        return activity;
     }
 
     private static string PriorityDot(string priority) => Priority.From(priority) switch

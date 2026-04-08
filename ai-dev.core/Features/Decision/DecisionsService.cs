@@ -2,43 +2,55 @@ using AiDev.Services;
 
 namespace AiDev.Features.Decision;
 
-public class DecisionsService(WorkspacePaths paths, ILogger<DecisionsService> logger)
+public class DecisionsService(
+    WorkspacePaths paths,
+    IDomainEventDispatcher dispatcher,
+    AtomicFileWriter fileWriter,
+    ProjectMutationCoordinator coordinator,
+    ILogger<DecisionsService> logger)
 {
     private const string ResponseSeparator = "\n\n---\n\n## Human Response\n\n";
+    private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10);
 
-    public string? CreateDecision(ProjectSlug projectSlug, string from, string subject,
+    public Result<Unit> CreateDecision(ProjectSlug projectSlug, string from, string subject,
         string priority, string? blocks, string body)
     {
-        try
+        return coordinator.Execute(projectSlug, () =>
         {
-            var now = DateTime.UtcNow;
-            var slug = System.Text.RegularExpressions.Regex.Replace(
-                subject.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
-            slug = slug.Length > 40 ? slug[..40].TrimEnd('-') : slug;
-            var filename = $"{now:yyyyMMdd-HHmmss}-{slug}.md";
-
-            var fields = new Dictionary<string, string>
+            using var activity = AiDevTelemetry.ActivitySource.StartActivity("Decision.Create", ActivityKind.Internal);
+            activity?.SetTag("project.slug", projectSlug.Value);
+            activity?.SetTag("decision.subject", subject);
+            try
             {
-                ["from"] = from,
-                ["date"] = now.ToString("o"),
-                ["priority"] = priority,
-                ["subject"] = subject,
-                ["status"] = "pending",
-            };
-            if (!string.IsNullOrEmpty(blocks)) fields["blocks"] = blocks;
+                var now = DateTime.UtcNow;
+                var slug = System.Text.RegularExpressions.Regex.Replace(
+                    subject.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
+                slug = slug.Length > 40 ? slug[..40].TrimEnd('-') : slug;
+                var filename = $"{now:yyyyMMdd-HHmmss}-{slug}.md";
 
-            var pendingDir = paths.DecisionsPendingDir(projectSlug);
-            Directory.CreateDirectory(pendingDir);
+                var fields = new Dictionary<string, string>
+                {
+                    ["from"] = from,
+                    ["date"] = now.ToString("o"),
+                    ["priority"] = priority,
+                    ["subject"] = subject,
+                    ["status"] = "pending",
+                };
+                if (!string.IsNullOrEmpty(blocks)) fields["blocks"] = blocks;
 
-            // Skip if a pending decision with the same subject already exists
-            if (Directory.GetFiles(pendingDir, $"*-{slug}.md").Length > 0)
-                return null;
+                var pendingDir = paths.DecisionsPendingDir(projectSlug);
+                Directory.CreateDirectory(pendingDir);
 
-            File.WriteAllText(Path.Combine(pendingDir, filename),
-                FrontmatterParser.Stringify(fields, body));
-            return null;
-        }
-        catch (Exception ex) { return ex.Message; }
+                if (Directory.GetFiles(pendingDir, $"*-{slug}.md").Length > 0)
+                    return (Result<Unit>)new Ok<Unit>(Unit.Value);
+
+                fileWriter.WriteAllText(Path.Combine(pendingDir, filename),
+                    FrontmatterParser.Stringify(fields, body));
+                return (Result<Unit>)new Ok<Unit>(Unit.Value);
+            }
+            catch (IOException ex) { return (Result<Unit>)new Err<Unit>(new DomainError("DECISION_IO_ERROR", ex.Message)); }
+            catch (UnauthorizedAccessException ex) { return (Result<Unit>)new Err<Unit>(new DomainError("DECISION_IO_ERROR", ex.Message)); }
+        });
     }
 
     public List<DecisionItem> ListDecisions(ProjectSlug projectSlug, string status = "pending")
@@ -70,9 +82,18 @@ public class DecisionsService(WorkspacePaths paths, ILogger<DecisionsService> lo
         return null;
     }
 
-    public Result<Unit> ResolveDecision(ProjectSlug projectSlug, string id, string response)
-        => GetPendingDecision(projectSlug, id)
-            .Then(decision => PersistResolvedDecision(projectSlug, decision, response));
+    public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, string id, string response)
+        => ResolveDecisionAsync(projectSlug, id, response, CancellationToken.None);
+
+    public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, string id, string response, CancellationToken cancellationToken)
+        => coordinator.ExecuteAsync(projectSlug, async () =>
+        {
+            using var activity = AiDevTelemetry.ActivitySource.StartActivity("Decision.Resolve", ActivityKind.Internal);
+            activity?.SetTag("project.slug", projectSlug.Value);
+            activity?.SetTag("decision.id", id);
+            return await GetPendingDecision(projectSlug, id)
+                .Then(decision => PersistResolvedDecisionAsync(projectSlug, decision, response, cancellationToken)).ConfigureAwait(false);
+        }, cancellationToken);
 
     private Result<DecisionItem> GetPendingDecision(ProjectSlug projectSlug, string id)
     {
@@ -83,10 +104,11 @@ public class DecisionsService(WorkspacePaths paths, ILogger<DecisionsService> lo
         return new Ok<DecisionItem>(decision);
     }
 
-    private Result<Unit> PersistResolvedDecision(ProjectSlug projectSlug, DecisionItem decision, string response)
+    private async Task<Result<Unit>> PersistResolvedDecisionAsync(ProjectSlug projectSlug, DecisionItem decision, string response, CancellationToken cancellationToken)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var resolvedAt = DateTime.UtcNow;
             decision.Resolve("human", response, resolvedAt);
             var updatedFields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -105,15 +127,17 @@ public class DecisionsService(WorkspacePaths paths, ILogger<DecisionsService> lo
             var fullContent = mainContent + ResponseSeparator + decision.Response;
 
             var resolvedDir = paths.DecisionsResolvedDir(projectSlug);
-            Directory.CreateDirectory(resolvedDir);
             var destPath = Path.Combine(resolvedDir, decision.Filename);
-            File.WriteAllText(destPath, fullContent);
+            fileWriter.WriteAllText(destPath, fullContent);
 
             // Remove from pending
             var pendingPath = Path.Combine(paths.DecisionsPendingDir(projectSlug), decision.Filename);
-            if (File.Exists(pendingPath)) File.Delete(pendingPath);
+            fileWriter.DeleteFile(pendingPath);
 
-            DispatchDecisionEvents(decision.DequeueDomainEvents());
+            var dispatchResult = await DispatchDecisionEventsAsync(decision.DequeueDomainEvents(), cancellationToken).ConfigureAwait(false);
+            if (dispatchResult is Err<Unit> err)
+                return err;
+
             return new Ok<Unit>(Unit.Value);
         }
         catch (ArgumentException ex) { return new Err<Unit>(new DomainError("DECISION_INVALID_RESPONSE", ex.Message)); }
@@ -121,16 +145,21 @@ public class DecisionsService(WorkspacePaths paths, ILogger<DecisionsService> lo
         catch (UnauthorizedAccessException ex) { return new Err<Unit>(new DomainError("DECISION_IO_ERROR", ex.Message)); }
     }
 
-    private void DispatchDecisionEvents(IReadOnlyList<DomainEvent> domainEvents)
+    private async Task<Result<Unit>> DispatchDecisionEventsAsync(IReadOnlyList<DomainEvent> domainEvents, CancellationToken cancellationToken)
     {
-        foreach (var domainEvent in domainEvents)
-        {
-            if (domainEvent is not DecisionResolved resolved)
-                continue;
+        if (domainEvents.Count == 0)
+            return new Ok<Unit>(Unit.Value);
 
-            logger.LogInformation("[decisions] Dispatched DecisionResolved for {DecisionId} by {ResolvedBy}",
-                resolved.DecisionId, resolved.ResolvedBy);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(DispatchTimeout);
+        var dispatchResult = await dispatcher.Dispatch(domainEvents, timeoutCts.Token).ConfigureAwait(false);
+        if (dispatchResult is Err<Unit> err)
+        {
+            logger.LogError("[decisions] Event dispatch failed: {Message}", err.Error.Message);
+            return err;
         }
+
+        return new Ok<Unit>(Unit.Value);
     }
 
     private static DecisionItem? ParseDecisionFile(string path)

@@ -14,7 +14,9 @@ public sealed class AgentInfo
         DateTime? lastRunAt = null,
         int inboxCount = 0,
         string? executor = null,
-        IReadOnlyList<string>? skills = null)
+        IReadOnlyList<string>? skills = null,
+        string? lastError = null,
+        DateTime? lastErrorAt = null)
     {
         ArgumentNullException.ThrowIfNull(slug);
         if (string.IsNullOrWhiteSpace(name))
@@ -32,6 +34,8 @@ public sealed class AgentInfo
         InboxCount = inboxCount;
         Executor = string.IsNullOrWhiteSpace(executor) ? IAgentExecutor.Default : executor;
         Skills = skills is null ? [] : [.. skills];
+        LastError = string.IsNullOrWhiteSpace(lastError) ? null : lastError;
+        LastErrorAt = lastErrorAt;
     }
 
     public AgentSlug Slug { get; }
@@ -43,6 +47,8 @@ public sealed class AgentInfo
     public DateTime? LastRunAt { get; private set; }
     public int InboxCount { get; private set; }
     public string Executor { get; private set; }
+    public string? LastError { get; private set; }
+    public DateTime? LastErrorAt { get; private set; }
 
     /// <summary>
     /// Skill keys enabled for this agent (e.g. ["git-read", "git-write"]).
@@ -84,6 +90,15 @@ public sealed class AgentInfo
     /// Marks the agent as faulted without exposing raw status mutation to callers.
     /// </summary>
     public void MarkError() => Status = AgentStatus.Error;
+
+    /// <summary>
+    /// Records the last session failure so the UI can guide the user.
+    /// </summary>
+    public void SetLastError(string? error, DateTime? occurredAt)
+    {
+        LastError = string.IsNullOrWhiteSpace(error) ? null : error;
+        LastErrorAt = LastError == null ? null : occurredAt;
+    }
 
     /// <summary>
     /// Synchronizes inbox count with the current workspace state.

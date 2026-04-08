@@ -84,6 +84,30 @@ public class AgentInfoTests
     }
 
     [Fact]
+    public void SetLastError_WhenProvided_StoresMessageAndTimestamp()
+    {
+        var occurredAt = DateTime.UtcNow;
+        var info = CreateInfo();
+
+        info.SetLastError("Unsupported Ollama tools", occurredAt);
+
+        info.LastError.ShouldBe("Unsupported Ollama tools");
+        info.LastErrorAt.ShouldBe(occurredAt);
+    }
+
+    [Fact]
+    public void SetLastError_WhenCleared_RemovesTimestamp()
+    {
+        var info = CreateInfo();
+        info.SetLastError("Unsupported Ollama tools", DateTime.UtcNow);
+
+        info.SetLastError(null, DateTime.UtcNow);
+
+        info.LastError.ShouldBeNull();
+        info.LastErrorAt.ShouldBeNull();
+    }
+
+    [Fact]
     public void Constructor_WhenNameMissing_ThrowsArgumentException()
     {
         Should.Throw<ArgumentException>(() => new AgentInfo(

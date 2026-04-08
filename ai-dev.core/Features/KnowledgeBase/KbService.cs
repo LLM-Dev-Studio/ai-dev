@@ -2,7 +2,7 @@ using AiDev.Services;
 
 namespace AiDev.Features.KnowledgeBase;
 
-public class KbService(WorkspacePaths paths)
+public class KbService(WorkspacePaths paths, AtomicFileWriter fileWriter, ProjectMutationCoordinator coordinator)
 {
     public List<KbArticle> ListArticles(ProjectSlug projectSlug)
     {
@@ -75,26 +75,29 @@ public class KbService(WorkspacePaths paths)
         return path != null && File.Exists(path.Value) ? File.ReadAllText(path.Value) : string.Empty;
     }
 
-    public string? Save(ProjectSlug projectSlug, string slug, string content)
+    public Result<Unit> Save(ProjectSlug projectSlug, string slug, string content)
     {
         var path = paths.SafeKbArticlePath(projectSlug, slug);
-        if (path == null) return "Invalid article slug.";
-        try
+        if (path == null) return new Err<Unit>(new DomainError("KB_INVALID_SLUG", "Invalid article slug."));
+        return coordinator.Execute<Result<Unit>>(projectSlug, () =>
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path.Value)!);
-            File.WriteAllText(path.Value, content);
-            return null;
-        }
-        catch (Exception ex) { return ex.Message; }
+            try
+            {
+                fileWriter.WriteAllText(path.Value, content);
+                return new Ok<Unit>(Unit.Value);
+            }
+            catch (IOException ex) { return new Err<Unit>(new DomainError("KB_IO_ERROR", ex.Message)); }
+            catch (UnauthorizedAccessException ex) { return new Err<Unit>(new DomainError("KB_IO_ERROR", ex.Message)); }
+        });
     }
 
-    public string? Create(ProjectSlug projectSlug, string slug)
+    public Result<Unit> Create(ProjectSlug projectSlug, string slug)
     {
-        if (string.IsNullOrWhiteSpace(slug)) return "Slug is required.";
-        if (slug.Contains("..") || slug.Contains('/') || slug.Contains('\\')) return "Invalid slug.";
+        if (string.IsNullOrWhiteSpace(slug)) return new Err<Unit>(new DomainError("KB_SLUG_REQUIRED", "Slug is required."));
+        if (slug.Contains("..") || slug.Contains('/') || slug.Contains('\\')) return new Err<Unit>(new DomainError("KB_INVALID_SLUG", "Invalid slug."));
 
         var path = Path.Combine(paths.KbDir(projectSlug), $"{slug}.md");
-        if (File.Exists(path)) return $"Article '{slug}' already exists.";
+        if (File.Exists(path)) return new Err<Unit>(new DomainError("KB_ALREADY_EXISTS", $"Article '{slug}' already exists."));
 
         return Save(projectSlug, slug, $"# {slug}\n\n");
     }
@@ -102,7 +105,13 @@ public class KbService(WorkspacePaths paths)
     public void Delete(ProjectSlug projectSlug, string slug)
     {
         var path = paths.SafeKbArticlePath(projectSlug, slug);
-        if (path != null && File.Exists(path.Value)) File.Delete(path.Value);
+        if (path == null) return;
+
+        coordinator.Execute(projectSlug, () =>
+        {
+            fileWriter.DeleteFile(path.Value);
+            return Unit.Value;
+        });
     }
 
     private static string? ExtractTitle(string content)

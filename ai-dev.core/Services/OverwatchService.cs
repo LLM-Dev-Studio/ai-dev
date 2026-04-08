@@ -34,15 +34,19 @@ public class OverwatchService(
     private static readonly TimeSpan ScanInterval = TimeSpan.FromMinutes(5);
 
     private Timer? _timer;
+    private CancellationTokenSource? _scanCts;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
             "[overwatch] Starting — stall: {Stall}m, cooldown: {Cooldown}m, interval: {Interval}m",
             StallThreshold.TotalMinutes, NudgeCooldown.TotalMinutes, ScanInterval.TotalMinutes);
 
+        _scanCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
         // Initial scan after 30 s (let app finish init), then every ScanInterval
-        _timer = new Timer(_ => ScanAll(), null,
+        _timer = new Timer(_ => ScanAll(_scanCts.Token), null,
             TimeSpan.FromSeconds(30), ScanInterval);
 
         return Task.CompletedTask;
@@ -57,6 +61,8 @@ public class OverwatchService(
 
     public void Dispose()
     {
+        _scanCts?.Cancel();
+        _scanCts?.Dispose();
         _timer?.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -65,15 +71,16 @@ public class OverwatchService(
     // Scan
     // -------------------------------------------------------------------------
 
-    private void ScanAll()
+    private void ScanAll(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         using var activity = ActivitySource.StartActivity("Overwatch.Scan", ActivityKind.Internal);
         var projects = workspace.ListProjects();
         activity?.SetTag("projects.count", projects.Count);
 
         foreach (var project in projects)
         {
-            try { ScanProject(project.Slug, activity?.Id); }
+            try { ScanProject(project.Slug, activity?.Id, cancellationToken); }
             catch (Exception ex)
             {
                 logger.LogError(ex, "[overwatch] Error scanning project {Project}", project.Slug);
@@ -81,8 +88,9 @@ public class OverwatchService(
         }
     }
 
-    private void ScanProject(ProjectSlug projectSlug, string? parentActivityId)
+    private void ScanProject(ProjectSlug projectSlug, string? parentActivityId, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         using var activity = ActivitySource.StartActivity(
             "Overwatch.ScanProject", ActivityKind.Internal, parentActivityId);
         activity?.SetTag("project", projectSlug);

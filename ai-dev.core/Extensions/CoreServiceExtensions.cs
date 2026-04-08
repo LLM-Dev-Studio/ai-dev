@@ -21,15 +21,17 @@ public static class CoreServiceExtensions
     /// </summary>
     public static IServiceCollection AddAiDevCore(this IServiceCollection services)
     {
+        services.AddSingleton<IDomainEventDispatcher, InProcessDomainEventDispatcher>();
+        services.AddSingleton<IDomainEventHandler<TaskAssigned>, TaskAssignedHandler>();
+        services.AddSingleton<IDomainEventHandler<DecisionResolved>, DecisionResolvedHandler>();
+        services.AddSingleton<AtomicFileWriter>();
+        services.AddSingleton<ProjectMutationCoordinator>();
+        services.AddSingleton<ConsistencyCheckService>();
         services.AddSingleton<WorkspaceService>();
         services.AddSingleton<StudioSettingsService>();
         services.AddSingleton<AgentTemplatesService>();
         services.AddSingleton<AgentService>();
-        services.AddSingleton<BoardService>((sp) =>
-            new(
-                sp.GetRequiredService<WorkspacePaths>(),
-                sp.GetRequiredService<AgentRunnerService>(),
-                sp.GetRequiredService<ILogger<BoardService>>()));
+        services.AddSingleton<BoardService>();
         services.AddSingleton<MessageChangedNotifier>();
         services.AddSingleton<DecisionChangedNotifier>();
         services.AddSingleton<MessagesService>();
@@ -47,6 +49,7 @@ public static class CoreServiceExtensions
         services.AddSingleton<ExecutorHealthMonitor>();
         services.AddHostedService(sp => sp.GetRequiredService<ExecutorHealthMonitor>());
 
+        services.AddHostedService<ConsistencyCheckHostedService>();
         services.AddHostedService<DispatcherService>();
         services.AddHostedService<OverwatchService>();
 

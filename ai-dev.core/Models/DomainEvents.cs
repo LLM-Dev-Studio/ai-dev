@@ -3,6 +3,7 @@ namespace AiDev.Models;
 public abstract record DomainEvent(DateTime OccurredAt);
 
 public sealed record TaskAssigned(
+    ProjectSlug ProjectSlug,
     TaskId TaskId,
     AgentSlug Assignee,
     string Title,

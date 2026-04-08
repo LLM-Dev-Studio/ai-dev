@@ -7,7 +7,6 @@ public sealed class BoardColumn
     /// <summary>
     /// Creates a board column with a validated identity and optional existing task ids.
     /// </summary>
-    [JsonConstructor]
     public BoardColumn(ColumnId id, string title, List<TaskId>? taskIds = null)
     {
         ArgumentNullException.ThrowIfNull(id);

@@ -11,10 +11,12 @@ public sealed class Board
     private readonly List<BoardColumn> _columns;
     private readonly Dictionary<TaskId, BoardTask> _tasks;
     [JsonIgnore] private readonly List<DomainEvent> _domainEvents = [];
+    [JsonIgnore] public ProjectSlug ProjectSlug { get; }
 
-    [JsonConstructor]
-    public Board(List<BoardColumn>? columns = null, Dictionary<TaskId, BoardTask>? tasks = null)
+    public Board(ProjectSlug projectSlug, List<BoardColumn>? columns = null, Dictionary<TaskId, BoardTask>? tasks = null)
     {
+        ArgumentNullException.ThrowIfNull(projectSlug);
+        ProjectSlug = projectSlug;
         _columns = columns is { Count: > 0 } ? columns : CreateDefaultColumns();
         _tasks = tasks ?? new();
     }
@@ -42,7 +44,7 @@ public sealed class Board
         column.AddTask(task.Id);
 
         if (assignee != null)
-            _domainEvents.Add(new TaskAssigned(task.Id, assignee, task.Title, task.Description, task.Priority, DateTime.UtcNow));
+            _domainEvents.Add(new TaskAssigned(ProjectSlug, task.Id, assignee, task.Title, task.Description, task.Priority, DateTime.UtcNow));
 
         return new Ok<BoardTask>(task);
     }
@@ -87,7 +89,7 @@ public sealed class Board
         }
 
         if (!string.Equals(previousAssignee, task.Assignee, StringComparison.Ordinal) && parsedAssignee != null)
-            _domainEvents.Add(new TaskAssigned(task.Id, parsedAssignee, task.Title, task.Description, task.Priority, movedAt));
+            _domainEvents.Add(new TaskAssigned(ProjectSlug, task.Id, parsedAssignee, task.Title, task.Description, task.Priority, movedAt));
 
         return new Ok<BoardTask>(task);
     }

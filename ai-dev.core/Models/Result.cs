@@ -39,6 +39,16 @@ public static class ResultExtensions
             _ => throw new UnreachableException(),
         };
 
+    public static Task<Result<B>> Then<A, B>(
+        this Result<A> result,
+        Func<A, Task<Result<B>>> next)
+        => result switch
+        {
+            Ok<A> ok => next(ok.Value),
+            Err<A> err => Task.FromResult<Result<B>>(new Err<B>(err.Error)),
+            _ => throw new UnreachableException(),
+        };
+
     public static T Match<TValue, T>(
         this Result<TValue> result,
         Func<TValue, T> onOk,
@@ -49,4 +59,7 @@ public static class ResultExtensions
             Err<TValue> err => onErr(err.Error),
             _ => throw new UnreachableException(),
         };
+
+    public static string? ToErrorMessage<T>(this Result<T> result)
+        => result.Match(_ => (string?)null, err => err.Message);
 }

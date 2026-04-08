@@ -13,5 +13,10 @@ public sealed record ExecutorResult(
     /// </summary>
     bool IsRateLimited = false,
 
+    /// <summary>
+    /// True when the current inbox items should be preserved so the user can fix the issue and retry.
+    /// </summary>
+    bool PreserveInbox = false,
+
     /// <summary>Human-readable error message if the session failed in a known way.</summary>
     string? ErrorMessage = null);

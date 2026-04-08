@@ -1,5 +1,6 @@
 global using AiDev.Models;
 global using AiDev.Models.Types;
+global using AiDev.Services;
 
 global using Microsoft.Extensions.DependencyInjection;
 global using Microsoft.Extensions.Hosting;
