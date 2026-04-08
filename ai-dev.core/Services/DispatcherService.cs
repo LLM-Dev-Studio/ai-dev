@@ -38,6 +38,7 @@ public class DispatcherService(
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation("[dispatcher] Starting");
 
         var projects = workspace.ListProjects();
@@ -50,7 +51,7 @@ public class DispatcherService(
 
         // Periodic poll — safety net for any FSW-missed events.
         // LaunchAgent is a no-op if the agent is already running, so this is safe.
-        _pollTimer = new Timer(_ => PollAllProjects(), null,
+        _pollTimer = new Timer(_ => PollAllProjects(CancellationToken.None), null,
             TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
 
         logger.LogInformation("[dispatcher] Watching {Count} project(s) with FSW + 10 s poll", projects.Count);
@@ -194,7 +195,11 @@ public class DispatcherService(
             if (!AgentSlug.TryParse(Path.GetFileName(e.FullPath), out var agentSlug)) return;
             logger.LogInformation("[dispatcher] New agent detected: {Project}/{Agent}", projectSlug, agentSlug);
             // Brief delay so the agent folder structure is fully written before watching
-            Task.Delay(500).ContinueWith(_ => WatchAgentInbox(projectSlug, agentSlug));
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(500).ConfigureAwait(false);
+                WatchAgentInbox(projectSlug, agentSlug);
+            });
         };
         _watchers.Add(w);
     }
@@ -209,8 +214,9 @@ public class DispatcherService(
         };
         w.Created += (_, e) =>
         {
-            Task.Delay(1000).ContinueWith(_ =>
+            _ = Task.Run(async () =>
             {
+                await Task.Delay(1000).ConfigureAwait(false);
                 if (!File.Exists(Path.Combine(e.FullPath, "project.json"))) return;
                 if (!ProjectSlug.TryParse(Path.GetFileName(e.FullPath), out var projectSlug)) return;
                 logger.LogInformation("[dispatcher] New project detected: {Project}", projectSlug);
@@ -255,7 +261,12 @@ public class DispatcherService(
 
         messageNotifier.Notify(projectSlug);
 
-        var launched = runner.LaunchAgent(projectSlug, agentSlug);
+        var launched = runner.LaunchAgent(projectSlug, agentSlug, new AgentLaunchTrigger(
+            Source: "dispatcher",
+            Reason: source,
+            ProjectSlug: projectSlug.Value,
+            MessageFile: fileName,
+            ParentSpanId: activity?.Id));
         activity?.SetTag("dispatch.outcome", launched ? "launched" : "already-launched");
         logger.LogInformation("[dispatcher] {Outcome} {Project}/{Agent}",
             launched ? "Launched" : "Already running —", projectSlug, agentSlug);
@@ -267,10 +278,13 @@ public class DispatcherService(
     // Polling scan (safety net)
     // -------------------------------------------------------------------------
 
-    private void PollAllProjects()
+    private void PollAllProjects(CancellationToken cancellationToken)
     {
         foreach (var project in workspace.ListProjects())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             ScanAndLaunchAgents(project.Slug, source: "poll");
+        }
     }
 
     private void ScanAndLaunchAgents(ProjectSlug projectSlug, string source)
@@ -297,7 +311,10 @@ public class DispatcherService(
                 "[dispatcher] [{Source}] Found {Count} pending message(s) for {Project}/{Agent} — launching",
                 source, pending.Length, projectSlug, agentSlug);
 
-            runner.LaunchAgent(projectSlug, agentSlug);
+            runner.LaunchAgent(projectSlug, agentSlug, new AgentLaunchTrigger(
+                Source: "dispatcher",
+                Reason: source,
+                ProjectSlug: projectSlug.Value));
         }
     }
 }

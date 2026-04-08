@@ -2,43 +2,55 @@ using AiDev.Services;
 
 namespace AiDev.Features.Decision;
 
-public class DecisionsService(WorkspacePaths paths)
+public class DecisionsService(
+    WorkspacePaths paths,
+    IDomainEventDispatcher dispatcher,
+    AtomicFileWriter fileWriter,
+    ProjectMutationCoordinator coordinator,
+    ILogger<DecisionsService> logger)
 {
     private const string ResponseSeparator = "\n\n---\n\n## Human Response\n\n";
+    private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10);
 
-    public string? CreateDecision(ProjectSlug projectSlug, string from, string subject,
+    public Result<Unit> CreateDecision(ProjectSlug projectSlug, string from, string subject,
         string priority, string? blocks, string body)
     {
-        try
+        return coordinator.Execute(projectSlug, () =>
         {
-            var now = DateTime.UtcNow;
-            var slug = System.Text.RegularExpressions.Regex.Replace(
-                subject.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
-            slug = slug.Length > 40 ? slug[..40].TrimEnd('-') : slug;
-            var filename = $"{now:yyyyMMdd-HHmmss}-{slug}.md";
-
-            var fields = new Dictionary<string, string>
+            using var activity = AiDevTelemetry.ActivitySource.StartActivity("Decision.Create", ActivityKind.Internal);
+            activity?.SetTag("project.slug", projectSlug.Value);
+            activity?.SetTag("decision.subject", subject);
+            try
             {
-                ["from"] = from,
-                ["date"] = now.ToString("o"),
-                ["priority"] = priority,
-                ["subject"] = subject,
-                ["status"] = "pending",
-            };
-            if (!string.IsNullOrEmpty(blocks)) fields["blocks"] = blocks;
+                var now = DateTime.UtcNow;
+                var slug = System.Text.RegularExpressions.Regex.Replace(
+                    subject.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
+                slug = slug.Length > 40 ? slug[..40].TrimEnd('-') : slug;
+                var filename = $"{now:yyyyMMdd-HHmmss}-{slug}.md";
 
-            var pendingDir = paths.DecisionsPendingDir(projectSlug);
-            Directory.CreateDirectory(pendingDir);
+                var fields = new Dictionary<string, string>
+                {
+                    ["from"] = from,
+                    ["date"] = now.ToString("o"),
+                    ["priority"] = priority,
+                    ["subject"] = subject,
+                    ["status"] = "pending",
+                };
+                if (!string.IsNullOrEmpty(blocks)) fields["blocks"] = blocks;
 
-            // Skip if a pending decision with the same subject already exists
-            if (Directory.GetFiles(pendingDir, $"*-{slug}.md").Length > 0)
-                return null;
+                var pendingDir = paths.DecisionsPendingDir(projectSlug);
+                Directory.CreateDirectory(pendingDir);
 
-            File.WriteAllText(Path.Combine(pendingDir, filename),
-                FrontmatterParser.Stringify(fields, body));
-            return null;
-        }
-        catch (Exception ex) { return ex.Message; }
+                if (Directory.GetFiles(pendingDir, $"*-{slug}.md").Length > 0)
+                    return (Result<Unit>)new Ok<Unit>(Unit.Value);
+
+                fileWriter.WriteAllText(Path.Combine(pendingDir, filename),
+                    FrontmatterParser.Stringify(fields, body));
+                return (Result<Unit>)new Ok<Unit>(Unit.Value);
+            }
+            catch (IOException ex) { return (Result<Unit>)new Err<Unit>(new DomainError("DECISION_IO_ERROR", ex.Message)); }
+            catch (UnauthorizedAccessException ex) { return (Result<Unit>)new Err<Unit>(new DomainError("DECISION_IO_ERROR", ex.Message)); }
+        });
     }
 
     public List<DecisionItem> ListDecisions(ProjectSlug projectSlug, string status = "pending")
@@ -70,42 +82,84 @@ public class DecisionsService(WorkspacePaths paths)
         return null;
     }
 
-    public string? ResolveDecision(ProjectSlug projectSlug, string id, string response)
+    public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, string id, string response)
+        => ResolveDecisionAsync(projectSlug, id, response, CancellationToken.None);
+
+    public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, string id, string response, CancellationToken cancellationToken)
+        => coordinator.ExecuteAsync(projectSlug, async () =>
+        {
+            using var activity = AiDevTelemetry.ActivitySource.StartActivity("Decision.Resolve", ActivityKind.Internal);
+            activity?.SetTag("project.slug", projectSlug.Value);
+            activity?.SetTag("decision.id", id);
+            return await GetPendingDecision(projectSlug, id)
+                .Then(decision => PersistResolvedDecisionAsync(projectSlug, decision, response, cancellationToken)).ConfigureAwait(false);
+        }, cancellationToken);
+
+    private Result<DecisionItem> GetPendingDecision(ProjectSlug projectSlug, string id)
     {
         var decision = GetDecision(projectSlug, id);
-        if (decision == null) return "Decision not found.";
-        if (decision.Status != "pending") return "Decision is already resolved.";
+        if (decision == null) return new Err<DecisionItem>(new DomainError("DECISION_NOT_FOUND", "Decision not found."));
+        if (!decision.Status.IsPending) return new Err<DecisionItem>(new DomainError("DECISION_ALREADY_RESOLVED", "Decision is already resolved."));
 
+        return new Ok<DecisionItem>(decision);
+    }
+
+    private async Task<Result<Unit>> PersistResolvedDecisionAsync(ProjectSlug projectSlug, DecisionItem decision, string response, CancellationToken cancellationToken)
+    {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var resolvedAt = DateTime.UtcNow;
+            decision.Resolve("human", response, resolvedAt);
             var updatedFields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["from"] = decision.From,
                 ["date"] = decision.Date?.ToString("o") ?? string.Empty,
-                ["priority"] = decision.Priority,
+                ["priority"] = decision.Priority.Value,
                 ["subject"] = decision.Subject,
-                ["status"] = "resolved",
-                ["resolvedAt"] = resolvedAt.ToString("o"),
-                ["resolvedBy"] = "human",
+                ["status"] = decision.Status.Value,
+                ["resolvedAt"] = decision.ResolvedAt?.ToString("o") ?? string.Empty,
+                ["resolvedBy"] = decision.ResolvedBy ?? string.Empty,
             };
             if (!string.IsNullOrEmpty(decision.Blocks)) updatedFields["blocks"] = decision.Blocks;
 
             var mainContent = FrontmatterParser.Stringify(updatedFields, decision.Body);
-            var fullContent = mainContent + ResponseSeparator + response;
+            var fullContent = mainContent + ResponseSeparator + decision.Response;
 
             var resolvedDir = paths.DecisionsResolvedDir(projectSlug);
-            Directory.CreateDirectory(resolvedDir);
             var destPath = Path.Combine(resolvedDir, decision.Filename);
-            File.WriteAllText(destPath, fullContent);
+            fileWriter.WriteAllText(destPath, fullContent);
 
             // Remove from pending
             var pendingPath = Path.Combine(paths.DecisionsPendingDir(projectSlug), decision.Filename);
-            if (File.Exists(pendingPath)) File.Delete(pendingPath);
+            fileWriter.DeleteFile(pendingPath);
 
-            return null;
+            var dispatchResult = await DispatchDecisionEventsAsync(decision.DequeueDomainEvents(), cancellationToken).ConfigureAwait(false);
+            if (dispatchResult is Err<Unit> err)
+                return err;
+
+            return new Ok<Unit>(Unit.Value);
         }
-        catch (Exception ex) { return ex.Message; }
+        catch (ArgumentException ex) { return new Err<Unit>(new DomainError("DECISION_INVALID_RESPONSE", ex.Message)); }
+        catch (IOException ex) { return new Err<Unit>(new DomainError("DECISION_IO_ERROR", ex.Message)); }
+        catch (UnauthorizedAccessException ex) { return new Err<Unit>(new DomainError("DECISION_IO_ERROR", ex.Message)); }
+    }
+
+    private async Task<Result<Unit>> DispatchDecisionEventsAsync(IReadOnlyList<DomainEvent> domainEvents, CancellationToken cancellationToken)
+    {
+        if (domainEvents.Count == 0)
+            return new Ok<Unit>(Unit.Value);
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(DispatchTimeout);
+        var dispatchResult = await dispatcher.Dispatch(domainEvents, timeoutCts.Token).ConfigureAwait(false);
+        if (dispatchResult is Err<Unit> err)
+        {
+            logger.LogError("[decisions] Event dispatch failed: {Message}", err.Error.Message);
+            return err;
+        }
+
+        return new Ok<Unit>(Unit.Value);
     }
 
     private static DecisionItem? ParseDecisionFile(string path)
@@ -129,21 +183,19 @@ public class DecisionsService(WorkspacePaths paths)
 
             var dateStr = fields.GetValueOrDefault("date");
             var resolvedAtStr = fields.GetValueOrDefault("resolvedAt");
-            return new()
-            {
-                Filename = filename,
-                Id = id,
-                From = fields.GetValueOrDefault("from", string.Empty),
-                Date = DateTime.TryParse(dateStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : null,
-                Priority = fields.GetValueOrDefault("priority", "normal"),
-                Subject = fields.GetValueOrDefault("subject", filename),
-                Status = fields.GetValueOrDefault("status", "pending"),
-                Blocks = fields.TryGetValue("blocks", out var blocks) ? blocks : null,
-                ResolvedAt = DateTime.TryParse(resolvedAtStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var rat) ? rat : null,
-                ResolvedBy = fields.TryGetValue("resolvedBy", out var resolvedBy) ? resolvedBy : null,
-                Body = body.Trim(),
-                Response = response,
-            };
+            return new(
+                filename: filename,
+                id: id,
+                from: fields.GetValueOrDefault("from", string.Empty),
+                subject: fields.GetValueOrDefault("subject", filename),
+                body: body.Trim(),
+                date: DateTime.TryParse(dateStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : null,
+                priority: Priority.From(fields.GetValueOrDefault("priority", Priority.Normal.Value)),
+                status: DecisionStatus.From(fields.GetValueOrDefault("status", DecisionStatus.Pending.Value)),
+                blocks: fields.TryGetValue("blocks", out var blocks) ? blocks : null,
+                resolvedAt: DateTime.TryParse(resolvedAtStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var rat) ? rat : null,
+                resolvedBy: fields.TryGetValue("resolvedBy", out var resolvedBy) ? resolvedBy : null,
+                response: response);
         }
         catch { return null; }
     }

@@ -1,10 +1,31 @@
 namespace AiDev.Features.Workspace;
 
-public class WorkspaceProject
+public sealed class WorkspaceProject
 {
-    public ProjectSlug Slug { get; set; } = null!;
-    public string Name { get; set; } = string.Empty;
-    public string? Description { get; set; }
-    public DateTime? CreatedAt { get; set; }
-    public int AgentCount { get; set; }
+    /// <summary>
+    /// Creates a project summary with validated identity and normalized optional metadata.
+    /// </summary>
+    public WorkspaceProject(ProjectSlug slug, string name, string? description = null, DateTime? createdAt = null, int agentCount = 0)
+    {
+        ArgumentNullException.ThrowIfNull(slug);
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Project name is required.", nameof(name));
+        if (agentCount < 0)
+            throw new ArgumentOutOfRangeException(nameof(agentCount));
+
+        Slug = slug;
+        Name = name;
+        Description = NormalizeOptional(description);
+        CreatedAt = createdAt;
+        AgentCount = agentCount;
+    }
+
+    public ProjectSlug Slug { get; }
+    public string Name { get; }
+    public string? Description { get; }
+    public DateTime? CreatedAt { get; }
+    public int AgentCount { get; }
+
+    private static string? NormalizeOptional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

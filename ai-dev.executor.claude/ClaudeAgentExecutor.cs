@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Threading.Channels;
+using System.Threading;
 using Microsoft.Extensions.Logging;
 
 namespace AiDev.Executors;
@@ -84,11 +85,23 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
         var isRateLimited = false;
+        string? errorMessage = null;
 
         process.OutputDataReceived += (_, e) =>
         {
             if (e.Data == null) return;
-            logger.LogDebug("[claude] {Line}", e.Data);
+
+            var failureMessage = TryGetFailureMessage(e.Data);
+            if (failureMessage is not null)
+            {
+                logger.LogError("[claude] {FailureMessage}", failureMessage);
+                Interlocked.CompareExchange(ref errorMessage, failureMessage, null);
+            }
+            else
+            {
+                logger.LogDebug("[claude] {Line}", e.Data);
+            }
+
             if (!isRateLimited && IsRateLimitLine(e.Data))
             {
                 isRateLimited = true;
@@ -100,7 +113,11 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data == null) return;
-            logger.LogWarning("[claude] stderr: {Data}", e.Data);
+
+            var failureMessage = TryGetFailureMessage(e.Data) ?? $"stderr: {e.Data}";
+            logger.LogError("[claude] {FailureMessage}", failureMessage);
+            Interlocked.CompareExchange(ref errorMessage, failureMessage, null);
+
             if (!isRateLimited && IsRateLimitLine(e.Data))
                 isRateLimited = true;
             output.TryWrite($"[{DateTime.UtcNow:o}] [stderr] {e.Data}");
@@ -119,7 +136,13 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         try
         {
             await process.WaitForExitAsync(context.CancellationToken).ConfigureAwait(false);
-            return new ExecutorResult(process.ExitCode, IsRateLimited: isRateLimited);
+
+            if (process.ExitCode != 0)
+            {
+                errorMessage ??= $"Claude exited with code {process.ExitCode}.";
+            }
+
+            return new ExecutorResult(process.ExitCode, IsRateLimited: isRateLimited, ErrorMessage: errorMessage);
         }
         catch (OperationCanceledException)
         {
@@ -209,4 +232,18 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         || line.Contains("rate limit", StringComparison.OrdinalIgnoreCase)
         || line.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase)
         || line.Contains("RateLimitError", StringComparison.OrdinalIgnoreCase);
+
+    private static string? TryGetFailureMessage(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return null;
+        }
+
+        return line.Contains("API Error:", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("\"type\":\"error\"", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("[error]", StringComparison.OrdinalIgnoreCase)
+            ? line
+            : null;
+    }
 }

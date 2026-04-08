@@ -1,6 +1,7 @@
 @page "/projects"
 @using AiDev.Features.Agent
 @using AiDev.Features.Workspace
+@using AiDev.Models
 @rendermode InteractiveServer
 @inject WorkspaceService WorkspaceService
 @inject AgentService AgentService
@@ -71,14 +72,18 @@ else
 
     private Task<string?> OnProjectCreated(NewProjectDialog.NewProjectRequest req)
     {
-        var error = WorkspaceService.CreateProject(req.Slug, req.Name, req.Description, req.CodebasePath);
+        var error = WorkspaceService.CreateProject(req.Slug, req.Name, req.Description, req.CodebasePath)
+            .ToErrorMessage();
         if (error != null)
             return Task.FromResult<string?>(error);
 
         // Create agents from selected templates (slug → display name)
         foreach (var (templateSlug, agentName) in req.SelectedTemplates)
         {
-            AgentService.CreateAgent(req.Slug, templateSlug, agentName, templateSlug);
+            var agentError = AgentService.CreateAgent(req.Slug, templateSlug, agentName, templateSlug)
+                .ToErrorMessage();
+            if (agentError != null)
+                return Task.FromResult<string?>(agentError);
         }
 
         showNew = false;

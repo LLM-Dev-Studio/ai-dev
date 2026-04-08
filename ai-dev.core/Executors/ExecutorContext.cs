@@ -1,3 +1,5 @@
+using AiDev.Features.Agent;
+
 namespace AiDev.Executors;
 
 /// <summary>
@@ -14,6 +16,9 @@ public sealed record ExecutorContext(
     /// <summary>The task prompt to inject.</summary>
     string Prompt,
 
+    /// <summary>Cancellation token — honour this to support StopAgent.</summary>
+    CancellationToken CancellationToken,
+
     /// <summary>
     /// Skill keys enabled for this agent (e.g. ["git-read", "git-write"]).
     /// Empty means the executor uses its own defaults.
@@ -26,5 +31,5 @@ public sealed record ExecutorContext(
     /// </summary>
     Action<int>? ReportPid,
 
-    /// <summary>Cancellation token — honour this to support StopAgent.</summary>
-    CancellationToken CancellationToken);
+    /// <summary>Optional metadata describing what triggered this agent session.</summary>
+    AgentLaunchTrigger? Trigger = null);

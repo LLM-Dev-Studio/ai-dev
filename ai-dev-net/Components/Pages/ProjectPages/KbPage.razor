@@ -1,5 +1,6 @@
 @page "/projects/{Slug}/kb"
 @using AiDev.Features.KnowledgeBase
+@using AiDev.Models
 @rendermode InteractiveServer
 @inject KbService KbService
 @inject IJSRuntime JS
@@ -123,7 +124,8 @@
     {
         saving = true;
         saveStatus = SaveStatus.Idle;
-        var err = KbService.Save(Slug, selected, content);
+        var err = KbService.Save(Slug, selected, content)
+            .ToErrorMessage();
         saving = false;
         if (err != null) { saveStatus = SaveStatus.Error; return; }
         original = content;
@@ -148,7 +150,8 @@
         if (string.IsNullOrEmpty(slug)) return;
 
         creating = true;
-        var err = KbService.Create(Slug, slug);
+        var err = KbService.Create(Slug, slug)
+            .ToErrorMessage();
         creating = false;
         if (err != null) { createError = err; return; }
 

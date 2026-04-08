@@ -1,147 +1,259 @@
-using AiDev.Features.Agent;
+using AiDev.Services;
 
-namespace AiDev.Features.Board;
-
-public class BoardService(WorkspacePaths paths, AgentRunnerService agentRunner, ILogger<BoardService> logger)
+namespace AiDev.Features.Board
 {
-
-    public BoardData LoadBoard(ProjectSlug projectSlug)
+    internal sealed class BoardState
     {
-        var path = paths.BoardPath(projectSlug);
-        if (!File.Exists(path)) return new();
-        try
-        {
-            var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<BoardData>(json, JsonDefaults.WriteIgnoreNull) ?? new BoardData();
-        }
-        catch { return new(); }
+        public List<BoardColumnState>? Columns { get; init; }
+        public Dictionary<string, BoardTaskState>? Tasks { get; init; }
     }
 
-    public void SaveBoard(ProjectSlug projectSlug, BoardData board)
+    internal sealed class BoardColumnState
     {
-        var path = paths.BoardPath(projectSlug);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(board, JsonDefaults.WriteIgnoreNull));
+        public string? Id { get; init; }
+        public string? Title { get; init; }
+        public List<string>? TaskIds { get; init; }
     }
 
-    public string? CreateTask(ProjectSlug projectSlug, string columnId, string title,
-        string? description, string priority, string? assignee)
+    internal sealed class BoardTaskState
     {
-        var board = LoadBoard(projectSlug);
-        var col = board.Columns.FirstOrDefault(c => c.Id == columnId);
-        if (col == null) return "Column not found.";
-
-        var id = TaskId.New();
-        var now = DateTime.UtcNow;
-        board.Tasks[id] = new()
-        {
-            Id = id,
-            Title = title,
-            Priority = priority,
-            Description = string.IsNullOrWhiteSpace(description) ? null : description,
-            Assignee = string.IsNullOrWhiteSpace(assignee) ? null : assignee,
-            CreatedAt = now,
-            MovedAt = now,
-        };
-        col.TaskIds.Add(id);
-        SaveBoard(projectSlug, board);
-
-        // Send message to assignee if set
-        if (!string.IsNullOrWhiteSpace(assignee))
-        {
-            var err = agentRunner.WriteInboxMessage(
-                projectSlug,
-                assignee,
-                from: "board",
-                re: title,
-                type: "task-assigned",
-                priority: priority,
-                body: $"You have been assigned a new task: {title}{(string.IsNullOrWhiteSpace(description) ? "" : $"\n\n{description}")}",
-                taskId: id);
-            if (err != null)
-                logger.LogError("[board] Failed to send task-assigned inbox message to {Assignee} for task {TaskId}: {Error}",
-                    assignee, id, err);
-            else
-                logger.LogInformation("[board] Sent task-assigned message to {Assignee} for task {TaskId} ({Title})",
-                    assignee, id, title);
-        }
-        return null;
+        public string? Id { get; init; }
+        public string? Title { get; init; }
+        public string? Priority { get; init; }
+        public string? Description { get; init; }
+        public string? Assignee { get; init; }
+        public DateTime? CreatedAt { get; init; }
+        public DateTime? CompletedAt { get; init; }
+        public DateTime? MovedAt { get; init; }
+        public DateTime? NudgedAt { get; init; }
     }
 
-    public string? UpdateTask(ProjectSlug projectSlug, TaskId taskId, string newColumnId,
-        string title, string? description, string priority, string? assignee)
+    public class BoardService(
+        WorkspacePaths paths,
+        IDomainEventDispatcher dispatcher,
+        AtomicFileWriter fileWriter,
+        ProjectMutationCoordinator coordinator,
+        ILogger<BoardService> logger)
     {
-        var board = LoadBoard(projectSlug);
-        if (!board.Tasks.TryGetValue(taskId, out var task)) return "Task not found.";
+        private static readonly DomainError InvalidColumnError = new("BOARD_INVALID_COLUMN", "Column id is invalid.");
+        private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10);
 
-
-        var previousAssignee = task.Assignee;
-        task.Title = title;
-        task.Priority = priority;
-        task.Description = string.IsNullOrWhiteSpace(description) ? null : description;
-        task.Assignee = string.IsNullOrWhiteSpace(assignee) ? null : assignee;
-
-        // Move between columns if needed
-        var currentCol = board.Columns.FirstOrDefault(c => c.TaskIds.Contains(taskId));
-        if (currentCol?.Id != newColumnId)
+        public Board LoadBoard(ProjectSlug projectSlug)
         {
-            currentCol?.TaskIds.Remove(taskId);
-            var newCol = board.Columns.FirstOrDefault(c => c.Id == newColumnId);
-            newCol?.TaskIds.Add(taskId);
-
-            var movedNow = DateTime.UtcNow;
-            task.MovedAt = movedNow;
-            task.NudgedAt = null; // reset nudge on column move — task is progressing
-
-            if (newColumnId == "done" && task.CompletedAt == null)
-                task.CompletedAt = movedNow;
-            else if (newColumnId != "done")
-                task.CompletedAt = null;
+            var path = paths.BoardPath(projectSlug);
+            if (!File.Exists(path)) return new(projectSlug);
+            try
+            {
+                var json = File.ReadAllText(path);
+                var state = JsonSerializer.Deserialize<BoardState>(json, JsonDefaults.Read);
+                var columns = DeserializeColumns(state?.Columns);
+                var tasks = DeserializeTasks(state?.Tasks);
+                return new Board(projectSlug, columns, tasks);
+            }
+            catch (Exception ex)
+            {
+                var backupPath = path + $".corrupt.{DateTime.UtcNow:yyyyMMddHHmmss}";
+                try { File.Move(path, backupPath); } catch { /* best-effort */ }
+                logger.LogError(ex, "[board] Corrupt board.json for {ProjectSlug}; backed up to {Backup} and reset to default",
+                    projectSlug, backupPath);
+                return new Board(projectSlug);
+            }
         }
 
-        SaveBoard(projectSlug, board);
-
-        // Only send message if assignee is set and changed
-        if (string.IsNullOrWhiteSpace(assignee) || assignee == previousAssignee)
+        public void SaveBoard(ProjectSlug projectSlug, Board board)
         {
-            return null;
+            var path = paths.BoardPath(projectSlug);
+            var state = new BoardState
+            {
+                Columns = board.Columns.Select(column => new BoardColumnState
+                {
+                    Id = column.Id.Value,
+                    Title = column.Title,
+                    TaskIds = [.. column.TaskIds.Select(taskId => taskId.Value)],
+                }).ToList(),
+                Tasks = board.Tasks.ToDictionary(
+                    kv => kv.Key.Value,
+                    kv => new BoardTaskState
+                    {
+                        Id = kv.Value.Id.Value,
+                        Title = kv.Value.Title,
+                        Priority = kv.Value.Priority.Value,
+                        Description = kv.Value.Description,
+                        Assignee = kv.Value.Assignee,
+                        CreatedAt = kv.Value.CreatedAt,
+                        CompletedAt = kv.Value.CompletedAt,
+                        MovedAt = kv.Value.MovedAt,
+                        NudgedAt = kv.Value.NudgedAt,
+                    }),
+            };
+            fileWriter.WriteAllText(path, JsonSerializer.Serialize(state, JsonDefaults.WriteIgnoreNull));
         }
 
-        var err = agentRunner.WriteInboxMessage(
-            projectSlug,
-            assignee,
-            from: "board",
-            re: title,
-            type: "task-assigned",
-            priority: priority,
-            body: $"You have been assigned a new task: {title}{(string.IsNullOrWhiteSpace(description) ? "" : $"\n\n{description}")}",
-            taskId: taskId);
-        if (err != null)
-            logger.LogError("[board] Failed to send task-assigned inbox message to {Assignee} for task {TaskId}: {Error}",
-                assignee, taskId, err);
-        else
-            logger.LogInformation("[board] Sent task-assigned message to {Assignee} for task {TaskId} ({Title})",
-                assignee, taskId, title);
-        return null;
-    }
+        private static List<BoardColumn>? DeserializeColumns(List<BoardColumnState>? columns)
+        {
+            if (columns == null)
+                return null;
 
-    public void SetTaskNudged(ProjectSlug projectSlug, TaskId taskId)
-    {
-        var board = LoadBoard(projectSlug);
-        if (!board.Tasks.TryGetValue(taskId, out var task)) return;
-        task.NudgedAt = DateTime.UtcNow;
-        SaveBoard(projectSlug, board);
-    }
+            var result = new List<BoardColumn>(columns.Count);
+            foreach (var column in columns)
+            {
+                if (!ColumnId.TryParse(column.Id, out var columnId) || string.IsNullOrWhiteSpace(column.Title))
+                    continue;
 
-    public string? DeleteTask(ProjectSlug projectSlug, TaskId taskId)
-    {
-        var board = LoadBoard(projectSlug);
-        if (!board.Tasks.Remove(taskId)) return "Task not found.";
+                var taskIds = (column.TaskIds ?? [])
+                    .Where(static id => TaskId.TryParse(id, out _))
+                    .Select(id => new TaskId(id))
+                    .ToList();
 
-        foreach (var col in board.Columns)
-            col.TaskIds.Remove(taskId);
+                result.Add(new BoardColumn(columnId, column.Title, taskIds));
+            }
 
-        SaveBoard(projectSlug, board);
-        return null;
+            return result;
+        }
+
+        private static Dictionary<TaskId, BoardTask>? DeserializeTasks(Dictionary<string, BoardTaskState>? tasksState)
+        {
+            if (tasksState == null)
+                return null;
+
+            var tasks = new Dictionary<TaskId, BoardTask>();
+            foreach (var (key, taskState) in tasksState)
+            {
+                if (!TaskId.TryParse(key, out var taskId) || taskState == null || string.IsNullOrWhiteSpace(taskState.Title))
+                    continue;
+
+                tasks[taskId] = new BoardTask(
+                    id: taskId,
+                    title: taskState.Title,
+                    priority: string.IsNullOrWhiteSpace(taskState.Priority) ? null : Priority.From(taskState.Priority),
+                    description: taskState.Description,
+                    assignee: taskState.Assignee,
+                    createdAt: taskState.CreatedAt,
+                    completedAt: taskState.CompletedAt,
+                    movedAt: taskState.MovedAt,
+                    nudgedAt: taskState.NudgedAt);
+            }
+
+            return tasks;
+        }
+
+        public async Task<Result<BoardTask>> CreateTaskAsync(ProjectSlug projectSlug, string columnId, string title,
+            string? description, string priority, string? assignee, CancellationToken cancellationToken = default)
+            => await coordinator.ExecuteAsync(projectSlug, async () =>
+            {
+                using var activity = AiDevTelemetry.ActivitySource.StartActivity("Board.CreateTask", ActivityKind.Internal);
+                activity?.SetTag("project.slug", projectSlug.Value);
+                activity?.SetTag("board.column", columnId);
+                activity?.SetTag("task.assignee", assignee ?? string.Empty);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!ColumnId.TryParse(columnId, out var parsedColumnId))
+                    return new Err<BoardTask>(InvalidColumnError);
+
+                var board = LoadBoard(projectSlug);
+                var result = CreateBoardTask(title, priority, description, assignee)
+                    .Then(task => board.AddTask(parsedColumnId, task));
+
+                return await result.Match<BoardTask, Task<Result<BoardTask>>>(
+                    task => PersistBoardResultAsync(projectSlug, board, task),
+                    error => Task.FromResult<Result<BoardTask>>(new Err<BoardTask>(error))).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
+
+        public async Task<Result<BoardTask>> UpdateTaskAsync(ProjectSlug projectSlug, TaskId taskId, string newColumnId,
+            string title, string? description, string priority, string? assignee, CancellationToken cancellationToken = default)
+            => await coordinator.ExecuteAsync(projectSlug, async () =>
+            {
+                using var activity = AiDevTelemetry.ActivitySource.StartActivity("Board.UpdateTask", ActivityKind.Internal);
+                activity?.SetTag("project.slug", projectSlug.Value);
+                activity?.SetTag("task.id", taskId.Value);
+                activity?.SetTag("board.column", newColumnId);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!ColumnId.TryParse(newColumnId, out var parsedColumnId))
+                    return new Err<BoardTask>(InvalidColumnError);
+
+                var board = LoadBoard(projectSlug);
+                var result = board.UpdateTask(
+                    taskId,
+                    parsedColumnId,
+                    title,
+                    Priority.From(priority),
+                    description,
+                    assignee,
+                    DateTime.UtcNow);
+
+                return await result.Match<BoardTask, Task<Result<BoardTask>>>(
+                    task => PersistBoardResultAsync(projectSlug, board, task),
+                    error => Task.FromResult<Result<BoardTask>>(new Err<BoardTask>(error))).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
+
+        public void SetTaskNudged(ProjectSlug projectSlug, TaskId taskId)
+            => coordinator.Execute(projectSlug, () =>
+            {
+                var board = LoadBoard(projectSlug);
+                var result = board.MarkTaskNudged(taskId, DateTime.UtcNow);
+                if (result is Ok<Unit>)
+                    SaveBoard(projectSlug, board);
+
+                return Unit.Value;
+            });
+
+        public Task<Result<Unit>> DeleteTaskAsync(ProjectSlug projectSlug, TaskId taskId, CancellationToken cancellationToken = default)
+            => coordinator.ExecuteAsync(projectSlug, () =>
+            {
+                using var activity = AiDevTelemetry.ActivitySource.StartActivity("Board.DeleteTask", ActivityKind.Internal);
+                activity?.SetTag("project.slug", projectSlug.Value);
+                activity?.SetTag("task.id", taskId.Value);
+                cancellationToken.ThrowIfCancellationRequested();
+                var board = LoadBoard(projectSlug);
+                var result = board.DeleteTask(taskId);
+
+                return result.Match<Unit, Result<Unit>>(
+                    _ =>
+                    {
+                        SaveBoard(projectSlug, board);
+                        return new Ok<Unit>(Unit.Value);
+                    },
+                    error => new Err<Unit>(error));
+            }, cancellationToken);
+
+        private async Task<Result<BoardTask>> PersistBoardResultAsync(ProjectSlug projectSlug, Board board, BoardTask task)
+        {
+            SaveBoard(projectSlug, board);
+            var dispatchResult = await DispatchBoardEventsAsync(board.DequeueDomainEvents()).ConfigureAwait(false);
+            if (dispatchResult is Err<Unit> err)
+                return new Err<BoardTask>(err.Error);
+
+            return new Ok<BoardTask>(task);
+        }
+
+        private Result<BoardTask> CreateBoardTask(string title, string priority, string? description, string? assignee)
+        {
+            try
+            {
+                var now = DateTime.UtcNow;
+                return new Ok<BoardTask>(new BoardTask(
+                    id: TaskId.New(),
+                    title: title,
+                    priority: Priority.From(priority),
+                    description: description,
+                    assignee: assignee,
+                    createdAt: now,
+                    movedAt: now));
+            }
+            catch (ArgumentException ex)
+            {
+                return new Err<BoardTask>(new DomainError("BOARD_INVALID_TASK", ex.Message));
+            }
+        }
+
+        private async Task<Result<Unit>> DispatchBoardEventsAsync(IReadOnlyList<DomainEvent> domainEvents)
+        {
+            if (domainEvents.Count == 0)
+                return new Ok<Unit>(Unit.Value);
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken.None);
+            timeoutCts.CancelAfter(DispatchTimeout);
+            var dispatchResult = await dispatcher.Dispatch(domainEvents, timeoutCts.Token).ConfigureAwait(false);
+            return dispatchResult;
+        }
     }
 }

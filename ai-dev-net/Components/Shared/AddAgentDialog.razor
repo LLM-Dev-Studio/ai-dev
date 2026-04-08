@@ -1,4 +1,5 @@
 @using AiDev.Features.Agent
+@using AiDev.Models
 @using AiDev.Models.Types
 @inject AgentTemplatesService TemplatesService
 @inject AgentService AgentService
@@ -129,7 +130,8 @@
         saving = true;
         try
         {
-            var err = AgentService.CreateAgent(ProjectSlug, agentSlug.Trim(), name.Trim(), selectedTemplate);
+            var err = AgentService.CreateAgent(ProjectSlug, agentSlug.Trim(), name.Trim(), selectedTemplate)
+                .ToErrorMessage();
             if (err != null) { error = err; return; }
             await OnCreated.InvokeAsync();
             await OnClose.InvokeAsync();

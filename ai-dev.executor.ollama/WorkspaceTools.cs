@@ -9,7 +9,7 @@ namespace AiDev.Executors;
 /// Directly delegates to the same exact tool methods exposed by the MCP server,
 /// achieving complete uniformity of behavior between LLMs running by Ollama and Claude.
 /// </summary>
-internal static class WorkspaceTools
+public static class WorkspaceTools
 {
     // Tool name constants must match the function names declared in OllamaToolSchemas.
     public const string ReadFile          = "read_file";

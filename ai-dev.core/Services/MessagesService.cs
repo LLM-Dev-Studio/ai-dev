@@ -56,21 +56,19 @@ public class MessagesService(WorkspacePaths paths)
             var content = File.ReadAllText(path);
             var (fields, body) = FrontmatterParser.Parse(content);
             var dateStr = fields.GetValueOrDefault("date");
-            return new()
-            {
-                Filename = Path.GetFileName(path),
-                AgentSlug = agentSlug,
-                From = fields.GetValueOrDefault("from", string.Empty),
-                To = fields.GetValueOrDefault("to", string.Empty),
-                Date = DateTime.TryParse(dateStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : null,
-                Priority = fields.GetValueOrDefault("priority", "normal"),
-                Re = fields.GetValueOrDefault("re", string.Empty),
-                Type = fields.GetValueOrDefault("type", string.Empty),
-                Body = body.Trim(),
-                IsProcessed = isProcessed,
-                TaskId = TaskId.TryParse(fields.GetValueOrDefault("task-id"), out var tid) ? tid : null,
-                Playbook = fields.TryGetValue("playbook", out var pb) && !string.IsNullOrWhiteSpace(pb) ? pb.Trim() : null,
-            };
+            return new(
+                filename: Path.GetFileName(path),
+                agentSlug: agentSlug,
+                from: fields.GetValueOrDefault("from", string.Empty),
+                to: fields.GetValueOrDefault("to", string.Empty),
+                re: fields.GetValueOrDefault("re", string.Empty),
+                type: fields.GetValueOrDefault("type", string.Empty),
+                body: body.Trim(),
+                date: DateTime.TryParse(dateStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : null,
+                priority: Priority.From(fields.GetValueOrDefault("priority", Priority.Normal.Value)),
+                isProcessed: isProcessed,
+                taskId: TaskId.TryParse(fields.GetValueOrDefault("task-id"), out var tid) ? tid : null,
+                playbook: fields.TryGetValue("playbook", out var pb) ? pb : null);
         }
         catch { return null; }
     }

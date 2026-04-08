@@ -2,7 +2,7 @@ using AiDev.Services;
 
 namespace AiDev.Features.Playbook;
 
-public class PlaybookService(WorkspacePaths paths)
+public class PlaybookService(WorkspacePaths paths, AtomicFileWriter fileWriter, ProjectMutationCoordinator coordinator)
 {
     public List<PlaybookItem> ListPlaybooks(ProjectSlug projectSlug)
     {
@@ -46,27 +46,30 @@ public class PlaybookService(WorkspacePaths paths)
         return path != null && File.Exists(path.Value) ? File.ReadAllText(path.Value) : string.Empty;
     }
 
-    public string? Save(ProjectSlug projectSlug, string slug, string content)
+    public Result<Unit> Save(ProjectSlug projectSlug, string slug, string content)
     {
         var path = paths.SafePlaybookPath(projectSlug, slug);
-        if (path == null) return "Invalid playbook slug.";
-        try
+        if (path == null) return new Err<Unit>(new DomainError("PLAYBOOK_INVALID_SLUG", "Invalid playbook slug."));
+        return coordinator.Execute<Result<Unit>>(projectSlug, () =>
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path.Value)!);
-            File.WriteAllText(path.Value, content);
-            return null;
-        }
-        catch (Exception ex) { return ex.Message; }
+            try
+            {
+                fileWriter.WriteAllText(path.Value, content);
+                return new Ok<Unit>(Unit.Value);
+            }
+            catch (IOException ex) { return new Err<Unit>(new DomainError("PLAYBOOK_IO_ERROR", ex.Message)); }
+            catch (UnauthorizedAccessException ex) { return new Err<Unit>(new DomainError("PLAYBOOK_IO_ERROR", ex.Message)); }
+        });
     }
 
-    public string? Create(ProjectSlug projectSlug, string slug)
+    public Result<Unit> Create(ProjectSlug projectSlug, string slug)
     {
-        if (string.IsNullOrWhiteSpace(slug)) return "Slug is required.";
-        if (slug.Contains("..") || slug.Contains('/') || slug.Contains('\\')) return "Invalid slug.";
+        if (string.IsNullOrWhiteSpace(slug)) return new Err<Unit>(new DomainError("PLAYBOOK_SLUG_REQUIRED", "Slug is required."));
+        if (slug.Contains("..") || slug.Contains('/') || slug.Contains('\\')) return new Err<Unit>(new DomainError("PLAYBOOK_INVALID_SLUG", "Invalid slug."));
 
         var dir = paths.PlaybooksDir(projectSlug);
         var path = Path.Combine(dir, $"{slug}.md");
-        if (File.Exists(path)) return $"Playbook '{slug}' already exists.";
+        if (File.Exists(path)) return new Err<Unit>(new DomainError("PLAYBOOK_ALREADY_EXISTS", $"Playbook '{slug}' already exists."));
 
         return Save(projectSlug, slug, $"# {slug}\n\n");
     }
@@ -74,7 +77,13 @@ public class PlaybookService(WorkspacePaths paths)
     public void Delete(ProjectSlug projectSlug, string slug)
     {
         var path = paths.SafePlaybookPath(projectSlug, slug);
-        if (path != null && File.Exists(path.Value)) File.Delete(path.Value);
+        if (path == null) return;
+
+        coordinator.Execute(projectSlug, () =>
+        {
+            fileWriter.DeleteFile(path.Value);
+            return Unit.Value;
+        });
     }
 
     private static string? ExtractTitle(string content)

@@ -1,10 +1,14 @@
-using System.Net;
-using System.Text;
-using System.Threading.Channels;
 using AiDev;
 using AiDev.Executors;
 using AiDev.Services;
+
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+
+using System.Net;
+using System.Text;
+using System.Threading.Channels;
+
 using Xunit.Sdk;
 
 namespace AiDevNet.Tests.Integration;
@@ -103,12 +107,13 @@ internal sealed class Fixture : IDisposable
     {
         _dir = Path.Combine(Path.GetTempPath(), $"ollama-t-{Guid.NewGuid():N}"[..22]);
         Directory.CreateDirectory(_dir);
-        Paths    = new WorkspacePaths(new RootDir(_dir));
-        Settings = new StudioSettingsService(Paths);
-
-        var s = Settings.GetSettings();
-        s.OllamaBaseUrl = ollamaBaseUrl;
-        Settings.SaveSettings(s);
+        Paths = new WorkspacePaths(new RootDir(_dir));
+        Settings = new StudioSettingsService(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OllamaBaseUrl"] = ollamaBaseUrl,
+            })
+            .Build());
     }
 
     /// <summary>Builds an executor backed by fake HTTP handlers.</summary>
@@ -220,7 +225,7 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
     {
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
-        await File.WriteAllTextAsync(Path.Combine(dir, "CLAUDE.md"), "You are a test agent.");
+        await File.WriteAllTextAsync(Path.Combine(dir, "CLAUDE.md"), "You are a test agent.", TestContext.Current.CancellationToken);
 
         var h = new FakeHttpMessageHandler();
         h.Enqueue(OllamaStream.Ok(OllamaStream.Build(("ok", true))));
@@ -303,7 +308,7 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
         var (result, output) = await RunAsync(_fx.Build(h));
 
         result.ExitCode.ShouldBe(1);
-        result.ErrorMessage.ShouldContain("500");
+        result.ErrorMessage!.ShouldContain("500");
         output.ShouldContain(l => l.Contains("[error]"));
     }
 
@@ -316,7 +321,7 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
         var (result, _) = await RunAsync(_fx.Build(h));
 
         result.ExitCode.ShouldBe(1);
-        result.ErrorMessage.ShouldContain("404");
+        result.ErrorMessage!.ShouldContain("404");
     }
 
     [Fact]
@@ -328,8 +333,41 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
         var (result, output) = await RunAsync(executor);
 
         result.ExitCode.ShouldBe(1);
-        result.ErrorMessage.ShouldContain("Connection refused");
+        result.ErrorMessage!.ShouldContain("Connection refused");
         output.ShouldContain(l => l.Contains("[error]"));
+    }
+
+    [Fact]
+    public async Task RunAsync_KnownUnsupportedToolsModel_FailsBeforeSendingRequest()
+    {
+        var h = new FakeHttpMessageHandler();
+
+        var (result, output) = await RunAsync(
+            _fx.Build(h),
+            Ctx() with { ModelId = "gemma3:27b", EnabledSkills = [OllamaToolSupport.WorkspaceToolSkill] });
+
+        result.ExitCode.ShouldBe(1);
+        result.PreserveInbox.ShouldBeTrue();
+        result.ErrorMessage.ShouldContain("does not support workspace tools");
+        h.Requests.ShouldBeEmpty();
+        output.ShouldContain(l => l.Contains("does not support workspace tools"));
+    }
+
+    [Fact]
+    public async Task RunAsync_UnsupportedToolsResponse_ReturnsFriendlyConfigurationError()
+    {
+        var h = new FakeHttpMessageHandler();
+        h.Enqueue(OllamaStream.Error(HttpStatusCode.BadRequest,
+            "registry.ollama.ai/library/gemma3:27b does not support tools"));
+
+        var (result, output) = await RunAsync(
+            _fx.Build(h),
+            Ctx() with { ModelId = "custom-model", EnabledSkills = [OllamaToolSupport.WorkspaceToolSkill] });
+
+        result.ExitCode.ShouldBe(1);
+        result.PreserveInbox.ShouldBeTrue();
+        result.ErrorMessage.ShouldContain("does not support workspace tools");
+        output.ShouldContain(l => l.Contains("does not support workspace tools"));
     }
 
     [Fact]
@@ -374,11 +412,11 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
             Content = new StringContent(json, Encoding.UTF8, "application/json"),
         });
 
-        var result = await _fx.Build(new FakeHttpMessageHandler(), healthH).CheckHealthAsync();
+        var result = await _fx.Build(new FakeHttpMessageHandler(), healthH).CheckHealthAsync(TestContext.Current.CancellationToken);
 
         result.IsHealthy.ShouldBeTrue();
-        result.Details.ShouldContain("gemma3:27b");
-        result.Details.ShouldContain("llama3.2");
+        result.Details!.ShouldContain("gemma3:27b");
+        result.Details!.ShouldContain("llama3.2");
     }
 
     [Fact]
@@ -391,7 +429,7 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
             Content = new StringContent(json, Encoding.UTF8, "application/json"),
         });
 
-        var result = await _fx.Build(new FakeHttpMessageHandler(), healthH).CheckHealthAsync();
+        var result = await _fx.Build(new FakeHttpMessageHandler(), healthH).CheckHealthAsync(TestContext.Current.CancellationToken);
 
         result.IsHealthy.ShouldBeTrue();
         (result.Details == null || result.Details.Count == 0).ShouldBeTrue("Expected no model details");
@@ -403,7 +441,7 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
         var healthH = new FakeHttpMessageHandler();
         healthH.Enqueue(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
 
-        var result = await _fx.Build(new FakeHttpMessageHandler(), healthH).CheckHealthAsync();
+        var result = await _fx.Build(new FakeHttpMessageHandler(), healthH).CheckHealthAsync(TestContext.Current.CancellationToken);
 
         result.IsHealthy.ShouldBeFalse();
         result.Message.ShouldContain("503");
@@ -415,7 +453,7 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
         var result = await _fx.Build(
                 new FakeHttpMessageHandler(),
                 new ThrowingHttpMessageHandler(new HttpRequestException("Connection refused")))
-            .CheckHealthAsync();
+            .CheckHealthAsync(TestContext.Current.CancellationToken);
 
         result.IsHealthy.ShouldBeFalse();
         result.Message.ShouldContain("Connection refused");
@@ -454,8 +492,8 @@ public sealed class OllamaAgentExecutorIntegrationTests : IDisposable
                 return envModel;
 
             // Pick the first available model rather than assuming a specific one is pulled.
-            var body   = await r.Content.ReadAsStringAsync();
-            var doc    = System.Text.Json.JsonDocument.Parse(body);
+            var body = await r.Content.ReadAsStringAsync();
+            var doc = System.Text.Json.JsonDocument.Parse(body);
             var models = doc.RootElement.GetProperty("models")
                 .EnumerateArray()
                 .Select(m => m.GetProperty("name").GetString())
@@ -490,7 +528,7 @@ public sealed class OllamaAgentExecutorIntegrationTests : IDisposable
     {
         await SkipIfUnavailableAsync();
 
-        var result = await BuildRealExecutor().CheckHealthAsync();
+        var result = await BuildRealExecutor().CheckHealthAsync(TestContext.Current.CancellationToken);
 
         result.IsHealthy.ShouldBeTrue(result.Message);
     }
@@ -513,7 +551,7 @@ public sealed class OllamaAgentExecutorIntegrationTests : IDisposable
         channel.Writer.TryComplete();
 
         var lines = new List<string>();
-        await foreach (var line in channel.Reader.ReadAllAsync())
+        await foreach (var line in channel.Reader.ReadAllAsync(TestContext.Current.CancellationToken))
             lines.Add(line);
 
         result.ExitCode.ShouldBe(0, $"Executor failed: {result.ErrorMessage}");

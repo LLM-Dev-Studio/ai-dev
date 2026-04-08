@@ -2,7 +2,7 @@ namespace AiDev.Features.Git;
 
 public class GitCommitDetail
 {
-    public GitCommit Commit { get; set; } = new();
-    public string Body { get; set; } = string.Empty;
-    public string Diff { get; set; } = string.Empty;
+    public required GitCommit Commit { get; set; }
+    public required string Body { get; set; }
+    public required string Diff { get; set; }
 }

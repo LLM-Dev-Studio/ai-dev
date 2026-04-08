@@ -46,7 +46,7 @@ else
         @foreach (var d in decisions)
         {
             <a href="@($"/projects/{Slug}/decisions/{d.Id}")"
-               class="block rounded-lg border border-border bg-card p-4 hover:border-border/80 transition-colors border-l-4 @PriorityBorder(d.Priority)">
+               class="block rounded-lg border border-border bg-card p-4 hover:border-border/80 transition-colors border-l-4 @PriorityBorder(d.Priority.Value)">
                 <div class="flex items-start justify-between">
                     <div class="flex-1 min-w-0">
                         <p class="text-sm font-medium text-foreground">@d.Subject</p>
@@ -59,7 +59,7 @@ else
                         </p>
                     </div>
                     <div class="flex items-center gap-2 ml-3 flex-shrink-0">
-                        <span class="text-xs px-1.5 py-0.5 rounded border @PriorityBadge(d.Priority)">@d.Priority</span>
+                        <span class="text-xs px-1.5 py-0.5 rounded border @PriorityBadge(d.Priority.Value)">@d.Priority.Value</span>
                         <span class="text-xs text-muted-foreground">@FormatDateTime(d.Date)</span>
                     </div>
                 </div>
@@ -134,14 +134,14 @@ else
             ? "px-4 py-2 text-sm font-medium border-b-2 -mb-px border-primary text-foreground capitalize"
             : "px-4 py-2 text-sm font-medium border-b-2 -mb-px border-transparent text-muted-foreground hover:text-foreground capitalize transition-colors";
 
-    private static string PriorityBorder(string p) => p switch
+    private static string PriorityBorder(string priority) => Priority.From(priority) switch
     {
-        "critical" => "border-l-red-400",
-        "high"     => "border-l-orange-400",
+        var value when value.IsCritical => "border-l-red-400",
+        var value when value.IsHigh     => "border-l-orange-400",
         _          => "border-l-border",
     };
 
-    private static string PriorityBadge(string p) => p is "high" or "critical"
+    private static string PriorityBadge(string priority) => Priority.From(priority).IsUrgent
         ? "border-orange-400/20 text-orange-400"
         : "border-border text-muted-foreground";
 

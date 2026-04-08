@@ -1,9 +1,13 @@
 using AiDev.Models;
+using Microsoft.Extensions.Configuration;
 
 namespace AiDev.Services;
 
-public class StudioSettingsService(WorkspacePaths paths)
+public class StudioSettingsService(IConfiguration configuration)
 {
+    private const string StudioSettingsSectionName = "StudioSettings";
+    private const string DefaultOllamaBaseUrl = "http://localhost:11434";
+
     private static readonly Dictionary<string, string> Defaults = new()
     {
         ["sonnet"] = "claude-sonnet-4-6",
@@ -13,33 +17,42 @@ public class StudioSettingsService(WorkspacePaths paths)
 
     public StudioSettings GetSettings()
     {
-        var path = paths.StudioSettingsPath;
-        if (!File.Exists(path))
-            return new() { Models = new(Defaults) };
-
-        try
+        var configuredModels = GetConfiguredModels();
+        var models = new Dictionary<string, string>(Defaults);
+        foreach (var (alias, modelId) in configuredModels)
         {
-            var json = File.ReadAllText(path);
-            var data = JsonSerializer.Deserialize<StudioSettings>(json, JsonDefaults.Write);
-            if (data?.Models == null)
-                return new() { Models = new(Defaults) };
+            if (string.IsNullOrWhiteSpace(alias) || string.IsNullOrWhiteSpace(modelId))
+                continue;
 
-            // Merge file values over defaults
-            var merged = new Dictionary<string, string>(Defaults);
-            foreach (var (k, v) in data.Models)
-                merged[k] = v;
-            return new() { Models = merged };
+            models[alias] = modelId;
         }
-        catch
+
+        var ollamaBaseUrl = GetConfiguredValue(nameof(StudioSettings.OllamaBaseUrl));
+        var anthropicApiKey = GetConfiguredValue(nameof(StudioSettings.AnthropicApiKey));
+
+        return new StudioSettings
         {
-            return new() { Models = new(Defaults) };
-        }
+            Models = models,
+            OllamaBaseUrl = string.IsNullOrWhiteSpace(ollamaBaseUrl) ? DefaultOllamaBaseUrl : ollamaBaseUrl,
+            AnthropicApiKey = string.IsNullOrWhiteSpace(anthropicApiKey) ? null : anthropicApiKey,
+        };
     }
 
     public void SaveSettings(StudioSettings settings)
+        => throw new InvalidOperationException("Studio settings are loaded from application configuration and cannot be saved at runtime.");
+
+    private Dictionary<string, string> GetConfiguredModels()
     {
-        var path = paths.StudioSettingsPath;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(settings, JsonDefaults.Write));
+        var modelsSection = configuration.GetSection(StudioSettingsSectionName).GetSection(nameof(StudioSettings.Models));
+        if (!modelsSection.GetChildren().Any())
+            modelsSection = configuration.GetSection(nameof(StudioSettings.Models));
+
+        return modelsSection
+            .GetChildren()
+            .Where(child => !string.IsNullOrWhiteSpace(child.Key) && !string.IsNullOrWhiteSpace(child.Value))
+            .ToDictionary(child => child.Key, child => child.Value!, StringComparer.OrdinalIgnoreCase);
     }
+
+    private string? GetConfiguredValue(string key)
+        => configuration.GetSection(StudioSettingsSectionName)[key] ?? configuration[key];
 }

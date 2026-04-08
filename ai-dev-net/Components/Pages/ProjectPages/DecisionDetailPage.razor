@@ -1,5 +1,9 @@
 @page "/projects/{Slug}/decisions/{DecisionId}"
 @using AiDev.Features.Decision
+@using AiDev.Models
+@using AiDev.Models.Types
+@using AiDev.Services
+@using System.Diagnostics
 @rendermode InteractiveServer
 @inject DecisionsService DecisionsService
 @inject NavigationManager NavigationManager
@@ -28,7 +32,7 @@ else
                         from <span class="text-foreground/70">@decision.From</span>
                     </span>
                     <span class="text-xs text-muted-foreground">@FormatDateTime(decision.Date)</span>
-                    <span class="text-xs px-1.5 py-0.5 rounded border @StatusBadge(decision.Status)">@decision.Status</span>
+                    <span class="text-xs px-1.5 py-0.5 rounded border @StatusBadge(decision.Status.Value)">@decision.Status.Value</span>
                 </div>
             </div>
         </div>
@@ -49,7 +53,7 @@ else
             </div>
         }
 
-        @if (decision.Status == "pending")
+        @if (decision.Status.IsPending)
         {
             <div class="rounded-lg border border-border bg-card p-5">
                 <p class="text-sm font-medium text-foreground mb-3">Your response</p>
@@ -88,18 +92,25 @@ else
         decision = DecisionsService.GetDecision(Slug, DecisionId);
     }
 
-    private void Resolve()
+    private async Task Resolve()
     {
         if (string.IsNullOrWhiteSpace(response)) return;
         submitting = true;
         resolveError = string.Empty;
-        var err = DecisionsService.ResolveDecision(Slug, DecisionId, response.Trim());
+        using var activity = AiDevTelemetry.ActivitySource.StartActivity("UI.Decision.Resolve", ActivityKind.Internal);
+        activity?.SetTag("ui.page", "decision-detail");
+        activity?.SetTag("project.slug", Slug);
+        activity?.SetTag("decision.id", DecisionId);
+        var err = (await DecisionsService.ResolveDecisionAsync(Slug, DecisionId, response.Trim()))
+            .ToErrorMessage();
+        activity?.SetTag("ui.outcome", string.IsNullOrEmpty(err) ? "success" : "error");
+        activity?.SetTag("ui.trace_id", activity?.TraceId.ToString());
         submitting = false;
         if (err != null) { resolveError = err; return; }
         NavigationManager.NavigateTo($"/projects/{Slug}/decisions");
     }
 
-    private static string StatusBadge(string status) => status == "resolved"
+    private static string StatusBadge(string status) => DecisionStatus.From(status).IsResolved
         ? "border-emerald-400/20 text-emerald-400"
         : "border-orange-400/20 text-orange-400";
 

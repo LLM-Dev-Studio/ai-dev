@@ -28,7 +28,7 @@ else
         <div class="flex-1">
             <div class="flex items-center gap-2 mb-1">
                 <h1 class="text-xl font-semibold text-primary">@agent.Name</h1>
-                <StatusBadge Status="@(isRunning ? AgentStatus.Running : AgentStatus.Idle)" />
+                <StatusBadge Status="@(isRunning ? AgentStatus.Running : agent.Status)" />
                 <ModelBadge Model="@agent.Model" />
             </div>
             <p class="text-sm text-muted-foreground">@agent.Description</p>
@@ -57,6 +57,26 @@ else
             }
         </div>
     </div>
+
+    @if (!isRunning && agent.LastError is { Length: > 0 })
+    {
+        <div class="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+            <div class="flex items-start gap-3">
+                <SvgIcon Name="alert-triangle" Class="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                <div class="min-w-0">
+                    <p class="text-sm font-medium text-amber-200">Last run needs attention</p>
+                    <p class="text-sm text-amber-100/90 mt-1">@agent.LastError</p>
+                    <div class="flex items-center gap-3 mt-2 text-xs text-amber-200/80">
+                        <span>@FormatDateTime(agent.LastErrorAt)</span>
+                        <a href="@($"/projects/{Slug}/agents/{AgentSlug}/transcript")"
+                           class="underline underline-offset-2 hover:text-amber-100 transition-colors">
+                            Open transcript
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 
     <div class="grid grid-cols-3 gap-4 mb-8">
         <div class="rounded-lg border border-border bg-card p-4">
@@ -87,23 +107,26 @@ else
                 <div class="space-y-3">
                     <div>
                         <label class="block text-xs text-muted-foreground mb-1">Executor</label>
-                        <div class="flex gap-2">
-                            <button @onclick='() => SetExecutor("claude")'
-                                    class="flex-1 px-3 py-1.5 rounded-md border text-xs transition-colors @(editExecutor == "claude" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent/50")">
-                                Cloud (Claude)
-                            </button>
-                            <button @onclick='() => SetExecutor("ollama")'
-                                    disabled="@(!ExecutorHealthMonitor.GetHealth("ollama").IsHealthy)"
-                                    class="flex-1 px-3 py-1.5 rounded-md border text-xs transition-colors @(editExecutor == "ollama" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent/50") disabled:opacity-40 disabled:cursor-not-allowed">
-                                Local (Ollama)
-                            </button>
-                        </div>
+                        <select value="@editExecutor.Value"
+                                @onchange="OnExecutorChanged"
+                                class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                            @foreach (var option in executorOptions)
+                            {
+                                <option value="@option.Name.Value" selected="@(option.Name == editExecutor)">@option.DisplayName</option>
+                            }
+                        </select>
+                        @if (SelectedExecutorOption is { } selectedExecutor)
+                        {
+                            <p class="mt-1 text-xs @(selectedExecutor.Health.IsHealthy ? "text-muted-foreground" : "text-amber-300")">
+                                @(selectedExecutor.Health.IsHealthy ? selectedExecutor.DisplayName : selectedExecutor.Health.Message)
+                            </p>
+                        }
                     </div>
                     <div>
                         <label class="block text-xs text-muted-foreground mb-1">Model</label>
-                        @if (editExecutor == "ollama")
+                        @if (editExecutor == AgentExecutorName.Ollama)
                         {
-                            var ollamaModels = ExecutorHealthMonitor.GetHealth("ollama").Details ?? [];
+                            var ollamaModels = ExecutorHealthMonitor.GetHealth(AgentExecutorName.Ollama.Value).Details ?? [];
                             @if (ollamaModels.Count > 0)
                             {
                                 <select value="@editModel"
@@ -142,6 +165,13 @@ else
                                        @oninput="e => editModel = e.Value?.ToString() ?? string.Empty"
                                        class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
                             }
+                        }
+
+                        @if (ShowOllamaToolWarning)
+                        {
+                            <div class="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+                                @OllamaToolWarningMessage
+                            </div>
                         }
                     </div>
                 </div>
@@ -253,6 +283,7 @@ else
     private AgentInfo? agent;
     private List<MessageItem> messages = [];
     private List<string> modelAliases = [];
+    private List<ExecutorOption> executorOptions = [];
     private bool isRunning;
     private Timer? _pollTimer;
 
@@ -260,11 +291,11 @@ else
     private string editName = string.Empty;
     private string editDescription = string.Empty;
     private string editModel = string.Empty;
-    private string editExecutor = IAgentExecutor.Default;
+    private AgentExecutorName editExecutor = AgentExecutorName.Default;
     private string originalName = string.Empty;
     private string originalDescription = string.Empty;
     private string originalModel = string.Empty;
-    private string originalExecutor = IAgentExecutor.Default;
+    private AgentExecutorName originalExecutor = AgentExecutorName.Default;
     private bool savingMeta;
     private SaveStatus metaStatus;
 
@@ -277,8 +308,11 @@ else
 
     private enum SaveStatus { Idle, Saved, Error }
 
+    private sealed record ExecutorOption(AgentExecutorName Name, string DisplayName, ExecutorHealthResult Health);
+
     private bool IsMetaDirty => editName != originalName || editDescription != originalDescription || editModel != originalModel || editExecutor != originalExecutor;
     private bool IsClaudeDirty => claudeContent != claudeOriginal;
+    private ExecutorOption? SelectedExecutorOption => executorOptions.FirstOrDefault(option => option.Name == editExecutor);
 
     protected override void OnInitialized()
     {
@@ -292,6 +326,14 @@ else
 
         claudeContent = claudeOriginal = AgentService.GetClaudeMd(Slug, AgentSlug);
         modelAliases = AgentService.GetModelAliases();
+        executorOptions = ExecutorHealthMonitor.GetExecutorHealth()
+            .Select(entry => new ExecutorOption(
+                AgentExecutorName.TryParse(entry.Executor.Name, out var executorName) ? executorName : AgentExecutorName.Default,
+                entry.Executor.DisplayName,
+                entry.Health))
+            .DistinctBy(option => option.Name)
+            .OrderBy(option => option.DisplayName)
+            .ToList();
         messages = MessagesService.ListMessages(Slug, AgentSlug);
         isRunning = RunnerService.IsRunning(Slug, AgentSlug);
 
@@ -302,18 +344,27 @@ else
             if (running != isRunning)
             {
                 isRunning = running;
+                ReloadAgentState();
                 InvokeAsync(StateHasChanged);
             }
         }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
     }
 
-    private void SetExecutor(string executor)
+    private void OnExecutorChanged(ChangeEventArgs args)
+    {
+        if (!AgentExecutorName.TryParse(args.Value?.ToString(), out var executor))
+            return;
+
+        SetExecutor(executor);
+    }
+
+    private void SetExecutor(AgentExecutorName executor)
     {
         editExecutor = executor;
         // Reset model to a sensible default when switching executor
-        if (executor == "ollama")
+        if (executor == AgentExecutorName.Ollama)
         {
-            var ollamaModels = ExecutorHealthMonitor.GetHealth("ollama").Details ?? [];
+            var ollamaModels = ExecutorHealthMonitor.GetHealth(AgentExecutorName.Ollama.Value).Details ?? [];
             editModel = ollamaModels.Count > 0 ? ollamaModels[0] : string.Empty;
         }
         else
@@ -333,18 +384,36 @@ else
 
     public void Dispose() => _pollTimer?.Dispose();
 
+    private bool ShowOllamaToolWarning =>
+        editExecutor == AgentExecutorName.Ollama
+        && WorkspaceToolsEnabled
+        && global::AiDev.Executors.OllamaToolSupport.IsKnownUnsupportedModel(editModel);
+
+    private bool WorkspaceToolsEnabled =>
+        agent != null && global::AiDev.Executors.OllamaToolSupport.AreWorkspaceToolsEnabled(agent.Skills);
+
+    private string? OllamaToolWarningMessage =>
+        ShowOllamaToolWarning ? global::AiDev.Executors.OllamaToolSupport.GetUnsupportedToolsMessage(editModel) : null;
+
+    private void ReloadAgentState()
+    {
+        agent = AgentService.LoadAgent(Slug, AgentSlug);
+        messages = MessagesService.ListMessages(Slug, AgentSlug);
+    }
+
     private void SaveMeta()
     {
         savingMeta = true;
         metaStatus = SaveStatus.Idle;
-        var err = AgentService.SaveAgentMeta(Slug, AgentSlug, editName, editDescription, editModel, editExecutor);
+        var err = AgentService.SaveAgentMeta(Slug, AgentSlug, editName, editDescription, editModel, editExecutor)
+            .ToErrorMessage();
         savingMeta = false;
         if (err != null) { metaStatus = SaveStatus.Error; return; }
         originalName = editName;
         originalDescription = editDescription;
         originalModel = editModel;
         originalExecutor = editExecutor;
-        agent = AgentService.LoadAgent(Slug, AgentSlug);
+        ReloadAgentState();
         metaStatus = SaveStatus.Saved;
         Task.Delay(2000).ContinueWith(_ => { metaStatus = SaveStatus.Idle; InvokeAsync(StateHasChanged); });
     }
@@ -353,7 +422,8 @@ else
     {
         savingClaude = true;
         claudeStatus = SaveStatus.Idle;
-        var err = AgentService.SaveClaudeMd(Slug, AgentSlug, claudeContent);
+        var err = AgentService.SaveClaudeMd(Slug, AgentSlug, claudeContent)
+            .ToErrorMessage();
         savingClaude = false;
         if (err != null) { claudeStatus = SaveStatus.Error; return; }
         claudeOriginal = claudeContent;

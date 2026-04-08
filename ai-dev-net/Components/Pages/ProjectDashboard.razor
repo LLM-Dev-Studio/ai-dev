@@ -2,6 +2,8 @@
 @page "/projects/{Slug}/agents"
 @using AiDev.Features.Agent
 @using AiDev.Models.Types
+@using AiDev.Services
+@using System.Diagnostics
 @rendermode InteractiveServer
 @inject AgentService AgentService
 @inject AgentRunnerService RunnerService
@@ -115,7 +117,16 @@ else
 
     private void LaunchAgent(AgentSlug agentSlug)
     {
-        RunnerService.LaunchAgent(Slug, agentSlug);
+        using var activity = System.Diagnostics.Activity.Current?.Source.StartActivity("UI.Agent.Launch", ActivityKind.Internal)
+            ?? new Activity("UI.Agent.Launch").Start();
+        activity?.SetTag("ui.page", "project-dashboard");
+        activity?.SetTag("project.slug", Slug);
+        activity?.SetTag("agent.slug", agentSlug.Value);
+        RunnerService.LaunchAgent(Slug, agentSlug, new AgentLaunchTrigger(
+            Source: "ui",
+            Reason: "project-dashboard-launch",
+            ProjectSlug: Slug,
+            ParentSpanId: activity?.Id));
         StateHasChanged();
     }
 

@@ -31,12 +31,13 @@ public class AgentRunnerService(
         public required ProjectSlug ProjectSlug { get; init; }
         public required AgentSlug AgentSlug { get; init; }
         public required DateTime StartedAt { get; init; }
+        public AgentLaunchTrigger? Trigger { get; init; }
         public int Pid { get; set; }
         public CancellationTokenSource Cts { get; } = cts;
     }
 
     // Holds config loaded from agent.json that is needed across the session lifecycle.
-    private sealed record AgentConfig(string ModelAlias, string ExecutorName, IReadOnlyList<string> Skills);
+    private sealed record AgentConfig(string ModelAlias, AgentExecutorName Executor, IReadOnlyList<string> Skills);
 
     private readonly ConcurrentDictionary<string, SessionInfo> _sessions = new();
     private readonly ConcurrentDictionary<string, DateTime> _rateLimitedUntil = new();
@@ -66,7 +67,7 @@ public class AgentRunnerService(
     /// Launches an agent. Returns false if already running or rate-limited.
     /// The process runs in the background — this method returns quickly.
     /// </summary>
-    public bool LaunchAgent(ProjectSlug projectSlug, AgentSlug agentSlug)
+    public bool LaunchAgent(ProjectSlug projectSlug, AgentSlug agentSlug, AgentLaunchTrigger? trigger = null)
     {
         var key = Key(projectSlug, agentSlug);
         if (_sessions.ContainsKey(key))
@@ -88,6 +89,7 @@ public class AgentRunnerService(
             ProjectSlug = projectSlug,
             AgentSlug = agentSlug,
             StartedAt = startedAt,
+            Trigger = trigger,
         };
 
         if (!_sessions.TryAdd(key, info))
@@ -97,6 +99,7 @@ public class AgentRunnerService(
         activity?.SetTag("agent.project", projectSlug);
         activity?.SetTag("agent.slug", agentSlug);
         activity?.SetTag("agent.startedAt", startedAt.ToString("o"));
+        ApplyTriggerTags(activity, trigger);
         _ = RunSessionAsync(key, info, startedAt, activity?.Id);
         return true;
     }
@@ -122,6 +125,7 @@ public class AgentRunnerService(
         activity?.SetTag("agent.project", projectSlug);
         activity?.SetTag("agent.slug", agentSlug);
         activity?.SetTag("agent.sessionStartedAt", startedAt.ToString("o"));
+        ApplyTriggerTags(activity, info.Trigger);
 
         var agentDir = paths.AgentDir(projectSlug, agentSlug);
         var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
@@ -136,14 +140,14 @@ public class AgentRunnerService(
         // Load agent config and resolve model alias + executor
         var agentConfig = LoadAgentConfig(agentDir);
         var modelId = settings.GetSettings().Models.GetValueOrDefault(agentConfig.ModelAlias, agentConfig.ModelAlias);
-        var executorName = agentConfig.ExecutorName;
-        activity?.SetTag("agent.executor", executorName);
+        var executorName = agentConfig.Executor;
+        activity?.SetTag("agent.executor", executorName.Value);
 
-        if (!_executors.TryGetValue(executorName, out var resolvedExecutor))
+        if (!_executors.TryGetValue(executorName.Value, out var resolvedExecutor))
         {
             var available = string.Join(", ", _executors.Keys);
             logger.LogError("[runner] Agent {Key} requested executor '{Executor}' which is not registered. Available: {Available}",
-                key, executorName, available);
+                key, executorName.Value, available);
             _sessions.TryRemove(key, out _);
             return;
         }
@@ -166,7 +170,7 @@ public class AgentRunnerService(
             await using var transcript = new StreamWriter(transcriptPath, append: true, System.Text.Encoding.UTF8);
             await transcript.WriteLineAsync();
             await transcript.WriteLineAsync($"## Session started at {startedAt:o}");
-            await transcript.WriteLineAsync($"executor: {executorName} · model: {modelId}");
+            await transcript.WriteLineAsync($"executor: {executorName.Value} · model: {modelId}");
             await transcript.WriteLineAsync();
             await transcript.FlushAsync();
             await foreach (var line in outputChannel.Reader.ReadAllAsync())
@@ -204,11 +208,14 @@ public class AgentRunnerService(
 
         var exitCode = 0;
         var isRateLimited = false;
+        var preserveInbox = false;
+        string? sessionError = null;
 
         var context = new ExecutorContext(
             WorkingDir: agentDir,
             ModelId: modelId,
             Prompt: effectivePrompt,
+            CancellationToken: info.Cts.Token,
             EnabledSkills: agentConfig.Skills,
             ReportPid: pid =>
             {
@@ -218,17 +225,37 @@ public class AgentRunnerService(
                 activity?.SetTag("agent.pid", pid);
                 activity?.AddEvent(new("process.started"));
             },
-            CancellationToken: info.Cts.Token);
+            Trigger: info.Trigger);
 
         try
         {
             var result = await resolvedExecutor.RunAsync(context, outputChannel.Writer);
             exitCode = result.ExitCode;
             isRateLimited = result.IsRateLimited;
+            preserveInbox = result.PreserveInbox;
+            sessionError = result.ErrorMessage;
 
             activity?.SetTag("agent.exitCode", exitCode);
             activity?.SetTag("agent.rateLimited", isRateLimited);
-            activity?.AddEvent(new("process.exited"));
+            activity?.SetTag("agent.preserveInbox", preserveInbox);
+
+            if (exitCode == 0)
+            {
+                activity?.SetStatus(ActivityStatusCode.Ok);
+                activity?.AddEvent(new("process.exited"));
+            }
+            else
+            {
+                sessionError = string.IsNullOrWhiteSpace(sessionError)
+                    ? $"Agent exited with code {exitCode}."
+                    : sessionError;
+
+                logger.LogError("[runner] Agent {Key} failed with exit code {Code}: {Error}", key, exitCode, sessionError);
+                activity?.SetTag("agent.error", true);
+                activity?.SetTag("agent.errorMessage", sessionError);
+                activity?.SetStatus(ActivityStatusCode.Error, sessionError);
+                activity?.AddEvent(new("process.error"));
+            }
         }
         catch (OperationCanceledException)
         {
@@ -240,9 +267,11 @@ public class AgentRunnerService(
         catch (Exception ex)
         {
             exitCode = 1;
+            sessionError = ex.Message;
             logger.LogError(ex, "[runner] Agent {Key} error", key);
             activity?.SetTag("agent.error", true);
             activity?.SetTag("agent.errorMessage", ex.Message);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             activity?.AddEvent(new("process.error"));
             outputChannel.Writer.TryWrite($"[{DateTime.UtcNow:o}] [error] {ex.Message}");
         }
@@ -263,9 +292,11 @@ public class AgentRunnerService(
 
             await UpdateAgentStatusAsync(agentDir, new()
             {
-                ["status"] = "idle",
+                ["status"] = exitCode == 0 || exitCode == 130 ? "idle" : "error",
                 ["pid"] = null,
                 ["sessionStartedAt"] = null,
+                ["lastError"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : sessionError,
+                ["lastErrorAt"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : exitedAt.ToString("o"),
             });
 
             if (isRateLimited)
@@ -280,27 +311,54 @@ public class AgentRunnerService(
             else
             {
                 _rateLimitedUntil.TryRemove(key, out _);
-                ArchiveInbox(inboxDir, inboxSnapshot);
-                if (inboxSnapshot.Length > 0) messageNotifier.Notify(projectSlug);
-
-                var pendingAfterSession = Directory.Exists(inboxDir)
-                    ? Directory.GetFiles(inboxDir, "*.md")
-                        .Count(f => !f.Contains(
-                            Path.DirectorySeparatorChar + "processed" + Path.DirectorySeparatorChar,
-                            StringComparison.OrdinalIgnoreCase))
-                    : 0;
-
-                if (pendingAfterSession > 0)
+                if (preserveInbox)
                 {
-                    logger.LogInformation(
-                        "[runner] {Count} message(s) arrived during session for {Key} — re-launching",
-                        pendingAfterSession, key);
-                    activity?.SetTag("agent.relaunch", true);
-                    activity?.SetTag("agent.relaunchReason", "inbox-messages-during-session");
-                    LaunchAgent(projectSlug, agentSlug);
+                    logger.LogWarning(
+                        "[runner] Agent {Key} ended with a recoverable configuration error — inbox preserved for retry",
+                        key);
+                    if (inboxSnapshot.Length > 0) messageNotifier.Notify(projectSlug);
+                }
+                else
+                {
+                    ArchiveInbox(inboxDir, inboxSnapshot);
+                    if (inboxSnapshot.Length > 0) messageNotifier.Notify(projectSlug);
+
+                    var pendingAfterSession = Directory.Exists(inboxDir)
+                        ? Directory.GetFiles(inboxDir, "*.md")
+                            .Count(f => !f.Contains(
+                                Path.DirectorySeparatorChar + "processed" + Path.DirectorySeparatorChar,
+                                StringComparison.OrdinalIgnoreCase))
+                        : 0;
+
+                    if (pendingAfterSession > 0)
+                    {
+                        logger.LogInformation(
+                            "[runner] {Count} message(s) arrived during session for {Key} — re-launching",
+                            pendingAfterSession, key);
+                        activity?.SetTag("agent.relaunch", true);
+                        activity?.SetTag("agent.relaunchReason", "inbox-messages-during-session");
+                        LaunchAgent(projectSlug, agentSlug);
+                    }
                 }
             }
         }
+    }
+
+    private static void ApplyTriggerTags(Activity? activity, AgentLaunchTrigger? trigger)
+    {
+        if (activity == null || trigger == null)
+            return;
+
+        activity.SetTag("agent.trigger.source", trigger.Source);
+        activity.SetTag("agent.trigger.reason", trigger.Reason);
+        if (!string.IsNullOrWhiteSpace(trigger.ProjectSlug))
+            activity.SetTag("project.slug", trigger.ProjectSlug);
+        if (!string.IsNullOrWhiteSpace(trigger.TaskId))
+            activity.SetTag("task.id", trigger.TaskId);
+        if (!string.IsNullOrWhiteSpace(trigger.DecisionId))
+            activity.SetTag("decision.id", trigger.DecisionId);
+        if (!string.IsNullOrWhiteSpace(trigger.MessageFile))
+            activity.SetTag("message.file", trigger.MessageFile);
     }
 
     // -------------------------------------------------------------------------
@@ -310,7 +368,7 @@ public class AgentRunnerService(
     private static AgentConfig LoadAgentConfig(string agentDir)
     {
         var path = Path.Combine(agentDir, "agent.json");
-        if (!File.Exists(path)) return new(ModelAlias: "sonnet", ExecutorName: IAgentExecutor.Default, Skills: []);
+        if (!File.Exists(path)) return new(ModelAlias: "sonnet", Executor: AgentExecutorName.Default, Skills: []);
         try
         {
             var raw = File.ReadAllText(path);
@@ -318,16 +376,18 @@ public class AgentRunnerService(
             var root = doc.RootElement;
 
             var model = root.TryGetProperty("model", out var m) ? m.GetString() ?? "sonnet" : "sonnet";
-            var executor = root.TryGetProperty("executor", out var e) ? e.GetString() ?? IAgentExecutor.Default : IAgentExecutor.Default;
-            if (string.IsNullOrWhiteSpace(executor)) executor = IAgentExecutor.Default;
+            var executor = root.TryGetProperty("executor", out var e)
+                && AgentExecutorName.TryParse(e.GetString(), out var configuredExecutor)
+                    ? configuredExecutor
+                    : AgentExecutorName.Default;
 
             List<string> skills = [];
             if (root.TryGetProperty("skills", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.Array)
                 skills = s.EnumerateArray().Select(x => x.GetString() ?? string.Empty).Where(x => x.Length > 0).ToList();
 
-            return new(ModelAlias: model, ExecutorName: executor, Skills: skills);
+            return new(ModelAlias: model, Executor: executor, Skills: skills);
         }
-        catch { return new(ModelAlias: "sonnet", ExecutorName: IAgentExecutor.Default, Skills: []); }
+        catch { return new(ModelAlias: "sonnet", Executor: AgentExecutorName.Default, Skills: []); }
     }
 
     private static async Task UpdateAgentStatusAsync(string agentDir, Dictionary<string, object?> updates)

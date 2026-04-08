@@ -12,12 +12,22 @@ file class AgentJson
     public string? Status { get; init; }
     public string? Description { get; init; }
     public string? LastRunAt { get; init; }
-    public string? Executor { get; init; }
+    public AgentExecutorName? Executor { get; init; }
     public string[]? Skills { get; init; }
+    public string? LastError { get; init; }
+    public string? LastErrorAt { get; init; }
 }
 
-public class AgentService(WorkspacePaths paths, StudioSettingsService settings, AgentTemplatesService templates)
+public class AgentService(
+    WorkspacePaths paths,
+    StudioSettingsService settings,
+    AgentTemplatesService templates,
+    AtomicFileWriter fileWriter,
+    ProjectMutationCoordinator coordinator)
 {
+    private static readonly DomainError InvalidAgentSlugError = new("AGENT_INVALID_SLUG", "Invalid agent slug.");
+    private static readonly DomainError AgentNotFoundError = new("AGENT_NOT_FOUND", "Agent not found.");
+
 
     public List<AgentInfo> ListAgents(ProjectSlug projectSlug)
     {
@@ -45,49 +55,54 @@ public class AgentService(WorkspacePaths paths, StudioSettingsService settings, 
             var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
             var inboxCount = inboxDir.Exists() ? Directory.GetFiles(inboxDir, "*.md").Length : 0;
 
-            return new()
-            {
-                Slug = data.Slug ?? agentSlug,
-                Name = data.Name ?? agentSlug,
-                Role = data.Role ?? string.Empty,
-                Model = data.Model ?? "sonnet",
-                Status = AgentStatus.From(data.Status),
-                Description = data.Description ?? string.Empty,
-                LastRunAt = DateTime.TryParse(data.LastRunAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastRun) ? lastRun : null,
-                InboxCount = inboxCount,
-                Executor = string.IsNullOrWhiteSpace(data.Executor) ? IAgentExecutor.Default : data.Executor,
-                Skills = data.Skills ?? [],
-            };
+            return new(
+                slug: data.Slug ?? agentSlug,
+                name: data.Name ?? agentSlug,
+                role: data.Role ?? string.Empty,
+                description: data.Description ?? string.Empty,
+                model: data.Model,
+                status: AgentStatus.From(data.Status),
+                lastRunAt: DateTime.TryParse(data.LastRunAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastRun) ? lastRun : null,
+                inboxCount: inboxCount,
+                executor: data.Executor,
+                skills: data.Skills ?? [],
+                lastError: data.LastError,
+                lastErrorAt: DateTime.TryParse(data.LastErrorAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastErrorAt) ? lastErrorAt : null);
         }
         catch { return null; }
     }
 
-    public string? SaveAgentMeta(ProjectSlug projectSlug, AgentSlug agentSlug, string name, string description,
-        string model, string executor, IReadOnlyList<string>? skills = null)
+    public Result<Unit> SaveAgentMeta(ProjectSlug projectSlug, AgentSlug agentSlug, string name, string description,
+        string model, AgentExecutorName executor, IReadOnlyList<string>? skills = null)
     {
         try { _ = paths.AgentDir(projectSlug, agentSlug); }
-        catch (ArgumentException) { return "Invalid agent slug."; }
+        catch (ArgumentException) { return new Err<Unit>(InvalidAgentSlugError); }
 
-        var jsonPath = paths.AgentJsonPath(projectSlug, agentSlug);
-        if (!jsonPath.Exists()) return "Agent not found.";
-
-        try
+        return coordinator.Execute<Result<Unit>>(projectSlug, () =>
         {
-            var json = File.ReadAllText(jsonPath);
-            var raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, JsonDefaults.Read) ?? [];
-            var updated = raw.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
-            updated["name"] = name;
-            updated["description"] = description;
-            updated["model"] = model;
-            updated["executor"] = executor;
-            if (skills != null)
-                updated["skills"] = skills;
-            else
-                updated.Remove("skills"); // absent = use executor defaults
-            File.WriteAllText(jsonPath, JsonSerializer.Serialize(updated, JsonDefaults.Write));
-            return null;
-        }
-        catch (Exception ex) { return ex.Message; }
+            var jsonPath = paths.AgentJsonPath(projectSlug, agentSlug);
+            if (!jsonPath.Exists()) return new Err<Unit>(AgentNotFoundError);
+
+            try
+            {
+                var json = File.ReadAllText(jsonPath);
+                var raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, JsonDefaults.Read) ?? [];
+                var updated = raw.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
+                updated["name"] = name;
+                updated["description"] = description;
+                updated["model"] = model;
+                updated["executor"] = executor.Value;
+                if (skills != null)
+                    updated["skills"] = skills;
+                else
+                    updated.Remove("skills");
+                fileWriter.WriteAllText(jsonPath, JsonSerializer.Serialize(updated, JsonDefaults.Write));
+                return new Ok<Unit>(Unit.Value);
+            }
+            catch (JsonException ex) { return new Err<Unit>(new DomainError("AGENT_INVALID_METADATA", ex.Message)); }
+            catch (IOException ex) { return new Err<Unit>(new DomainError("AGENT_IO_ERROR", ex.Message)); }
+            catch (UnauthorizedAccessException ex) { return new Err<Unit>(new DomainError("AGENT_IO_ERROR", ex.Message)); }
+        });
     }
 
     public string GetClaudeMd(ProjectSlug projectSlug, AgentSlug agentSlug)
@@ -100,63 +115,71 @@ public class AgentService(WorkspacePaths paths, StudioSettingsService settings, 
         catch (ArgumentException) { return string.Empty; }
     }
 
-    public string? SaveClaudeMd(ProjectSlug projectSlug, AgentSlug agentSlug, string content)
+    public Result<Unit> SaveClaudeMd(ProjectSlug projectSlug, AgentSlug agentSlug, string content)
     {
-        try
+        return coordinator.Execute<Result<Unit>>(projectSlug, () =>
         {
-            File.WriteAllText(paths.AgentClaudeMdPath(projectSlug, agentSlug), content);
-            return null;
-        }
-        catch (ArgumentException) { return "Invalid agent slug."; }
-        catch (Exception ex) { return ex.Message; }
+            try
+            {
+                fileWriter.WriteAllText(paths.AgentClaudeMdPath(projectSlug, agentSlug), content);
+                return new Ok<Unit>(Unit.Value);
+            }
+            catch (ArgumentException) { return new Err<Unit>(InvalidAgentSlugError); }
+            catch (IOException ex) { return new Err<Unit>(new DomainError("AGENT_IO_ERROR", ex.Message)); }
+            catch (UnauthorizedAccessException ex) { return new Err<Unit>(new DomainError("AGENT_IO_ERROR", ex.Message)); }
+        });
     }
 
-    public string? CreateAgent(ProjectSlug projectSlug, string agentSlug, string name, string? templateSlug)
+    public Result<Unit> CreateAgent(ProjectSlug projectSlug, string agentSlug, string name, string? templateSlug)
     {
         if (!AgentSlug.TryParse(agentSlug, out var slug))
-            return "Slug must contain only lowercase letters, digits, and hyphens, and cannot start or end with a hyphen.";
+            return new Err<Unit>(new DomainError("AGENT_SLUG_FORMAT", "Slug must contain only lowercase letters, digits, and hyphens, and cannot start or end with a hyphen."));
 
         var agentDir = paths.AgentDir(projectSlug, slug);
-        if (agentDir.Exists()) return $"Agent '{agentSlug}' already exists.";
+        if (agentDir.Exists()) return new Err<Unit>(new DomainError("AGENT_ALREADY_EXISTS", $"Agent '{agentSlug}' already exists."));
 
-        try
+        return coordinator.Execute<Result<Unit>>(projectSlug, () =>
         {
-            var resolvedSlug = !string.IsNullOrEmpty(templateSlug) ? templateSlug : "generic-standard";
-            var tmpl = templates.GetTemplate(resolvedSlug);
-            if (tmpl == null) return $"Template '{resolvedSlug}' not found.";
-
-            var role = tmpl.Role;
-            var description = tmpl.Description;
-            var model = tmpl.Model;
-            var claudeContent = tmpl.Content;
-
-            var agentJson = new
+            try
             {
-                slug = slug.Value,
-                name,
-                role = role ?? string.Empty,
-                model,
-                status = "idle",
-                description = description ?? string.Empty,
-            };
-            paths.AgentInboxDir(projectSlug, slug).Create();
-            paths.AgentOutboxDir(projectSlug, slug).Create();
-            paths.AgentJournalDir(projectSlug, slug).Create();
-            File.WriteAllText(paths.AgentJsonPath(projectSlug, slug), JsonSerializer.Serialize(agentJson, JsonDefaults.Write));
-            File.WriteAllText(paths.AgentClaudeMdPath(projectSlug, slug), claudeContent ?? $"# {name}\n\nYou are {name}.\n");
+                var resolvedSlug = !string.IsNullOrEmpty(templateSlug) ? templateSlug : "generic-standard";
+                var tmpl = templates.GetTemplate(resolvedSlug);
+                if (tmpl == null) return new Err<Unit>(new DomainError("AGENT_TEMPLATE_NOT_FOUND", $"Template '{resolvedSlug}' not found."));
 
-            return null;
-        }
-        catch (Exception ex)
-        {
-            try { if (agentDir.Exists()) Directory.Delete(agentDir.Value, true); }
-            catch
-            {
-                // ignored
+                var role = tmpl.Role;
+                var description = tmpl.Description;
+                var model = tmpl.Model;
+                var claudeContent = tmpl.Content;
+
+                var agentJson = new
+                {
+                    slug = slug.Value,
+                    name,
+                    role = role ?? string.Empty,
+                    model,
+                    executor = AgentExecutorName.Default.Value,
+                    status = "idle",
+                    description = description ?? string.Empty,
+                };
+                paths.AgentInboxDir(projectSlug, slug).Create();
+                paths.AgentOutboxDir(projectSlug, slug).Create();
+                paths.AgentJournalDir(projectSlug, slug).Create();
+                fileWriter.WriteAllText(paths.AgentJsonPath(projectSlug, slug), JsonSerializer.Serialize(agentJson, JsonDefaults.Write));
+                fileWriter.WriteAllText(paths.AgentClaudeMdPath(projectSlug, slug), claudeContent ?? $"# {name}\n\nYou are {name}.\n");
+
+                return new Ok<Unit>(Unit.Value);
             }
-
-            return ex.Message;
-        }
+            catch (IOException ex)
+            {
+                try { if (agentDir.Exists()) Directory.Delete(agentDir.Value, true); } catch { }
+                return new Err<Unit>(new DomainError("AGENT_IO_ERROR", ex.Message));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                try { if (agentDir.Exists()) Directory.Delete(agentDir.Value, true); } catch { }
+                return new Err<Unit>(new DomainError("AGENT_IO_ERROR", ex.Message));
+            }
+        });
     }
 
     public TranscriptDate[] ListTranscriptDates(ProjectSlug projectSlug, AgentSlug agentSlug)

@@ -40,6 +40,19 @@
     }
 </div>
 
+@if (!isRunning && agent?.LastError is { Length: > 0 })
+{
+    <div class="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+        <div class="flex items-start gap-3">
+            <SvgIcon Name="alert-triangle" Class="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+            <div>
+                <p class="text-sm font-medium text-amber-200">Last run failed</p>
+                <p class="text-sm text-amber-100/90 mt-1">@agent.LastError</p>
+            </div>
+        </div>
+    </div>
+}
+
 @if (dates.Length == 0)
 {
     <EmptyState Icon="file-text" Title="No transcripts yet" Description="Transcripts are written when the agent runs" />
@@ -90,6 +103,7 @@ else
     private TranscriptDate[] dates = [];
     private TranscriptDate? selectedDate;
     private List<TranscriptLine> parsedLines = [];
+    private AgentInfo? agent;
     private bool isRunning;
     private Timer? _pollTimer;
     private int _lastLineCount;
@@ -100,6 +114,7 @@ else
 
     protected override void OnInitialized()
     {
+        agent = AgentService.LoadAgent(Slug, AgentSlug);
         dates = AgentService.ListTranscriptDates(Slug, AgentSlug);
         selectedDate = dates.Contains(TranscriptDate.Today) ? TranscriptDate.Today : dates.FirstOrDefault();
         isRunning = RunnerService.IsRunning(Slug, AgentSlug);
@@ -114,6 +129,7 @@ else
 
             if (running || changed)
             {
+                agent = AgentService.LoadAgent(Slug, AgentSlug);
                 // Refresh date list in case today's file was just created
                 var newDates = AgentService.ListTranscriptDates(Slug, AgentSlug);
                 if (!newDates.SequenceEqual(dates))

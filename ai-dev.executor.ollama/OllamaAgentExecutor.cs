@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
@@ -91,6 +92,15 @@ public class OllamaAgentExecutor(
 
     public async Task<ExecutorResult> RunAsync(ExecutorContext context, ChannelWriter<string> output)
     {
+        using var activity = AiDevTelemetry.ActivitySource.StartActivity("Executor.Ollama.Run", ActivityKind.Client);
+        activity?.SetTag("executor.name", Name);
+        activity?.SetTag("project.slug", context.Trigger?.ProjectSlug);
+        activity?.SetTag("task.id", context.Trigger?.TaskId);
+        activity?.SetTag("decision.id", context.Trigger?.DecisionId);
+        activity?.SetTag("agent.trigger.source", context.Trigger?.Source);
+        activity?.SetTag("agent.trigger.reason", context.Trigger?.Reason);
+        activity?.SetTag("message.file", context.Trigger?.MessageFile);
+
         var systemPrompt = BuildSystemPrompt(context.WorkingDir);
         var rawBaseUrl   = settingsService.GetSettings().OllamaBaseUrl.TrimEnd('/');
 
@@ -103,13 +113,29 @@ public class OllamaAgentExecutor(
             return new ExecutorResult(1, ErrorMessage: msg);
         }
 
-        var requestUri   = $"{rawBaseUrl}/api/chat";
-        var enableTools  = context.EnabledSkills.Contains("mcp-workspace");
+        var requestUri    = $"{rawBaseUrl}/api/chat";
+        var enableTools   = OllamaToolSupport.AreWorkspaceToolsEnabled(context.EnabledSkills);
         var workspaceRoot = enableTools ? DeriveWorkspaceRoot(context.WorkingDir) : null;
+
+        if (enableTools && OllamaToolSupport.IsKnownUnsupportedModel(context.ModelId))
+        {
+            var msg = OllamaToolSupport.GetUnsupportedToolsMessage(context.ModelId);
+            logger.LogWarning("[ollama] {Message}", msg);
+            output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
+            return new ExecutorResult(1, PreserveInbox: true, ErrorMessage: msg);
+        }
 
         logger.LogInformation(
             "[ollama] Starting session — model={Model} endpoint={Uri} tools={Tools}",
             context.ModelId, requestUri, enableTools ? "enabled" : "disabled");
+        logger.LogInformation(
+            "[ollama] Trigger source={Source} reason={Reason} project={Project} task={TaskId} decision={DecisionId} message={MessageFile}",
+            context.Trigger?.Source,
+            context.Trigger?.Reason,
+            context.Trigger?.ProjectSlug,
+            context.Trigger?.TaskId,
+            context.Trigger?.DecisionId,
+            context.Trigger?.MessageFile);
         output.TryWrite($"[{DateTime.UtcNow:o}] [ollama] model={context.ModelId} endpoint={requestUri}");
 
         if (enableTools)
@@ -165,6 +191,14 @@ public class OllamaAgentExecutor(
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(context.CancellationToken).ConfigureAwait(false);
+                if (enableTools && OllamaToolSupport.TryGetUnsupportedToolsMessage(context.ModelId, body, out var unsupportedToolsMessage))
+                {
+                    logger.LogWarning("[ollama] Request rejected because workspace tools are unsupported for model {Model}: {Body}",
+                        context.ModelId, body);
+                    output.TryWrite($"[{DateTime.UtcNow:o}] [error] {unsupportedToolsMessage}");
+                    return new ExecutorResult(1, PreserveInbox: true, ErrorMessage: unsupportedToolsMessage);
+                }
+
                 var msg  = $"Ollama returned HTTP {(int)response.StatusCode}: {body}";
                 logger.LogError("[ollama] {Message}", msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
@@ -177,7 +211,8 @@ public class OllamaAgentExecutor(
             await using var stream = await response.Content.ReadAsStreamAsync(context.CancellationToken).ConfigureAwait(false);
             using var reader = new System.IO.StreamReader(stream, System.Text.Encoding.UTF8);
 
-            var contentBuilder = new System.Text.StringBuilder();
+            var contentBuilder    = new System.Text.StringBuilder();
+            var lineBuffer        = new System.Text.StringBuilder(); // buffer partial lines for output
             OllamaChatChunk? finalChunk = null;
             string? line;
 
@@ -193,8 +228,24 @@ public class OllamaAgentExecutor(
                     continue;
                 }
 
-                if (chunk?.Message?.Content is { Length: > 0 } content)
-                    contentBuilder.Append(content);
+                if (chunk?.Message?.Content is { Length: > 0 } token)
+                {
+                    contentBuilder.Append(token);
+
+                    // Emit complete lines as they arrive; buffer partial lines.
+                    lineBuffer.Append(token);
+                    var buffered = lineBuffer.ToString();
+                    var newlineIdx = buffered.LastIndexOf('\n');
+                    if (newlineIdx >= 0)
+                    {
+                        // Emit all complete lines in the buffer.
+                        var complete = buffered[..newlineIdx];
+                        foreach (var outputLine in complete.Split('\n'))
+                            output.TryWrite($"[{DateTime.UtcNow:o}] {outputLine}");
+                        lineBuffer.Clear();
+                        lineBuffer.Append(buffered[(newlineIdx + 1)..]);
+                    }
+                }
 
                 if (chunk?.Done == true)
                 {
@@ -202,6 +253,10 @@ public class OllamaAgentExecutor(
                     break;
                 }
             }
+
+            // Flush any remaining partial line.
+            if (lineBuffer.Length > 0)
+                output.TryWrite($"[{DateTime.UtcNow:o}] {lineBuffer}");
 
             var responseText = contentBuilder.ToString().Trim();
 
@@ -254,12 +309,6 @@ public class OllamaAgentExecutor(
             // Stream ended without done=true; emit whatever was collected.
             if (finalChunk == null)
                 logger.LogWarning("[ollama] Stream ended without done=true");
-
-            if (responseText.Length > 0)
-            {
-                foreach (var responseLine in responseText.Split('\n'))
-                    output.TryWrite($"[{DateTime.UtcNow:o}] {responseLine}");
-            }
 
             var promptTokens = finalChunk?.PromptEvalCount ?? 0;
             var outputTokens = finalChunk?.EvalCount       ?? 0;

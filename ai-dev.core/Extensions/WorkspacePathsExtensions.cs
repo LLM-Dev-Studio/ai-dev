@@ -83,7 +83,7 @@ public static class WorkspacePathsExtensions
     {
         if (string.IsNullOrWhiteSpace(slug)) return null;
         var fullDir = dir.FullPath;
-        var resolved = Path.Combine(fullDir, $"{slug}.md");
+        var resolved = Path.GetFullPath(Path.Combine(fullDir, $"{slug}.md"));
         return resolved.StartsWith(fullDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
             ? new(resolved) : null;
     }

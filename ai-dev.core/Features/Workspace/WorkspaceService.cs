@@ -8,8 +8,11 @@ file class ProjectJson
     public string? CreatedAt { get; set; }
 }
 
-public class WorkspaceService(WorkspacePaths paths)
+public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter)
 {
+    private static readonly DomainError InvalidProjectSlugError = new("WORKSPACE_INVALID_SLUG", "Project slug is invalid.");
+    private static readonly DomainError ProjectNotFoundError = new("WORKSPACE_NOT_FOUND", "Project not found.");
+
     public List<WorkspaceProject> ListProjects()
     {
         if (!File.Exists(paths.RegistryPath)) return [];
@@ -47,14 +50,12 @@ public class WorkspaceService(WorkspacePaths paths)
                     ? Directory.GetDirectories(agentsDir).Length
                     : 0;
 
-                projects.Add(new()
-                {
-                    Slug = entrySlug,
-                    Name = entry.Name,
-                    Description = description,
-                    CreatedAt = createdAt,
-                    AgentCount = agentCount,
-                });
+                projects.Add(new WorkspaceProject(
+                    slug: entrySlug,
+                    name: entry.Name,
+                    description: description,
+                    createdAt: createdAt,
+                    agentCount: agentCount));
             }
 
             return projects;
@@ -66,14 +67,16 @@ public class WorkspaceService(WorkspacePaths paths)
     /// Creates a new project folder structure and registers it in workspaces.json.
     /// Returns an error message if validation fails, null on success.
     /// </summary>
-    public string? CreateProject(string slug, string name, string? description, string? codebasePath = null)
+    public Result<Unit> CreateProject(string slug, string name, string? description, string? codebasePath = null)
     {
+        if (string.IsNullOrWhiteSpace(name))
+            return new Err<Unit>(new DomainError("WORKSPACE_NAME_REQUIRED", "Name is required."));
         if (!ProjectSlug.TryParse(slug, out var projectSlug))
-            return "Slug must contain only lowercase letters, digits, and hyphens, and cannot start or end with a hyphen.";
+            return new Err<Unit>(new DomainError("WORKSPACE_INVALID_SLUG", "Slug must contain only lowercase letters, digits, and hyphens, and cannot start or end with a hyphen."));
 
         var projectDir = paths.ProjectDir(projectSlug);
         if (Directory.Exists(projectDir))
-            return $"A project with slug '{slug}' already exists.";
+            return new Err<Unit>(new DomainError("WORKSPACE_ALREADY_EXISTS", $"A project with slug '{slug}' already exists."));
 
         try
         {
@@ -95,7 +98,7 @@ public class WorkspaceService(WorkspacePaths paths)
             if (!string.IsNullOrWhiteSpace(codebasePath))
                 meta["codebasePath"] = codebasePath;
 
-            File.WriteAllText(
+            fileWriter.WriteAllText(
                 paths.ProjectJsonPath(projectSlug),
                 JsonSerializer.Serialize(meta, JsonDefaults.Write));
 
@@ -111,7 +114,7 @@ public class WorkspaceService(WorkspacePaths paths)
                 },
                 tasks = new { },
             };
-            File.WriteAllText(
+            fileWriter.WriteAllText(
                 paths.BoardPath(projectSlug),
                 JsonSerializer.Serialize(boardJson, JsonDefaults.Write));
 
@@ -128,15 +131,25 @@ public class WorkspaceService(WorkspacePaths paths)
             }
 
             registry.Projects.Add(new() { Slug = slug, Path = slug, Name = name });
-            File.WriteAllText(paths.RegistryPath, JsonSerializer.Serialize(registry, JsonDefaults.Write));
+            fileWriter.WriteAllText(paths.RegistryPath, JsonSerializer.Serialize(registry, JsonDefaults.Write));
 
-            return null; // success
+            return new Ok<Unit>(Unit.Value);
         }
-        catch (Exception ex)
+        catch (JsonException ex)
+        {
+            try { if (Directory.Exists(projectDir)) Directory.Delete(projectDir.Value, recursive: true); } catch { }
+            return new Err<Unit>(new DomainError("WORKSPACE_INVALID_REGISTRY", ex.Message));
+        }
+        catch (IOException ex)
         {
             // Clean up partial directory on failure
             try { if (Directory.Exists(projectDir)) Directory.Delete(projectDir.Value, recursive: true); } catch { }
-            return $"Failed to create project: {ex.Message}";
+            return new Err<Unit>(new DomainError("WORKSPACE_IO_ERROR", $"Failed to create project: {ex.Message}"));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            try { if (Directory.Exists(projectDir)) Directory.Delete(projectDir.Value, recursive: true); } catch { }
+            return new Err<Unit>(new DomainError("WORKSPACE_IO_ERROR", $"Failed to create project: {ex.Message}"));
         }
     }
 
@@ -162,10 +175,12 @@ public class WorkspaceService(WorkspacePaths paths)
         catch { return null; }
     }
 
-    public string? UpdateProject(ProjectSlug projectSlug, string name, string? description, string? codebasePath)
+    public Result<Unit> UpdateProject(ProjectSlug projectSlug, string name, string? description, string? codebasePath)
     {
+        if (string.IsNullOrWhiteSpace(name))
+            return new Err<Unit>(new DomainError("WORKSPACE_NAME_REQUIRED", "Name is required."));
         var jsonPath = paths.ProjectJsonPath(projectSlug);
-        if (!File.Exists(jsonPath)) return "Project not found.";
+        if (!File.Exists(jsonPath)) return new Err<Unit>(ProjectNotFoundError);
 
         try
         {
@@ -179,7 +194,7 @@ public class WorkspaceService(WorkspacePaths paths)
             else
                 merged["codebasePath"] = codebasePath;
 
-            File.WriteAllText(jsonPath, JsonSerializer.Serialize(merged,
+            fileWriter.WriteAllText(jsonPath, JsonSerializer.Serialize(merged,
                 JsonDefaults.Write));
 
             // Keep display name in sync in workspaces.json
@@ -190,13 +205,15 @@ public class WorkspaceService(WorkspacePaths paths)
                 if (entry != null)
                 {
                     entry.Name = name;
-                    File.WriteAllText(paths.RegistryPath, JsonSerializer.Serialize(registry,
+                    fileWriter.WriteAllText(paths.RegistryPath, JsonSerializer.Serialize(registry,
                         JsonDefaults.Write));
                 }
             }
 
-            return null;
+            return new Ok<Unit>(Unit.Value);
         }
-        catch (Exception ex) { return ex.Message; }
+        catch (JsonException ex) { return new Err<Unit>(new DomainError("WORKSPACE_INVALID_METADATA", ex.Message)); }
+        catch (IOException ex) { return new Err<Unit>(new DomainError("WORKSPACE_IO_ERROR", ex.Message)); }
+        catch (UnauthorizedAccessException ex) { return new Err<Unit>(new DomainError("WORKSPACE_IO_ERROR", ex.Message)); }
     }
 }
