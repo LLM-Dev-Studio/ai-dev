@@ -9,6 +9,7 @@ using AiDev.Models;
 using AiDev.Models.Types;
 using AiDev.Services;
 
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AiDevNet.Tests.Integration;
@@ -149,7 +150,7 @@ public class ProductionReadinessIntegrationTests : IDisposable
     {
         var service = new AgentService(
             _paths,
-            new StudioSettingsService(_paths),
+            new StudioSettingsService(new ConfigurationBuilder().Build()),
             new AgentTemplatesService(_paths),
             _fileWriter,
             _coordinator);

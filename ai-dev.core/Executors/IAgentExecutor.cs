@@ -8,7 +8,7 @@ namespace AiDev.Executors;
 public interface IAgentExecutor
 {
     /// <summary>The executor used when no executor is specified in agent.json.</summary>
-    public const string Default = "claude";
+    public const string Default = AgentExecutorName.ClaudeValue;
 
     /// <summary>
     /// Unique identifier for this executor, matched against the "executor" field in agent.json.

@@ -24,7 +24,7 @@ public class AgentInfoTests
         info.Description.ShouldBe("Handles agent workflows");
         info.LastRunAt.ShouldBeNull();
         info.InboxCount.ShouldBe(0);
-        info.Executor.ShouldBe(IAgentExecutor.Default);
+        info.Executor.ShouldBe(AgentExecutorName.Default);
     }
 
     // -------------------------------------------------------------------------
@@ -80,7 +80,17 @@ public class AgentInfoTests
     public void Executor_DefaultMatchesIAgentExecutorDefault()
     {
         var info = CreateInfo();
-        info.Executor.ShouldBe(IAgentExecutor.Default);
+        info.Executor.Value.ShouldBe(IAgentExecutor.Default);
+    }
+
+    [Fact]
+    public void UpdateMetadata_WhenExecutorProvided_StoresSupportedExecutor()
+    {
+        var info = CreateInfo();
+
+        info.UpdateMetadata("My Agent", "Assistant", "Handles agent workflows", "sonnet", AgentExecutorName.Anthropic, []);
+
+        info.Executor.ShouldBe(AgentExecutorName.Anthropic);
     }
 
     [Fact]

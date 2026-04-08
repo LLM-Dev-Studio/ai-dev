@@ -37,7 +37,7 @@ public class AgentRunnerService(
     }
 
     // Holds config loaded from agent.json that is needed across the session lifecycle.
-    private sealed record AgentConfig(string ModelAlias, string ExecutorName, IReadOnlyList<string> Skills);
+    private sealed record AgentConfig(string ModelAlias, AgentExecutorName Executor, IReadOnlyList<string> Skills);
 
     private readonly ConcurrentDictionary<string, SessionInfo> _sessions = new();
     private readonly ConcurrentDictionary<string, DateTime> _rateLimitedUntil = new();
@@ -140,14 +140,14 @@ public class AgentRunnerService(
         // Load agent config and resolve model alias + executor
         var agentConfig = LoadAgentConfig(agentDir);
         var modelId = settings.GetSettings().Models.GetValueOrDefault(agentConfig.ModelAlias, agentConfig.ModelAlias);
-        var executorName = agentConfig.ExecutorName;
-        activity?.SetTag("agent.executor", executorName);
+        var executorName = agentConfig.Executor;
+        activity?.SetTag("agent.executor", executorName.Value);
 
-        if (!_executors.TryGetValue(executorName, out var resolvedExecutor))
+        if (!_executors.TryGetValue(executorName.Value, out var resolvedExecutor))
         {
             var available = string.Join(", ", _executors.Keys);
             logger.LogError("[runner] Agent {Key} requested executor '{Executor}' which is not registered. Available: {Available}",
-                key, executorName, available);
+                key, executorName.Value, available);
             _sessions.TryRemove(key, out _);
             return;
         }
@@ -170,7 +170,7 @@ public class AgentRunnerService(
             await using var transcript = new StreamWriter(transcriptPath, append: true, System.Text.Encoding.UTF8);
             await transcript.WriteLineAsync();
             await transcript.WriteLineAsync($"## Session started at {startedAt:o}");
-            await transcript.WriteLineAsync($"executor: {executorName} · model: {modelId}");
+            await transcript.WriteLineAsync($"executor: {executorName.Value} · model: {modelId}");
             await transcript.WriteLineAsync();
             await transcript.FlushAsync();
             await foreach (var line in outputChannel.Reader.ReadAllAsync())
@@ -368,7 +368,7 @@ public class AgentRunnerService(
     private static AgentConfig LoadAgentConfig(string agentDir)
     {
         var path = Path.Combine(agentDir, "agent.json");
-        if (!File.Exists(path)) return new(ModelAlias: "sonnet", ExecutorName: IAgentExecutor.Default, Skills: []);
+        if (!File.Exists(path)) return new(ModelAlias: "sonnet", Executor: AgentExecutorName.Default, Skills: []);
         try
         {
             var raw = File.ReadAllText(path);
@@ -376,16 +376,18 @@ public class AgentRunnerService(
             var root = doc.RootElement;
 
             var model = root.TryGetProperty("model", out var m) ? m.GetString() ?? "sonnet" : "sonnet";
-            var executor = root.TryGetProperty("executor", out var e) ? e.GetString() ?? IAgentExecutor.Default : IAgentExecutor.Default;
-            if (string.IsNullOrWhiteSpace(executor)) executor = IAgentExecutor.Default;
+            var executor = root.TryGetProperty("executor", out var e)
+                && AgentExecutorName.TryParse(e.GetString(), out var configuredExecutor)
+                    ? configuredExecutor
+                    : AgentExecutorName.Default;
 
             List<string> skills = [];
             if (root.TryGetProperty("skills", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.Array)
                 skills = s.EnumerateArray().Select(x => x.GetString() ?? string.Empty).Where(x => x.Length > 0).ToList();
 
-            return new(ModelAlias: model, ExecutorName: executor, Skills: skills);
+            return new(ModelAlias: model, Executor: executor, Skills: skills);
         }
-        catch { return new(ModelAlias: "sonnet", ExecutorName: IAgentExecutor.Default, Skills: []); }
+        catch { return new(ModelAlias: "sonnet", Executor: AgentExecutorName.Default, Skills: []); }
     }
 
     private static async Task UpdateAgentStatusAsync(string agentDir, Dictionary<string, object?> updates)

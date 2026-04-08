@@ -14,6 +14,7 @@ public static class ProgramExtensions
 
         services.AddAiDevCore();
         services.AddClaudeExecutor();
+        services.AddAnthropicExecutor();
         services.AddOllamaExecutor();
 
         return services;

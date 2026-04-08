@@ -2,6 +2,7 @@ using AiDev;
 using AiDev.Executors;
 using AiDev.Services;
 
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using System.Net;
@@ -107,11 +108,12 @@ internal sealed class Fixture : IDisposable
         _dir = Path.Combine(Path.GetTempPath(), $"ollama-t-{Guid.NewGuid():N}"[..22]);
         Directory.CreateDirectory(_dir);
         Paths = new WorkspacePaths(new RootDir(_dir));
-        Settings = new StudioSettingsService(Paths);
-
-        var s = Settings.GetSettings();
-        s.OllamaBaseUrl = ollamaBaseUrl;
-        Settings.SaveSettings(s);
+        Settings = new StudioSettingsService(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OllamaBaseUrl"] = ollamaBaseUrl,
+            })
+            .Build());
     }
 
     /// <summary>Builds an executor backed by fake HTTP handlers.</summary>

@@ -1,3 +1,6 @@
+using AiDev.Services;
+using Microsoft.Extensions.Configuration;
+
 namespace AiDevNet.Tests.Unit;
 
 public class AgentServiceTests
@@ -17,7 +20,7 @@ public class AgentServiceTests
     {
         var service = CreateService(out _);
 
-        var result = service.SaveAgentMeta(new ProjectSlug("demo-project"), new AgentSlug("backend-dev"), "Backend Dev", "Builds APIs", "sonnet", "default");
+        var result = service.SaveAgentMeta(new ProjectSlug("demo-project"), new AgentSlug("backend-dev"), "Backend Dev", "Builds APIs", "sonnet", AgentExecutorName.Default);
 
         result.ShouldBeOfType<Err<AiDev.Models.Unit>>();
     }
@@ -75,6 +78,11 @@ public class AgentServiceTests
     {
         var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
         paths = new WorkspacePaths(root);
-        return new AgentService(paths, new StudioSettingsService(paths), new AgentTemplatesService(paths), new AtomicFileWriter(), new ProjectMutationCoordinator());
+        return new AgentService(
+            paths,
+            new StudioSettingsService(new ConfigurationBuilder().Build()),
+            new AgentTemplatesService(paths),
+            new AtomicFileWriter(),
+            new ProjectMutationCoordinator());
     }
 }

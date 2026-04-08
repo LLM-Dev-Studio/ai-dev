@@ -13,7 +13,7 @@ public sealed class AgentInfo
         AgentStatus? status = null,
         DateTime? lastRunAt = null,
         int inboxCount = 0,
-        string? executor = null,
+        AgentExecutorName? executor = null,
         IReadOnlyList<string>? skills = null,
         string? lastError = null,
         DateTime? lastErrorAt = null)
@@ -32,7 +32,7 @@ public sealed class AgentInfo
         Status = status ?? AgentStatus.Idle;
         LastRunAt = lastRunAt;
         InboxCount = inboxCount;
-        Executor = string.IsNullOrWhiteSpace(executor) ? IAgentExecutor.Default : executor;
+        Executor = executor ?? AgentExecutorName.Default;
         Skills = skills is null ? [] : [.. skills];
         LastError = string.IsNullOrWhiteSpace(lastError) ? null : lastError;
         LastErrorAt = lastErrorAt;
@@ -46,7 +46,7 @@ public sealed class AgentInfo
     public string Description { get; private set; }
     public DateTime? LastRunAt { get; private set; }
     public int InboxCount { get; private set; }
-    public string Executor { get; private set; }
+    public AgentExecutorName Executor { get; private set; }
     public string? LastError { get; private set; }
     public DateTime? LastErrorAt { get; private set; }
 
@@ -59,7 +59,7 @@ public sealed class AgentInfo
     /// <summary>
     /// Updates editable agent metadata while keeping defaults and null handling consistent.
     /// </summary>
-    public void UpdateMetadata(string name, string role, string description, string? model, string? executor, IReadOnlyList<string>? skills)
+    public void UpdateMetadata(string name, string role, string description, string? model, AgentExecutorName? executor, IReadOnlyList<string>? skills)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Agent name is required.", nameof(name));
@@ -68,7 +68,7 @@ public sealed class AgentInfo
         Role = role ?? string.Empty;
         Description = description ?? string.Empty;
         Model = string.IsNullOrWhiteSpace(model) ? "sonnet" : model;
-        Executor = string.IsNullOrWhiteSpace(executor) ? IAgentExecutor.Default : executor;
+        Executor = executor ?? AgentExecutorName.Default;
         Skills = skills is null ? [] : [.. skills];
     }
 

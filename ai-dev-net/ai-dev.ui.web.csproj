@@ -7,11 +7,13 @@
     <RootNamespace>AiDev.Ui.Web</RootNamespace>
     <AssemblyName>$(AssemblyName.Replace(' ', '_'))</AssemblyName>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <UserSecretsId>3f8afa12-9123-47e4-afa9-809bdebde615</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ai-dev-net.ServiceDefaults\ai-dev-net.ServiceDefaults.csproj" />
     <ProjectReference Include="..\ai-dev.core\ai-dev.core.csproj" />
+    <ProjectReference Include="..\ai-dev.executor.anthropic\ai-dev.executor.anthropic.csproj" />
     <ProjectReference Include="..\ai-dev.executor.claude\ai-dev.executor.claude.csproj" />
     <ProjectReference Include="..\ai-dev.executor.ollama\ai-dev.executor.ollama.csproj" />
   </ItemGroup>

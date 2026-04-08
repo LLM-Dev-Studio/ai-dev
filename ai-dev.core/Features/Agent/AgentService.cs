@@ -12,7 +12,7 @@ file class AgentJson
     public string? Status { get; init; }
     public string? Description { get; init; }
     public string? LastRunAt { get; init; }
-    public string? Executor { get; init; }
+    public AgentExecutorName? Executor { get; init; }
     public string[]? Skills { get; init; }
     public string? LastError { get; init; }
     public string? LastErrorAt { get; init; }
@@ -73,7 +73,7 @@ public class AgentService(
     }
 
     public Result<Unit> SaveAgentMeta(ProjectSlug projectSlug, AgentSlug agentSlug, string name, string description,
-        string model, string executor, IReadOnlyList<string>? skills = null)
+        string model, AgentExecutorName executor, IReadOnlyList<string>? skills = null)
     {
         try { _ = paths.AgentDir(projectSlug, agentSlug); }
         catch (ArgumentException) { return new Err<Unit>(InvalidAgentSlugError); }
@@ -91,7 +91,7 @@ public class AgentService(
                 updated["name"] = name;
                 updated["description"] = description;
                 updated["model"] = model;
-                updated["executor"] = executor;
+                updated["executor"] = executor.Value;
                 if (skills != null)
                     updated["skills"] = skills;
                 else
@@ -157,6 +157,7 @@ public class AgentService(
                     name,
                     role = role ?? string.Empty,
                     model,
+                    executor = AgentExecutorName.Default.Value,
                     status = "idle",
                     description = description ?? string.Empty,
                 };
