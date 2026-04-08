@@ -238,7 +238,24 @@ public class AgentRunnerService(
             activity?.SetTag("agent.exitCode", exitCode);
             activity?.SetTag("agent.rateLimited", isRateLimited);
             activity?.SetTag("agent.preserveInbox", preserveInbox);
-            activity?.AddEvent(new("process.exited"));
+
+            if (exitCode == 0)
+            {
+                activity?.SetStatus(ActivityStatusCode.Ok);
+                activity?.AddEvent(new("process.exited"));
+            }
+            else
+            {
+                sessionError = string.IsNullOrWhiteSpace(sessionError)
+                    ? $"Agent exited with code {exitCode}."
+                    : sessionError;
+
+                logger.LogError("[runner] Agent {Key} failed with exit code {Code}: {Error}", key, exitCode, sessionError);
+                activity?.SetTag("agent.error", true);
+                activity?.SetTag("agent.errorMessage", sessionError);
+                activity?.SetStatus(ActivityStatusCode.Error, sessionError);
+                activity?.AddEvent(new("process.error"));
+            }
         }
         catch (OperationCanceledException)
         {
@@ -254,6 +271,7 @@ public class AgentRunnerService(
             logger.LogError(ex, "[runner] Agent {Key} error", key);
             activity?.SetTag("agent.error", true);
             activity?.SetTag("agent.errorMessage", ex.Message);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             activity?.AddEvent(new("process.error"));
             outputChannel.Writer.TryWrite($"[{DateTime.UtcNow:o}] [error] {ex.Message}");
         }
