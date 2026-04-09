@@ -44,6 +44,7 @@
   <Project Path="ai-dev.core/ai-dev.core.csproj" Id="c5884869-1690-4cc5-b2d5-fba00997cf78" />
   <Project Path="ai-dev.executor.anthropic/ai-dev.executor.anthropic.csproj" />
   <Project Path="ai-dev.executor.claude/ai-dev.executor.claude.csproj" />
+  <Project Path="ai-dev.executor.github-models/ai-dev.executor.github-models.csproj" />
   <Project Path="ai-dev.executor.ollama/ai-dev.executor.ollama.csproj" />
   <Project Path="ai-dev.mcp/ai-dev.mcp.csproj" />
 </Solution>

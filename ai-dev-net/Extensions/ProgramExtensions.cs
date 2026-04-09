@@ -16,6 +16,7 @@ public static class ProgramExtensions
         services.AddClaudeExecutor();
         services.AddAnthropicExecutor();
         services.AddOllamaExecutor();
+        services.AddGitHubModelsExecutor();
 
         return services;
     }

@@ -10,7 +10,8 @@ public sealed record ExecutorHealthResult(
     string Message,
 
     /// <summary>
-    /// Optional extra detail lines (e.g. list of available models for Ollama).
-    /// Null when not applicable.
+    /// Models discovered during the health check (e.g. Ollama's installed models,
+    /// GitHub Models catalog). Null when the executor uses a static known-models list
+    /// and performs no runtime discovery (e.g. Claude CLI, Anthropic API).
     /// </summary>
-    IReadOnlyList<string>? Details = null);
+    IReadOnlyList<ModelDescriptor>? Models = null);

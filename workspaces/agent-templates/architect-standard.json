@@ -2,7 +2,8 @@
   "slug": "architect-standard",
   "name": "Architect",
   "role": "architect",
-  "model": "opus",
+  "model": "claude-opus-4-6",
   "description": "Answers technical consultations, defines system design, and reviews architectural decisions.",
-  "content": ""
+  "content": "",
+  "executor": "claude"
 }

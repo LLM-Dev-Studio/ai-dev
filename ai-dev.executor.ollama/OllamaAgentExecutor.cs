@@ -39,6 +39,12 @@ public class OllamaAgentExecutor(
             DefaultEnabled: true),
     ];
 
+    /// <summary>
+    /// Ollama models are installed locally — none are known ahead of time.
+    /// The health check discovers them dynamically from /api/tags.
+    /// </summary>
+    public IReadOnlyList<ModelDescriptor> KnownModels => [];
+
     // Maximum number of tool-call/response iterations per session.
     // Prevents runaway loops if the model repeatedly calls tools.
     private const int MaxToolIterations = 30;
@@ -60,23 +66,25 @@ public class OllamaAgentExecutor(
             if (!response.IsSuccessStatusCode)
                 return new ExecutorHealthResult(false, $"Ollama returned HTTP {(int)response.StatusCode}");
 
-            List<string> models = [];
+            List<ModelDescriptor> discovered = [];
             try
             {
                 var doc = await response.Content.ReadFromJsonAsync<JsonDocument>(ct).ConfigureAwait(false);
-                models = doc?.RootElement.GetProperty("models")
+                discovered = doc?.RootElement.GetProperty("models")
                     .EnumerateArray()
                     .Select(m => m.GetProperty("name").GetString() ?? string.Empty)
                     .Where(n => n.Length > 0)
+                    .Select(name => new ModelDescriptor(name, name, "ollama",
+                        ModelCapabilities.Streaming | ModelCapabilities.ToolCalling))
                     .ToList() ?? [];
             }
             catch { /* model list is best-effort */ }
 
-            var message = models.Count > 0
-                ? $"{models.Count} model(s) available"
+            var message = discovered.Count > 0
+                ? $"{discovered.Count} model(s) available"
                 : "Connected (no models found)";
 
-            return new ExecutorHealthResult(true, message, models);
+            return new ExecutorHealthResult(true, message, discovered);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -150,6 +158,7 @@ public class OllamaAgentExecutor(
 
         var http      = httpClientFactory.CreateClient("ollama");
         int iteration = 0;
+        TokenUsage? totalUsage = null;
 
         while (iteration++ < MaxToolIterations)
         {
@@ -268,6 +277,15 @@ public class OllamaAgentExecutor(
                 logger.LogInformation("[ollama] Tool calls requested — count={Count} iteration={N}", toolCalls.Count, iteration);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [ollama] tool calls: {toolCalls.Count} (iteration {iteration})");
 
+                // Accumulate token usage from this tool-calling iteration before continuing.
+                var iterPrompt = finalChunk?.PromptEvalCount ?? 0;
+                var iterOutput = finalChunk?.EvalCount       ?? 0;
+                if (iterPrompt > 0 || iterOutput > 0)
+                {
+                    var iterUsage = new TokenUsage(iterPrompt, iterOutput);
+                    totalUsage = totalUsage == null ? iterUsage : totalUsage + iterUsage;
+                }
+
                 // Add the assistant message (may include partial content + tool_calls) to history.
                 // Re-serialise the tool_calls through the snake_case options so the JSON matches
                 // what Ollama expects when we send the history back.
@@ -324,7 +342,15 @@ public class OllamaAgentExecutor(
                 output.TryWrite(
                     $"[{DateTime.UtcNow:o}] [ollama] tokens: {promptTokens} prompt / {outputTokens} generated | {durationMs:F0} ms");
 
-            return new ExecutorResult(0);
+            var usage = (promptTokens > 0 || outputTokens > 0)
+                ? new TokenUsage(promptTokens, outputTokens)
+                : null;
+
+            // Accumulate usage across all tool-call iterations.
+            if (usage != null)
+                totalUsage = totalUsage == null ? usage : totalUsage + usage;
+
+            return new ExecutorResult(0, Usage: totalUsage);
         }
 
         // Reached MaxToolIterations without a final response.

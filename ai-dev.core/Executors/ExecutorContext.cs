@@ -32,4 +32,10 @@ public sealed record ExecutorContext(
     Action<int>? ReportPid,
 
     /// <summary>Optional metadata describing what triggered this agent session.</summary>
-    AgentLaunchTrigger? Trigger = null);
+    AgentLaunchTrigger? Trigger = null,
+
+    /// <summary>
+    /// Extended reasoning budget. Off = no thinking. Only applied when the model
+    /// has <see cref="ModelCapabilities.Reasoning"/> and the executor supports it.
+    /// </summary>
+    ThinkingLevel ThinkingLevel = ThinkingLevel.Off);

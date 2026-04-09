@@ -2,7 +2,8 @@
   "slug": "analyst-standard",
   "name": "Analyst",
   "role": "analyst",
-  "model": "sonnet",
+  "model": "claude-sonnet-4-6",
   "description": "Turns briefs into unambiguous specs with user stories and testable acceptance criteria.",
-  "content": ""
+  "content": "",
+  "executor": "claude"
 }

@@ -1,5 +1,10 @@
 @using AiDev.Features.Agent
+@using AiDev.Executors
+@using AiDev.Services
 @inject IJSRuntime JS
+@inject IModelRegistry ModelRegistry
+@inject ExecutorHealthMonitor ExecutorHealthMonitor
+@implements IDisposable
 
 <div class="rounded-lg border border-border bg-card">
     <div class="flex items-center justify-between px-5 py-4">
@@ -7,6 +12,8 @@
             <p class="text-sm font-semibold text-foreground">@Template.Name</p>
             <p class="text-xs text-muted-foreground mt-0.5">
                 <span class="font-mono">@Template.Role</span>
+                @(" · ")
+                <span class="font-mono">@(string.IsNullOrEmpty(Template.Executor) ? "claude" : Template.Executor)</span>
                 @(" · ")
                 <span class="font-mono">@Template.Model</span>
                 @if (!string.IsNullOrEmpty(Template.Description))
@@ -38,26 +45,6 @@
                            class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
                 </div>
                 <div>
-                    <label class="block text-xs text-muted-foreground mb-1">Model</label>
-                    @if (ModelAliases.Count > 0)
-                    {
-                        <select value="@draft.Model"
-                                @onchange="e => SetModel(e.Value?.ToString())"
-                                class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-                            @foreach (var alias in ModelAliases)
-                            {
-                                <option value="@alias" selected="@(draft.Model == alias)">@alias</option>
-                            }
-                        </select>
-                    }
-                    else
-                    {
-                        <input value="@draft.Model"
-                               @oninput="e => SetModel(e.Value?.ToString())"
-                               class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
-                    }
-                </div>
-                <div>
                     <label class="block text-xs text-muted-foreground mb-1">Role</label>
                     <select value="@draft.Role"
                             @onchange="e => SetRole(e.Value?.ToString())"
@@ -73,12 +60,97 @@
                     </select>
                 </div>
                 <div>
+                    <label class="block text-xs text-muted-foreground mb-1">Executor</label>
+                    <select value="@draftExecutor"
+                            @onchange="e => SetExecutor(e.Value?.ToString())"
+                            class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                        @foreach (var opt in executorOptions)
+                        {
+                            <option value="@opt.Name" selected="@(draftExecutor == opt.Name)">
+                                @opt.DisplayName @(opt.Healthy ? "" : "(offline)")
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-muted-foreground mb-1">Model</label>
+                    @{
+                        var scopedModels = ModelRegistry.GetModelsForExecutor(draftExecutor);
+                    }
+                    @if (scopedModels.Count > 0)
+                    {
+                        <select value="@draft.Model"
+                                @onchange="e => SetModel(e.Value?.ToString())"
+                                class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                            @foreach (var m in scopedModels)
+                            {
+                                var badges = (m.Capabilities.HasFlag(ModelCapabilities.ToolCalling) ? "🔧" : "")
+                                           + (m.Capabilities.HasFlag(ModelCapabilities.Vision) ? "👁" : "")
+                                           + (m.Capabilities.HasFlag(ModelCapabilities.Reasoning) ? "🧠" : "");
+                                <option value="@m.Id" selected="@(draft.Model == m.Id)">
+                                    @m.DisplayName@(badges.Length > 0 ? $" {badges}" : "")
+                                </option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <input value="@draft.Model"
+                               @oninput="e => SetModel(e.Value?.ToString())"
+                               placeholder="e.g. llama3.2"
+                               class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
+                    }
+                </div>
+                <div class="col-span-2">
                     <label class="block text-xs text-muted-foreground mb-1">Description</label>
                     <input value="@draft.Description"
                            @oninput="e => SetDescription(e.Value?.ToString())"
                            class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
                 </div>
+                @{
+                    var availableSkills = ExecutorHealthMonitor.GetExecutorHealth()
+                        .Where(e => e.Executor.Name == draftExecutor)
+                        .SelectMany(e => e.Executor.AvailableSkills)
+                        .ToList();
+                }
+                @if (availableSkills.Count > 0)
+                {
+                    <div class="col-span-2">
+                        <label class="block text-xs text-muted-foreground mb-1">Skills</label>
+                        <div class="flex flex-wrap gap-3">
+                            @foreach (var skill in availableSkills)
+                            {
+                                var isChecked = draftSkills.Contains(skill.Key);
+                                <label class="flex items-center gap-1.5 text-sm cursor-pointer" title="@skill.Description">
+                                    <input type="checkbox" checked="@isChecked"
+                                           @onchange="@(e => { if ((bool?)e.Value == true) draftSkills.Add(skill.Key); else draftSkills.Remove(skill.Key); })"
+                                           class="accent-primary" />
+                                    @skill.DisplayName
+                                </label>
+                            }
+                        </div>
+                    </div>
+                }
             </div>
+            @{
+                var templateModelDescriptor = ModelRegistry.GetModelsForExecutor(draftExecutor)
+                    .FirstOrDefault(m => m.Id == draft.Model);
+                var templateModelSupportsThinking = templateModelDescriptor?.Capabilities.HasFlag(ModelCapabilities.Reasoning) == true;
+            }
+            @if (templateModelSupportsThinking)
+            {
+                <div>
+                    <label class="block text-xs text-muted-foreground mb-1">Thinking level 🧠</label>
+                    <select value="@draftThinkingLevel.Serialize()"
+                            @onchange="e => draftThinkingLevel = ThinkingLevelExtensions.Parse(e.Value?.ToString())"
+                            class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                        @foreach (var level in Enum.GetValues<ThinkingLevel>())
+                        {
+                            <option value="@level.Serialize()" selected="@(draftThinkingLevel == level)">@level.ToDisplayName()</option>
+                        }
+                    </select>
+                </div>
+            }
 
             <div>
                 <label class="block text-xs text-muted-foreground mb-1">
@@ -119,18 +191,38 @@
         "growth-marketing", "guard", "process-evo", "project-manager", "qa", "generic"
     ];
 
+    private sealed record ExecutorOption(string Name, string DisplayName, bool Healthy);
+
     [Parameter, EditorRequired] public AgentTemplate Template { get; set; } = default!;
-    [Parameter, EditorRequired] public List<string> ModelAliases { get; set; } = default!;
     [Parameter, EditorRequired] public EventCallback<AgentTemplate> OnSave { get; set; }
     [Parameter, EditorRequired] public EventCallback<string> OnDelete { get; set; }
 
     private AgentTemplate draft = default!;
+    private string draftExecutor = string.Empty;
+    private HashSet<string> draftSkills = [];
+    private ThinkingLevel draftThinkingLevel = ThinkingLevel.Off;
+    private List<ExecutorOption> executorOptions = [];
     private bool expanded;
     private bool saving;
     private SaveStatus saveStatus = SaveStatus.Idle;
     private string textareaId = string.Empty;
 
     protected override void OnInitialized()
+    {
+        InitializeDraft();
+        textareaId = $"ta-{Template.Slug}";
+        ExecutorHealthMonitor.Changed += OnHealthChanged;
+    }
+
+    public void Dispose() => ExecutorHealthMonitor.Changed -= OnHealthChanged;
+
+    private void OnHealthChanged()
+    {
+        RefreshExecutorOptions();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void InitializeDraft()
     {
         draft = new AgentTemplate
         {
@@ -141,7 +233,21 @@
             Description = Template.Description,
             Content = Template.Content,
         };
-        textareaId = $"ta-{Template.Slug}";
+        draftExecutor = string.IsNullOrWhiteSpace(Template.Executor)
+            ? "claude"
+            : Template.Executor;
+        draftSkills = [.. Template.Skills ?? []];
+        draftThinkingLevel = Template.ThinkingLevel;
+        RefreshExecutorOptions();
+    }
+
+    private void RefreshExecutorOptions()
+    {
+        executorOptions = ExecutorHealthMonitor.GetExecutorHealth()
+            .Select(e => new ExecutorOption(e.Executor.Name, e.Executor.DisplayName, e.Health.IsHealthy))
+            .DistinctBy(o => o.Name)
+            .OrderBy(o => o.DisplayName)
+            .ToList();
     }
 
     private bool IsDirty =>
@@ -149,14 +255,30 @@
         draft.Role != Template.Role ||
         draft.Model != Template.Model ||
         draft.Description != Template.Description ||
-        draft.Content != Template.Content;
+        draft.Content != Template.Content ||
+        draftExecutor != (string.IsNullOrWhiteSpace(Template.Executor) ? "claude" : Template.Executor) ||
+        draftThinkingLevel != Template.ThinkingLevel ||
+        !draftSkills.SetEquals(Template.Skills ?? []);
 
     private void ToggleExpanded() => expanded = !expanded;
 
     private void SetName(string? v) => draft.Name = v ?? string.Empty;
-    private void SetModel(string? v) => draft.Model = v ?? string.Empty;
     private void SetRole(string? v) => draft.Role = v ?? string.Empty;
     private void SetDescription(string? v) => draft.Description = v ?? string.Empty;
+
+    private void SetExecutor(string? v)
+    {
+        var newExecutor = v ?? "claude";
+        if (newExecutor == draftExecutor) return;
+        draftExecutor = newExecutor;
+        // Reset model to first available for this executor (or clear if executor is dynamic/offline).
+        var models = ModelRegistry.GetModelsForExecutor(draftExecutor);
+        draft.Model = models.Count > 0 ? models[0].Id : string.Empty;
+        // Clear skills — they are executor-scoped and the old keys are not valid here.
+        draftSkills.Clear();
+    }
+
+    private void SetModel(string? v) => draft.Model = v ?? string.Empty;
 
     private async Task OnContentInput(ChangeEventArgs e)
     {
@@ -170,6 +292,9 @@
         saveStatus = SaveStatus.Idle;
         try
         {
+            draft.Executor = draftExecutor;
+            draft.Skills = [.. draftSkills];
+            draft.ThinkingLevel = draftThinkingLevel;
             await OnSave.InvokeAsync(draft);
             saveStatus = SaveStatus.Saved;
             _ = Task.Delay(2000).ContinueWith(_ =>

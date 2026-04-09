@@ -9,6 +9,7 @@ public sealed record AgentExecutorName
     public const string ClaudeValue = "claude";
     public const string AnthropicValue = "anthropic";
     public const string OllamaValue = "ollama";
+    public const string GitHubModelsValue = "github-models";
 
     private AgentExecutorName(string value, string displayName)
     {
@@ -22,9 +23,10 @@ public sealed record AgentExecutorName
     public static AgentExecutorName Claude { get; } = new(ClaudeValue, "Claude CLI");
     public static AgentExecutorName Anthropic { get; } = new(AnthropicValue, "Anthropic API");
     public static AgentExecutorName Ollama { get; } = new(OllamaValue, "Ollama");
+    public static AgentExecutorName GitHubModels { get; } = new(GitHubModelsValue, "GitHub Models");
 
     public static AgentExecutorName Default => Claude;
-    public static IReadOnlyList<AgentExecutorName> Supported { get; } = [Claude, Anthropic, Ollama];
+    public static IReadOnlyList<AgentExecutorName> Supported { get; } = [Claude, Anthropic, Ollama, GitHubModels];
 
     public static bool TryParse(string? value, [NotNullWhen(true)] out AgentExecutorName? executor)
     {
@@ -33,6 +35,7 @@ public sealed record AgentExecutorName
             ClaudeValue => Claude,
             AnthropicValue => Anthropic,
             OllamaValue => Ollama,
+            GitHubModelsValue => GitHubModels,
             _ => null,
         };
 

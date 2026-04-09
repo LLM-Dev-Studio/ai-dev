@@ -1,12 +1,17 @@
 @page "/projects/{Slug}/decisions/{DecisionId}"
 @using AiDev.Features.Decision
+@using AiDev.Features.Agent
 @using AiDev.Models
 @using AiDev.Models.Types
 @using AiDev.Services
 @using System.Diagnostics
 @rendermode InteractiveServer
 @inject DecisionsService DecisionsService
+@inject DecisionChatService ChatService
+@inject AgentRunnerService RunnerService
+@inject DecisionChangedNotifier DecisionNotifier
 @inject NavigationManager NavigationManager
+@implements IDisposable
 
 <a href="@($"/projects/{Slug}/decisions")"
    class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4 transition-colors">
@@ -24,6 +29,7 @@
 else
 {
     <div class="max-w-2xl">
+        <!-- Header -->
         <div class="flex items-start gap-3 mb-6">
             <div class="flex-1">
                 <h1 class="text-xl font-semibold text-foreground">@decision.Subject</h1>
@@ -35,42 +41,116 @@ else
                     <span class="text-xs px-1.5 py-0.5 rounded border @StatusBadge(decision.Status.Value)">@decision.Status.Value</span>
                 </div>
             </div>
+            @if (decision.Status.IsPending && !showResolveDialog)
+            {
+                <button @onclick="() => showResolveDialog = true"
+                        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors flex-shrink-0">
+                    <SvgIcon Name="check-circle-2" Class="w-3 h-3" />
+                    Resolve
+                </button>
+            }
         </div>
 
+        <!-- Original decision body -->
         <div class="rounded-lg border border-border bg-card p-5 mb-4">
+            <p class="text-xs text-muted-foreground mb-2">Decision request</p>
             <pre class="whitespace-pre-wrap text-sm text-foreground/90 font-sans leading-relaxed">@decision.Body</pre>
         </div>
 
+        <!-- Chat history -->
+        @if (chatMessages.Count > 0 || decision.Status.IsPending)
+        {
+            <div class="space-y-3 mb-4">
+                @foreach (var msg in chatMessages)
+                {
+                    <div class="@(msg.IsHuman ? "flex justify-end" : "flex justify-start")">
+                        <div class="max-w-[80%] rounded-lg px-4 py-3 @(msg.IsHuman ? "bg-primary text-primary-foreground" : "border border-border bg-card text-foreground")">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-xs opacity-70">@(msg.IsHuman ? "You" : msg.From)</span>
+                                <span class="text-xs opacity-50">@FormatDateTime(msg.Timestamp)</span>
+                            </div>
+                            <pre class="whitespace-pre-wrap text-sm font-sans leading-relaxed">@msg.Content</pre>
+                        </div>
+                    </div>
+                }
+
+                @if (agentIsRunning)
+                {
+                    <div class="flex justify-start">
+                        <div class="rounded-lg px-4 py-3 border border-border bg-card text-muted-foreground">
+                            <div class="flex items-center gap-2 text-xs">
+                                <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                                @decision.From is thinking…
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- Resolved response display -->
         @if (!string.IsNullOrEmpty(decision.Response))
         {
             <div class="rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-5 mb-4">
                 <div class="flex items-center gap-2 mb-2">
                     <SvgIcon Name="check-circle-2" Class="w-4 h-4 text-emerald-400" />
-                    <p class="text-sm font-medium text-emerald-400">Human Response</p>
+                    <p class="text-sm font-medium text-emerald-400">Resolved</p>
                     <span class="text-xs text-muted-foreground">@FormatDateTime(decision.ResolvedAt)</span>
                 </div>
                 <pre class="whitespace-pre-wrap text-sm text-foreground/90 font-sans leading-relaxed">@decision.Response</pre>
             </div>
         }
 
-        @if (decision.Status.IsPending)
+        <!-- Chat input for pending decisions -->
+        @if (decision.Status.IsPending && !showResolveDialog)
         {
-            <div class="rounded-lg border border-border bg-card p-5">
-                <p class="text-sm font-medium text-foreground mb-3">Your response</p>
-                <textarea value="@response"
-                          @oninput="e => response = e.Value?.ToString() ?? string.Empty"
-                          placeholder="Type your decision or instructions here..."
-                          rows="5"
-                          class="w-full bg-background border border-border rounded-md p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary"></textarea>
+            <div class="rounded-lg border border-border bg-card p-4">
+                <textarea value="@chatInput"
+                          @oninput="e => chatInput = e.Value?.ToString() ?? string.Empty"
+                          @onkeydown="OnChatKeyDown"
+                          placeholder="Type your message… (Shift+Enter for new line, Enter to send)"
+                          rows="3"
+                          class="w-full bg-background border border-border rounded-md p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-3"></textarea>
+                @if (!string.IsNullOrEmpty(chatError))
+                {
+                    <p class="text-xs text-destructive mb-2">@chatError</p>
+                }
+                <div class="flex justify-end">
+                    <button @onclick="SendMessage"
+                            disabled="@(sendingMessage || string.IsNullOrWhiteSpace(chatInput))"
+                            class="flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors">
+                        <SvgIcon Name="send" Class="w-3.5 h-3.5" />
+                        @(sendingMessage ? "Sending…" : "Send")
+                    </button>
+                </div>
+            </div>
+        }
+
+        <!-- Resolve dialog -->
+        @if (showResolveDialog)
+        {
+            <div class="rounded-lg border border-emerald-400/30 bg-card p-5">
+                <p class="text-sm font-medium text-foreground mb-1">Resolve this decision</p>
+                <p class="text-xs text-muted-foreground mb-3">Optionally provide a summary that will be sent to the agent.</p>
+                <textarea value="@resolveResponse"
+                          @oninput="e => resolveResponse = e.Value?.ToString() ?? string.Empty"
+                          placeholder="Resolution summary (optional)…"
+                          rows="3"
+                          class="w-full bg-background border border-border rounded-md p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-3"></textarea>
                 @if (!string.IsNullOrEmpty(resolveError))
                 {
-                    <p class="text-xs text-destructive mt-2">@resolveError</p>
+                    <p class="text-xs text-destructive mb-2">@resolveError</p>
                 }
-                <div class="flex justify-end mt-3">
+                <div class="flex justify-end gap-3">
+                    <button @onclick="() => { showResolveDialog = false; resolveError = string.Empty; }"
+                            class="px-3 py-1.5 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground transition-colors">
+                        Cancel
+                    </button>
                     <button @onclick="Resolve"
-                            disabled="@(submitting || string.IsNullOrWhiteSpace(response))"
-                            class="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors">
-                        @(submitting ? "Resolving…" : "Resolve Decision")
+                            disabled="@submitting"
+                            class="flex items-center gap-1.5 px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium disabled:opacity-50 hover:bg-emerald-500 transition-colors">
+                        <SvgIcon Name="check-circle-2" Class="w-3.5 h-3.5" />
+                        @(submitting ? "Resolving…" : "Confirm Resolution")
                     </button>
                 </div>
             </div>
@@ -83,31 +163,107 @@ else
     [Parameter] public string DecisionId { get; set; } = string.Empty;
 
     private DecisionItem? decision;
-    private string response = string.Empty;
+    private IReadOnlyList<DecisionChatMessage> chatMessages = [];
+    private string chatInput = string.Empty;
+    private bool sendingMessage;
+    private string chatError = string.Empty;
+    private bool agentIsRunning;
+    private Timer? _pollTimer;
+
+    private bool showResolveDialog;
+    private string resolveResponse = string.Empty;
     private bool submitting;
     private string resolveError = string.Empty;
 
     protected override void OnInitialized()
     {
         decision = DecisionsService.GetDecision(Slug, DecisionId);
+        if (decision == null) return;
+
+        chatMessages = ChatService.GetMessages(Slug, DecisionId);
+        agentIsRunning = RunnerService.IsRunning(Slug, decision.From);
+
+        DecisionNotifier.Changed += OnDecisionChanged;
+
+        // Flush any agent replies that arrived before the page opened.
+        ChatService.FlushAgentReplies(Slug, DecisionId, decision.From);
+        chatMessages = ChatService.GetMessages(Slug, DecisionId);
+
+        if (decision.Status.IsPending)
+        {
+            // Poll every 3s to detect agent replies and running state changes.
+            _pollTimer = new Timer(_ =>
+            {
+                InvokeAsync(() =>
+                {
+                    var running = RunnerService.IsRunning(Slug, decision?.From ?? string.Empty);
+                    ChatService.FlushAgentReplies(Slug, DecisionId, decision?.From ?? string.Empty);
+                    chatMessages = ChatService.GetMessages(Slug, DecisionId);
+                    agentIsRunning = running;
+                    StateHasChanged();
+                });
+            }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+        }
+    }
+
+    private void OnDecisionChanged(ProjectSlug project)
+    {
+        if (project.Value != Slug) return;
+        InvokeAsync(() =>
+        {
+            chatMessages = ChatService.GetMessages(Slug, DecisionId);
+            decision = DecisionsService.GetDecision(Slug, DecisionId);
+            StateHasChanged();
+        });
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(chatInput) || decision == null) return;
+        sendingMessage = true;
+        chatError = string.Empty;
+        var content = chatInput;
+        chatInput = string.Empty;
+
+        var err = ChatService.SendHumanMessage(Slug, DecisionId, decision.From, content);
+        sendingMessage = false;
+        if (err != null) { chatError = err; chatInput = content; return; }
+
+        chatMessages = ChatService.GetMessages(Slug, DecisionId);
+        agentIsRunning = RunnerService.IsRunning(Slug, decision.From);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnChatKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+            await SendMessage();
     }
 
     private async Task Resolve()
     {
-        if (string.IsNullOrWhiteSpace(response)) return;
+        if (decision == null) return;
         submitting = true;
         resolveError = string.Empty;
+        // Flush any last agent replies before closing the decision.
+        ChatService.FlushAgentReplies(Slug, DecisionId, decision.From);
+        var response = string.IsNullOrWhiteSpace(resolveResponse) ? "Resolved." : resolveResponse.Trim();
         using var activity = AiDevTelemetry.ActivitySource.StartActivity("UI.Decision.Resolve", ActivityKind.Internal);
         activity?.SetTag("ui.page", "decision-detail");
         activity?.SetTag("project.slug", Slug);
         activity?.SetTag("decision.id", DecisionId);
-        var err = (await DecisionsService.ResolveDecisionAsync(Slug, DecisionId, response.Trim()))
+        var err = (await DecisionsService.ResolveDecisionAsync(Slug, DecisionId, response))
             .ToErrorMessage();
         activity?.SetTag("ui.outcome", string.IsNullOrEmpty(err) ? "success" : "error");
-        activity?.SetTag("ui.trace_id", activity?.TraceId.ToString());
         submitting = false;
         if (err != null) { resolveError = err; return; }
         NavigationManager.NavigateTo($"/projects/{Slug}/decisions");
+    }
+
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+        DecisionNotifier.Changed -= OnDecisionChanged;
     }
 
     private static string StatusBadge(string status) => DecisionStatus.From(status).IsResolved

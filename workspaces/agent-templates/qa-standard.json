@@ -2,7 +2,8 @@
   "slug": "qa-standard",
   "name": "QA Engineer",
   "role": "qa",
-  "model": "sonnet",
+  "model": "claude-sonnet-4-6",
   "description": "Reviews and tests completed work. Approves or rejects implementations with detailed findings.",
-  "content": ""
+  "content": "",
+  "executor": "claude"
 }

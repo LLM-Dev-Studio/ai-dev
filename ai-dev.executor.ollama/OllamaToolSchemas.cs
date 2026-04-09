@@ -6,8 +6,9 @@ namespace AiDev.Executors;
 /// Ollama function-calling schemas for all workspace tools.
 /// Injected into /api/chat requests when the "mcp-workspace" skill is enabled.
 /// Tool names must match the constants in <see cref="WorkspaceTools"/>.
+/// Also used by the GitHub Models executor (same OpenAI tool-calling format).
 /// </summary>
-internal static class OllamaToolSchemas
+public static class OllamaToolSchemas
 {
     // Raw JSON is clearest here — the schema structure is data, not logic.
     private static readonly string ToolsJson = """

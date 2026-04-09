@@ -15,6 +15,7 @@ public class AgentRunnerService(
     WorkspacePaths paths,
     StudioSettingsService settings,
     IEnumerable<IAgentExecutor> executors,
+    IModelRegistry modelRegistry,
     MessageChangedNotifier messageNotifier,
     KbService kbService,
     PlaybookService playbookService,
@@ -37,10 +38,12 @@ public class AgentRunnerService(
     }
 
     // Holds config loaded from agent.json that is needed across the session lifecycle.
-    private sealed record AgentConfig(string ModelAlias, AgentExecutorName Executor, IReadOnlyList<string> Skills);
+    private sealed record AgentConfig(string ModelAlias, AgentExecutorName Executor, IReadOnlyList<string> Skills, ThinkingLevel ThinkingLevel = ThinkingLevel.Off);
 
     private readonly ConcurrentDictionary<string, SessionInfo> _sessions = new();
     private readonly ConcurrentDictionary<string, DateTime> _rateLimitedUntil = new();
+    // Per-key semaphores to serialize usage file reads/writes when concurrent sessions finish same-day.
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _usageLocks = new();
 
     private static string Key(ProjectSlug project, AgentSlug agent) => $"{project.Value}/{agent.Value}";
 
@@ -116,6 +119,41 @@ public class AgentRunnerService(
         return true;
     }
 
+    /// <summary>
+    /// Returns the token usage from the most recent session for this agent, or null if none exists.
+    /// </summary>
+    public TokenUsage? GetLastSessionUsage(ProjectSlug projectSlug, AgentSlug agentSlug)
+    {
+        var transcriptDir = paths.AgentTranscriptsDir(projectSlug, agentSlug);
+        if (!Directory.Exists(transcriptDir)) return null;
+
+        var usageFile = Directory.GetFiles(transcriptDir, "*.usage.json")
+            .OrderByDescending(f => f)
+            .FirstOrDefault();
+
+        if (usageFile == null) return null;
+
+        try
+        {
+            var json = File.ReadAllText(usageFile);
+            return System.Text.Json.JsonSerializer.Deserialize<TokenUsage>(json, JsonDefaults.Read);
+        }
+        catch { return null; }
+    }
+
+    public TokenUsage? GetSessionUsage(ProjectSlug projectSlug, AgentSlug agentSlug, TranscriptDate date)
+    {
+        var transcriptDir = paths.AgentTranscriptsDir(projectSlug, agentSlug);
+        var usagePath = Path.Combine(transcriptDir, $"{date.Value}.usage.json");
+        if (!File.Exists(usagePath)) return null;
+        try
+        {
+            var json = File.ReadAllText(usagePath);
+            return System.Text.Json.JsonSerializer.Deserialize<TokenUsage>(json, JsonDefaults.Read);
+        }
+        catch { return null; }
+    }
+
     private async Task RunSessionAsync(string key, SessionInfo info, DateTime startedAt, string? parentActivityId = null)
     {
         var projectSlug = info.ProjectSlug;
@@ -137,9 +175,23 @@ public class AgentRunnerService(
             catch { /* ignore */ }
         }
 
-        // Load agent config and resolve model alias + executor
+        // Load agent config — fail fast on missing or malformed agent.json rather than
+        // silently defaulting to a different executor/model.
         var agentConfig = LoadAgentConfig(agentDir);
-        var modelId = settings.GetSettings().Models.GetValueOrDefault(agentConfig.ModelAlias, agentConfig.ModelAlias);
+        if (agentConfig == null)
+        {
+            logger.LogError("[runner] Agent {Key} has missing or malformed agent.json; aborting launch", key);
+            await UpdateAgentStatusAsync(agentDir, new()
+            {
+                ["lastError"] = "Missing or malformed agent.json; cannot determine executor and model.",
+                ["lastErrorAt"] = startedAt.ToString("o"),
+                ["status"] = "error",
+            });
+            _sessions.TryRemove(key, out _);
+            return;
+        }
+
+        var modelId = agentConfig.ModelAlias;
         var executorName = agentConfig.Executor;
         activity?.SetTag("agent.executor", executorName.Value);
 
@@ -148,8 +200,24 @@ public class AgentRunnerService(
             var available = string.Join(", ", _executors.Keys);
             logger.LogError("[runner] Agent {Key} requested executor '{Executor}' which is not registered. Available: {Available}",
                 key, executorName.Value, available);
+            await UpdateAgentStatusAsync(agentDir, new()
+            {
+                ["lastError"] = $"Executor '{executorName.Value}' is not registered. Available: {available}",
+                ["lastErrorAt"] = startedAt.ToString("o"),
+                ["status"] = "error",
+            });
             _sessions.TryRemove(key, out _);
             return;
+        }
+
+        // Warn if the model is not known to the registry for this executor.
+        // For dynamic executors (Ollama, GitHub Models) the registry may not have data until
+        // health checks run, so this is advisory only — we do not block launch.
+        if (modelRegistry.Find(executorName.Value, modelId) == null)
+        {
+            logger.LogWarning("[runner] Agent {Key}: model '{Model}' is not registered for executor '{Executor}'. " +
+                "This may cause a runtime failure if the model does not exist.",
+                key, modelId, executorName.Value);
         }
 
         await UpdateAgentStatusAsync(agentDir, new()
@@ -210,6 +278,7 @@ public class AgentRunnerService(
         var isRateLimited = false;
         var preserveInbox = false;
         string? sessionError = null;
+        TokenUsage? sessionUsage = null;
 
         var context = new ExecutorContext(
             WorkingDir: agentDir,
@@ -225,7 +294,8 @@ public class AgentRunnerService(
                 activity?.SetTag("agent.pid", pid);
                 activity?.AddEvent(new("process.started"));
             },
-            Trigger: info.Trigger);
+            Trigger: info.Trigger,
+            ThinkingLevel: agentConfig.ThinkingLevel);
 
         try
         {
@@ -234,6 +304,7 @@ public class AgentRunnerService(
             isRateLimited = result.IsRateLimited;
             preserveInbox = result.PreserveInbox;
             sessionError = result.ErrorMessage;
+            sessionUsage = result.Usage;
 
             activity?.SetTag("agent.exitCode", exitCode);
             activity?.SetTag("agent.rateLimited", isRateLimited);
@@ -283,6 +354,38 @@ public class AgentRunnerService(
             outputChannel.Writer.TryWrite($"## Session ended at {exitedAt:o} (exit code: {exitCode})");
             outputChannel.Writer.TryComplete();
             await consumerTask;
+
+            // Persist token usage alongside the transcript (accumulate across same-day sessions).
+            if (sessionUsage != null)
+            {
+                try
+                {
+                    var usagePath = Path.Combine(transcriptDir, $"{transcriptDate.Value}.usage.json");
+                    // Serialize concurrent session finishes on the same key to avoid TOCTOU on the usage file.
+                    var usageLock = _usageLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+                    await usageLock.WaitAsync();
+                    try
+                    {
+                        if (File.Exists(usagePath))
+                        {
+                            try
+                            {
+                                var existing = System.Text.Json.JsonSerializer.Deserialize<TokenUsage>(
+                                    await File.ReadAllTextAsync(usagePath), JsonDefaults.Read);
+                                if (existing != null) sessionUsage = existing + sessionUsage;
+                            }
+                            catch { /* ignore corrupt existing file; overwrite with current session */ }
+                        }
+                        var usageJson = System.Text.Json.JsonSerializer.Serialize(sessionUsage, JsonDefaults.Write);
+                        await File.WriteAllTextAsync(usagePath, usageJson);
+                        logger.LogInformation(
+                            "[runner] Usage — {In} in / {Out} out tokens (daily total)",
+                            sessionUsage.InputTokens, sessionUsage.OutputTokens);
+                    }
+                    finally { usageLock.Release(); }
+                }
+                catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to write usage file"); }
+            }
 
             activity?.SetTag("agent.finishedAt", exitedAt.ToString("o"));
             activity?.AddEvent(new("session.finished"));
@@ -365,29 +468,37 @@ public class AgentRunnerService(
     // Private helpers
     // -------------------------------------------------------------------------
 
-    private static AgentConfig LoadAgentConfig(string agentDir)
+    private static AgentConfig? LoadAgentConfig(string agentDir)
     {
+        const string DefaultModel = "claude-sonnet-4-6";
         var path = Path.Combine(agentDir, "agent.json");
-        if (!File.Exists(path)) return new(ModelAlias: "sonnet", Executor: AgentExecutorName.Default, Skills: []);
+        if (!File.Exists(path)) return null;
         try
         {
             var raw = File.ReadAllText(path);
             var doc = System.Text.Json.JsonDocument.Parse(raw);
             var root = doc.RootElement;
 
-            var model = root.TryGetProperty("model", out var m) ? m.GetString() ?? "sonnet" : "sonnet";
             var executor = root.TryGetProperty("executor", out var e)
                 && AgentExecutorName.TryParse(e.GetString(), out var configuredExecutor)
                     ? configuredExecutor
                     : AgentExecutorName.Default;
 
+            var rawModel = root.TryGetProperty("model", out var m) ? m.GetString() ?? DefaultModel : DefaultModel;
+            // Resolve old alias at runtime — guards against agents launched before migration ran.
+            var model = LegacyModelAliases.Resolve(rawModel, executor.Value) ?? rawModel;
+
             List<string> skills = [];
             if (root.TryGetProperty("skills", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.Array)
                 skills = s.EnumerateArray().Select(x => x.GetString() ?? string.Empty).Where(x => x.Length > 0).ToList();
 
-            return new(ModelAlias: model, Executor: executor, Skills: skills);
+            var thinking = root.TryGetProperty("thinking", out var th)
+                ? ThinkingLevelExtensions.Parse(th.GetString())
+                : ThinkingLevel.Off;
+
+            return new(ModelAlias: model, Executor: executor, Skills: skills, ThinkingLevel: thinking);
         }
-        catch { return new(ModelAlias: "sonnet", Executor: AgentExecutorName.Default, Skills: []); }
+        catch { return null; }
     }
 
     private static async Task UpdateAgentStatusAsync(string agentDir, Dictionary<string, object?> updates)
@@ -395,16 +506,22 @@ public class AgentRunnerService(
         var path = Path.Combine(agentDir, "agent.json");
         try
         {
-            var existing = File.Exists(path)
-                ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(
-                    await File.ReadAllTextAsync(path), JsonDefaults.Read) ?? []
-                : [];
+            // If the file is corrupt, skip the update entirely — better to leave it unchanged
+            // than to overwrite it with only status fields, which would destroy slug/model/executor config.
+            Dictionary<string, JsonElement> existing = [];
+            if (File.Exists(path))
+            {
+                existing = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+                    await File.ReadAllTextAsync(path), JsonDefaults.Read) ?? [];
+            }
 
             var merged = existing.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
             foreach (var (k, v) in updates)
             {
                 if (v == null) merged.Remove(k);
-                else merged[k] = v;
+                // Serialize each value to JsonElement to guarantee proper JSON escaping
+                // (avoids issues with special characters in strings going through object? boxing).
+                else merged[k] = System.Text.Json.JsonSerializer.SerializeToElement(v);
             }
 
             await File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(merged, JsonDefaults.Write));
@@ -471,7 +588,7 @@ public class AgentRunnerService(
     /// Writes a human-readable message to an agent's inbox.
     /// </summary>
     public string? WriteInboxMessage(ProjectSlug projectSlug, AgentSlug agentSlug,
-        string from, string re, string type, string priority, string body, TaskId? taskId = null)
+        string from, string re, string type, string priority, string body, TaskId? taskId = null, string? decisionId = null)
     {
         using var activity = ActivitySource.StartActivity("Agent.WriteInboxMessage", ActivityKind.Internal);
         activity?.SetTag("agent.project", projectSlug);
@@ -487,8 +604,8 @@ public class AgentRunnerService(
         {
             Directory.CreateDirectory(inboxDir);
             var now = DateTime.UtcNow;
-            var filename = $"{now:yyyyMMdd-HHmmss}-from-{from}.md";
-            var filePath = Path.Combine(inboxDir, filename);
+            var unique = $"{now:yyyyMMdd-HHmmss}-{now.Millisecond:D3}-{Guid.NewGuid().ToString("N")[..6]}-from-{from}.md";
+            var filePath = Path.Combine(inboxDir, unique);
             var fields = new Dictionary<string, string>
             {
                 ["from"] = from,
@@ -499,12 +616,13 @@ public class AgentRunnerService(
                 ["type"] = type,
             };
             if (taskId != null) fields["task-id"] = taskId.ToString();
+            if (decisionId != null) fields["decision-id"] = decisionId;
             var content = FrontmatterParser.Stringify(fields, body);
             File.WriteAllText(filePath, content);
-            activity?.SetTag("message.filename", filename);
+            activity?.SetTag("message.filename", unique);
             activity?.SetTag("message.success", true);
             logger.LogInformation("[runner] Inbox message written: {Project}/{Agent} ← {From} ({Type}) [{File}]",
-                projectSlug, agentSlug, from, type, filename);
+                projectSlug, agentSlug, from, type, unique);
             return null;
         }
         catch (Exception ex)

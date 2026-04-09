@@ -1,4 +1,6 @@
 @using AiDev.Features.Agent
+@using AiDev.Executors
+@inject IModelRegistry ModelRegistry
 <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
     <div class="bg-card border border-border rounded-lg w-full max-w-md p-6">
         <div class="flex items-center justify-between mb-5">
@@ -37,14 +39,21 @@
                 </div>
                 <div>
                     <label class="block text-xs text-muted-foreground mb-1">Model</label>
-                    @if (ModelAliases.Count > 0)
+                    @{
+                        var allModels = ModelRegistry.GetAll();
+                    }
+                    @if (allModels.Count > 0)
                     {
                         <select value="@model"
-                                @onchange="e => model = e.Value?.ToString() ?? string.Empty"
+                                @onchange="@(e => {
+                                    model = e.Value?.ToString() ?? string.Empty;
+                                    var md = allModels.FirstOrDefault(x => x.Id == model);
+                                    executor = md?.ExecutorName ?? string.Empty;
+                                })"
                                 class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-                            @foreach (var alias in ModelAliases)
+                            @foreach (var m in allModels)
                             {
-                                <option value="@alias" selected="@(model == alias)">@alias</option>
+                                <option value="@m.Id" selected="@(model == m.Id)">@m.DisplayName (@m.ExecutorName)</option>
                             }
                         </select>
                     }
@@ -90,7 +99,6 @@
         "growth-marketing", "guard", "process-evo", "project-manager", "qa", "generic"
     ];
 
-    [Parameter, EditorRequired] public List<string> ModelAliases { get; set; } = default!;
     [Parameter, EditorRequired] public EventCallback<AgentTemplate> OnCreated { get; set; }
     [Parameter, EditorRequired] public EventCallback OnClose { get; set; }
 
@@ -98,13 +106,19 @@
     private string slug = string.Empty;
     private string role = "developer";
     private string model = string.Empty;
+    private string executor = string.Empty;
     private string description = string.Empty;
     private bool saving;
     private string error = string.Empty;
 
     protected override void OnInitialized()
     {
-        model = ModelAliases.Count > 0 ? ModelAliases[0] : "sonnet";
+        var allModels = ModelRegistry.GetAll();
+        if (allModels.Count > 0)
+        {
+            model = allModels[0].Id;
+            executor = allModels[0].ExecutorName;
+        }
     }
 
     private void OnNameInput(ChangeEventArgs e)
@@ -134,6 +148,7 @@
                 Name = name,
                 Role = role,
                 Model = model,
+                Executor = executor,
                 Description = description,
                 Content = string.Empty,
             };

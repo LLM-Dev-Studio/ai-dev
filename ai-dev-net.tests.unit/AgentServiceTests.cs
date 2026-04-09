@@ -1,5 +1,7 @@
+using AiDev.Executors;
 using AiDev.Services;
 using Microsoft.Extensions.Configuration;
+using NSubstitute;
 
 namespace AiDevNet.Tests.Unit;
 
@@ -78,11 +80,15 @@ public class AgentServiceTests
     {
         var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
         paths = new WorkspacePaths(root);
+        var modelRegistry = Substitute.For<IModelRegistry>();
+        modelRegistry.Find(Arg.Any<string>(), Arg.Any<string>()).Returns((ModelDescriptor?)null);
+        modelRegistry.GetModelsForExecutor(Arg.Any<string>()).Returns([]);
         return new AgentService(
             paths,
             new StudioSettingsService(new ConfigurationBuilder().Build()),
             new AgentTemplatesService(paths),
             new AtomicFileWriter(),
-            new ProjectMutationCoordinator());
+            new ProjectMutationCoordinator(),
+            modelRegistry);
     }
 }

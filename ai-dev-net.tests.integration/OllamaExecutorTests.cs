@@ -415,8 +415,8 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
         var result = await _fx.Build(new FakeHttpMessageHandler(), healthH).CheckHealthAsync(TestContext.Current.CancellationToken);
 
         result.IsHealthy.ShouldBeTrue();
-        result.Details!.ShouldContain("gemma3:27b");
-        result.Details!.ShouldContain("llama3.2");
+        result.Models!.Select(m => m.Id).ShouldContain("gemma3:27b");
+        result.Models!.Select(m => m.Id).ShouldContain("llama3.2");
     }
 
     [Fact]
@@ -432,7 +432,7 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
         var result = await _fx.Build(new FakeHttpMessageHandler(), healthH).CheckHealthAsync(TestContext.Current.CancellationToken);
 
         result.IsHealthy.ShouldBeTrue();
-        (result.Details == null || result.Details.Count == 0).ShouldBeTrue("Expected no model details");
+        (result.Models == null || result.Models.Count == 0).ShouldBeTrue("Expected no model details");
     }
 
     [Fact]

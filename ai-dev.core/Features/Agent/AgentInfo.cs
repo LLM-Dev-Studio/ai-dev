@@ -16,7 +16,8 @@ public sealed class AgentInfo
         AgentExecutorName? executor = null,
         IReadOnlyList<string>? skills = null,
         string? lastError = null,
-        DateTime? lastErrorAt = null)
+        DateTime? lastErrorAt = null,
+        ThinkingLevel thinkingLevel = ThinkingLevel.Off)
     {
         ArgumentNullException.ThrowIfNull(slug);
         if (string.IsNullOrWhiteSpace(name))
@@ -36,6 +37,7 @@ public sealed class AgentInfo
         Skills = skills is null ? [] : [.. skills];
         LastError = string.IsNullOrWhiteSpace(lastError) ? null : lastError;
         LastErrorAt = lastErrorAt;
+        ThinkingLevel = thinkingLevel;
     }
 
     public AgentSlug Slug { get; }
@@ -49,6 +51,7 @@ public sealed class AgentInfo
     public AgentExecutorName Executor { get; private set; }
     public string? LastError { get; private set; }
     public DateTime? LastErrorAt { get; private set; }
+    public ThinkingLevel ThinkingLevel { get; private set; }
 
     /// <summary>
     /// Skill keys enabled for this agent (e.g. ["git-read", "git-write"]).
@@ -59,7 +62,7 @@ public sealed class AgentInfo
     /// <summary>
     /// Updates editable agent metadata while keeping defaults and null handling consistent.
     /// </summary>
-    public void UpdateMetadata(string name, string role, string description, string? model, AgentExecutorName? executor, IReadOnlyList<string>? skills)
+    public void UpdateMetadata(string name, string role, string description, string? model, AgentExecutorName? executor, IReadOnlyList<string>? skills, ThinkingLevel thinkingLevel = ThinkingLevel.Off)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Agent name is required.", nameof(name));
@@ -70,6 +73,7 @@ public sealed class AgentInfo
         Model = string.IsNullOrWhiteSpace(model) ? "sonnet" : model;
         Executor = executor ?? AgentExecutorName.Default;
         Skills = skills is null ? [] : [.. skills];
+        ThinkingLevel = thinkingLevel;
     }
 
     /// <summary>

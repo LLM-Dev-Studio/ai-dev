@@ -2,7 +2,8 @@
   "slug": "growth-standard",
   "name": "Growth",
   "role": "growth",
-  "model": "opus",
+  "model": "claude-opus-4-6",
   "description": "Reads agent journals and decisions to find friction, then proposes concrete improvements to workflows and instructions.",
-  "content": ""
+  "content": "",
+  "executor": "claude"
 }

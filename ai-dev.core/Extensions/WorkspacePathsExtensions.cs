@@ -28,6 +28,9 @@ public static class WorkspacePathsExtensions
         public DecisionsResolvedDir DecisionsResolvedDir() => new(Path.Combine(dir.Value,
             FilePathConstants.DecisionsDirName, FilePathConstants.ResolvedDirName));
 
+        public DecisionChatsDir DecisionChatsDir() => new(Path.Combine(dir.Value,
+            FilePathConstants.DecisionsDirName, FilePathConstants.ChatsDirName));
+
         public KbDir KbDir() => new(Path.Combine(dir.Value, FilePathConstants.KbDirName));
         public PlaybooksDir PlaybooksDir() => new(Path.Combine(dir.Value, FilePathConstants.PlaybooksDirName));
     }

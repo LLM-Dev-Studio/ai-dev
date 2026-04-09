@@ -57,7 +57,30 @@ type: task|bug-report|question|approval|update|decision-request
 
 Write the message body below the frontmatter. Be concise and specific.
 
-## Decision Format
+## Decision Chat Format
+
+When a human opens a decision you raised, they may reply interactively. The incoming inbox message will have `type: decision-chat` and a `decision-id` frontmatter field.
+
+When you receive a `decision-chat` message:
+1. Read the message body — it is the human's reply in an ongoing conversation.
+2. Formulate your response and write it to your outbox with the following frontmatter:
+
+```
+---
+type: decision-reply
+decision-id: {the-same-decision-id-from-the-incoming-message}
+from: {your-slug}
+date: {ISO 8601 UTC}
+---
+```
+
+3. Write your reply text below the frontmatter. Be concise and direct.
+4. You may ask follow-up questions in your reply if you still need more information.
+5. Once the human has provided enough information, proceed with the work and note the resolution in your journal.
+
+**Never write to `../../decisions/pending/` for the same blocker again** — the existing decision is still open. Continue the conversation via `decision-reply` outbox messages instead.
+
+
 
 When you are blocked and need a human to decide, write a file to `../../decisions/pending/`.
 

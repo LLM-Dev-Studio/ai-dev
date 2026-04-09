@@ -32,6 +32,7 @@ public record AgentsDir(string Value) : DirPath(Value);
 public record BoardFile(string Value) : FilePath(Value);
 public record DecisionsPendingDir(string Value) : DirPath(Value);
 public record DecisionsResolvedDir(string Value) : DirPath(Value);
+public record DecisionChatsDir(string Value) : DirPath(Value);
 public record KbDir(string Value) : DirPath(Value);
 public record PlaybooksDir(string Value) : DirPath(Value);
 public record PlaybookFile(string Value) : FilePath(Value);
@@ -82,6 +83,7 @@ public class WorkspacePaths
     public BoardFile BoardPath(ProjectSlug p) => ProjectDir(p).BoardFile();
     public DecisionsPendingDir DecisionsPendingDir(ProjectSlug p) => ProjectDir(p).DecisionsPendingDir();
     public DecisionsResolvedDir DecisionsResolvedDir(ProjectSlug p) => ProjectDir(p).DecisionsResolvedDir();
+    public DecisionChatsDir DecisionChatsDir(ProjectSlug p) => ProjectDir(p).DecisionChatsDir();
     public KbDir KbDir(ProjectSlug p) => ProjectDir(p).KbDir();
     public PlaybooksDir PlaybooksDir(ProjectSlug p) => ProjectDir(p).PlaybooksDir();
 

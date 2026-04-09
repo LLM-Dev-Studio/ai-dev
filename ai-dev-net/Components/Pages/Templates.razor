@@ -1,9 +1,7 @@
 @page "/templates"
 @using AiDev.Features.Agent
-@using AiDev.Services
 @rendermode InteractiveServer
 @inject AgentTemplatesService TemplatesService
-@inject StudioSettingsService SettingsService
 
 <PageTitle>Agent Templates</PageTitle>
 
@@ -23,7 +21,6 @@
     @foreach (var template in templates)
     {
         <TemplateCard Template="@template"
-                      ModelAliases="@modelAliases"
                       OnSave="@SaveTemplate"
                       OnDelete="@DeleteTemplate" />
     }
@@ -35,21 +32,17 @@
 
 @if (showNew)
 {
-    <NewTemplateDialog ModelAliases="@modelAliases"
-                       OnCreated="@OnTemplateCreated"
+    <NewTemplateDialog OnCreated="@OnTemplateCreated"
                        OnClose="@(() => showNew = false)" />
 }
 
 @code {
     private List<AgentTemplate> templates = [];
-    private List<string> modelAliases = [];
     private bool showNew;
 
     protected override void OnInitialized()
     {
         templates = TemplatesService.ListTemplates();
-        var settings = SettingsService.GetSettings();
-        modelAliases = settings.Models.Keys.ToList();
     }
 
     private void SaveTemplate(AgentTemplate updated)

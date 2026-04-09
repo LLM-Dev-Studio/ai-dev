@@ -57,8 +57,11 @@ public class AgentTemplatesService(WorkspacePaths paths)
             Name = template.Name,
             Role = template.Role,
             Model = template.Model,
+            Executor = string.IsNullOrWhiteSpace(template.Executor) ? null : template.Executor,
+            Skills = template.Skills is { Count: > 0 } ? template.Skills : [],
             Description = template.Description,
             Content = "",
+            ThinkingLevel = template.ThinkingLevel,
         };
         File.WriteAllText(jsonPath.Value, JsonSerializer.Serialize(meta, JsonDefaults.Write));
     }
@@ -66,7 +69,7 @@ public class AgentTemplatesService(WorkspacePaths paths)
     public AgentTemplate CreateTemplate(AgentTemplate template)
     {
         if (string.IsNullOrEmpty(template.Model))
-            template.Model = "sonnet";
+            template.Model = "claude-sonnet-4-6";
 
         SaveTemplate(template);
         return template;

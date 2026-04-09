@@ -19,4 +19,9 @@ public sealed record ExecutorResult(
     bool PreserveInbox = false,
 
     /// <summary>Human-readable error message if the session failed in a known way.</summary>
-    string? ErrorMessage = null);
+    string? ErrorMessage = null,
+
+    /// <summary>
+    /// Token consumption for this session. Null when the executor does not report usage.
+    /// </summary>
+    TokenUsage? Usage = null);

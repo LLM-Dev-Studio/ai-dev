@@ -5,6 +5,7 @@
 @inject AgentRunnerService RunnerService
 @inject NavigationManager NavigationManager
 @inject ExecutorHealthMonitor ExecutorHealthMonitor
+@inject IModelRegistry ModelRegistry
 @using AiDev.Executors
 @using AiDev.Features.Agent
 @using AiDev.Models
@@ -92,6 +93,34 @@ else
             <p class="text-sm font-medium text-foreground">@agent.InboxCount message@(agent.InboxCount != 1 ? "s" : "")</p>
         </div>
     </div>
+    @if (lastSessionUsage != null)
+    {
+        <div class="rounded-lg border border-border bg-card p-4 mb-6">
+            <p class="text-xs text-muted-foreground mb-2">Last session tokens</p>
+            <div class="flex items-center gap-6 flex-wrap">
+                <div>
+                    <span class="text-xs text-muted-foreground">In </span>
+                    <span class="text-sm font-mono font-medium text-foreground">@lastSessionUsage.InputTokens.ToString("N0")</span>
+                </div>
+                <div>
+                    <span class="text-xs text-muted-foreground">Out </span>
+                    <span class="text-sm font-mono font-medium text-foreground">@lastSessionUsage.OutputTokens.ToString("N0")</span>
+                </div>
+                @{
+                    var usageModel = ModelRegistry.GetModelsForExecutor(agent.Executor.Value)
+                        .FirstOrDefault(m => m.Id == agent.Model);
+                    var cost = usageModel != null ? lastSessionUsage.EstimatedCost(usageModel) : null;
+                }
+                @if (cost.HasValue)
+                {
+                    <div>
+                        <span class="text-xs text-muted-foreground">Cost </span>
+                        <span class="text-sm font-mono font-medium text-foreground">$@cost.Value.ToString("F4")</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
 
     <!-- Configuration -->
     <div class="space-y-3 mb-8">
@@ -124,47 +153,28 @@ else
                     </div>
                     <div>
                         <label class="block text-xs text-muted-foreground mb-1">Model</label>
-                        @if (editExecutor == AgentExecutorName.Ollama)
+                        @{
+                            var executorModels = ModelRegistry.GetModelsForExecutor(editExecutor.Value);
+                        }
+                        @if (executorModels.Count > 0)
                         {
-                            var ollamaModels = ExecutorHealthMonitor.GetHealth(AgentExecutorName.Ollama.Value).Details ?? [];
-                            @if (ollamaModels.Count > 0)
-                            {
-                                <select value="@editModel"
-                                        @onchange="e => editModel = e.Value?.ToString() ?? string.Empty"
-                                        class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-                                    @foreach (var m in ollamaModels)
-                                    {
-                                        <option value="@m" selected="@(m == editModel)">@m</option>
-                                    }
-                                </select>
-                            }
-                            else
-                            {
-                                <input value="@editModel"
-                                       @oninput="e => editModel = e.Value?.ToString() ?? string.Empty"
-                                       placeholder="e.g. llama3.2"
-                                       class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
-                            }
+                            <select value="@editModel"
+                                    @onchange="OnModelChanged"
+                                    class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                @foreach (var m in executorModels)
+                                {
+                                    <option value="@m.Id" selected="@(m.Id == editModel)">
+                                        @m.DisplayName@(m.Capabilities.HasFlag(ModelCapabilities.ToolCalling) ? " 🔧" : "")@(m.Capabilities.HasFlag(ModelCapabilities.Vision) ? " 👁" : "")@(m.Capabilities.HasFlag(ModelCapabilities.Reasoning) ? " 🧠" : "")
+                                    </option>
+                                }
+                            </select>
                         }
                         else
                         {
-                            @if (modelAliases.Count > 0)
-                            {
-                                <select value="@editModel"
-                                        @onchange="e => editModel = e.Value?.ToString() ?? string.Empty"
-                                        class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-                                    @foreach (var alias in modelAliases)
-                                    {
-                                        <option value="@alias" selected="@(alias == editModel)">@alias</option>
-                                    }
-                                </select>
-                            }
-                            else
-                            {
-                                <input value="@editModel"
-                                       @oninput="e => editModel = e.Value?.ToString() ?? string.Empty"
-                                       class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
-                            }
+                            <input value="@editModel"
+                                   @oninput="e => editModel = e.Value?.ToString() ?? string.Empty"
+                                   placeholder="e.g. gpt-4o"
+                                   class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
                         }
 
                         @if (ShowOllamaToolWarning)
@@ -181,6 +191,52 @@ else
                            @oninput="e => editDescription = e.Value?.ToString() ?? string.Empty"
                            class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
                 </div>
+                @{
+                    var availableSkills = SelectedExecutorOption == null
+                        ? (IReadOnlyList<ExecutorSkill>)[]
+                        : ExecutorHealthMonitor.GetExecutorHealth()
+                            .Where(e => e.Executor.Name == SelectedExecutorOption.Name.Value)
+                            .SelectMany(e => e.Executor.AvailableSkills)
+                            .ToList();
+                }
+                @if (availableSkills.Count > 0)
+                {
+                    <div class="col-span-2">
+                        <label class="block text-xs text-muted-foreground mb-1">Skills</label>
+                        <div class="flex flex-wrap gap-3">
+                            @foreach (var skill in availableSkills)
+                            {
+                                var isChecked = editSkills.Contains(skill.Key);
+                                <label class="flex items-center gap-1.5 text-sm cursor-pointer" title="@skill.Description">
+                                    <input type="checkbox" checked="@isChecked"
+                                           @onchange="@(e => { if ((bool?)e.Value == true) editSkills.Add(skill.Key); else editSkills.Remove(skill.Key); })"
+                                           class="accent-primary" />
+                                    @skill.DisplayName
+                                </label>
+                            }
+                        </div>
+                    </div>
+                }
+                @{
+                    var selectedModelDescriptor = ModelRegistry.GetModelsForExecutor(editExecutor.Value)
+                        .FirstOrDefault(m => m.Id == editModel);
+                    var modelSupportsThinking = selectedModelDescriptor?.Capabilities.HasFlag(ModelCapabilities.Reasoning) == true;
+                }
+                @if (modelSupportsThinking)
+                {
+                    <div class="col-span-2">
+                        <label class="block text-xs text-muted-foreground mb-1">Thinking level 🧠</label>
+                        <select value="@editThinkingLevel.ToString()"
+                                @onchange="e => editThinkingLevel = ThinkingLevelExtensions.Parse(e.Value?.ToString())"
+                                class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                            @foreach (var level in Enum.GetValues<ThinkingLevel>())
+                            {
+                                <option value="@level.Serialize()" selected="@(editThinkingLevel == level)">@level.ToDisplayName()</option>
+                            }
+                        </select>
+                        <p class="mt-1 text-xs text-muted-foreground">Extended thinking budget in tokens (@editThinkingLevel.BudgetTokens())</p>
+                    </div>
+                }
             </div>
             <div class="flex items-center justify-end gap-3 mt-4">
                 @if (metaStatus == SaveStatus.Saved)
@@ -282,7 +338,6 @@ else
 
     private AgentInfo? agent;
     private List<MessageItem> messages = [];
-    private List<string> modelAliases = [];
     private List<ExecutorOption> executorOptions = [];
     private bool isRunning;
     private Timer? _pollTimer;
@@ -292,12 +347,17 @@ else
     private string editDescription = string.Empty;
     private string editModel = string.Empty;
     private AgentExecutorName editExecutor = AgentExecutorName.Default;
+    private ThinkingLevel editThinkingLevel = ThinkingLevel.Off;
     private string originalName = string.Empty;
     private string originalDescription = string.Empty;
     private string originalModel = string.Empty;
     private AgentExecutorName originalExecutor = AgentExecutorName.Default;
+    private ThinkingLevel originalThinkingLevel = ThinkingLevel.Off;
+    private HashSet<string> editSkills = [];
+    private HashSet<string> originalSkills = [];
     private bool savingMeta;
     private SaveStatus metaStatus;
+    private TokenUsage? lastSessionUsage;
 
     // CLAUDE.md
     private string claudeContent = string.Empty;
@@ -310,7 +370,10 @@ else
 
     private sealed record ExecutorOption(AgentExecutorName Name, string DisplayName, ExecutorHealthResult Health);
 
-    private bool IsMetaDirty => editName != originalName || editDescription != originalDescription || editModel != originalModel || editExecutor != originalExecutor;
+    private bool IsMetaDirty => editName != originalName || editDescription != originalDescription
+        || editModel != originalModel || editExecutor != originalExecutor
+        || editThinkingLevel != originalThinkingLevel
+        || !editSkills.SetEquals(originalSkills);
     private bool IsClaudeDirty => claudeContent != claudeOriginal;
     private ExecutorOption? SelectedExecutorOption => executorOptions.FirstOrDefault(option => option.Name == editExecutor);
 
@@ -323,9 +386,12 @@ else
         editDescription = originalDescription = agent.Description;
         editModel = originalModel = agent.Model;
         editExecutor = originalExecutor = agent.Executor;
+        editThinkingLevel = originalThinkingLevel = agent.ThinkingLevel;
+        editSkills = [.. agent.Skills];
+        originalSkills = [.. agent.Skills];
+        lastSessionUsage = RunnerService.GetLastSessionUsage(Slug, AgentSlug);
 
         claudeContent = claudeOriginal = AgentService.GetClaudeMd(Slug, AgentSlug);
-        modelAliases = AgentService.GetModelAliases();
         executorOptions = ExecutorHealthMonitor.GetExecutorHealth()
             .Select(entry => new ExecutorOption(
                 AgentExecutorName.TryParse(entry.Executor.Name, out var executorName) ? executorName : AgentExecutorName.Default,
@@ -343,11 +409,32 @@ else
             var running = RunnerService.IsRunning(Slug, AgentSlug);
             if (running != isRunning)
             {
-                isRunning = running;
-                ReloadAgentState();
-                InvokeAsync(StateHasChanged);
+                InvokeAsync(() =>
+                {
+                    isRunning = running;
+                    ReloadAgentState();
+                    StateHasChanged();
+                });
             }
         }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+
+        ExecutorHealthMonitor.Changed += OnHealthChanged;
+    }
+
+    private void OnHealthChanged()
+    {
+        InvokeAsync(() =>
+        {
+            executorOptions = ExecutorHealthMonitor.GetExecutorHealth()
+                .Select(entry => new ExecutorOption(
+                    AgentExecutorName.TryParse(entry.Executor.Name, out var executorName) ? executorName : AgentExecutorName.Default,
+                    entry.Executor.DisplayName,
+                    entry.Health))
+                .DistinctBy(option => option.Name)
+                .OrderBy(option => option.DisplayName)
+                .ToList();
+            StateHasChanged();
+        });
     }
 
     private void OnExecutorChanged(ChangeEventArgs args)
@@ -361,14 +448,30 @@ else
     private void SetExecutor(AgentExecutorName executor)
     {
         editExecutor = executor;
-        // Reset model to a sensible default when switching executor
-        if (executor == AgentExecutorName.Ollama)
+        // Only reset the model if the current value is not valid for the new executor.
+        var executorModels = ModelRegistry.GetModelsForExecutor(executor.Value);
+        if (executorModels.Count > 0)
         {
-            var ollamaModels = ExecutorHealthMonitor.GetHealth(AgentExecutorName.Ollama.Value).Details ?? [];
-            editModel = ollamaModels.Count > 0 ? ollamaModels[0] : string.Empty;
+            if (!executorModels.Any(m => m.Id == editModel))
+                editModel = executorModels[0].Id;
         }
-        else
-            editModel = modelAliases.Count > 0 ? modelAliases[0] : string.Empty;
+        // else: free-text model — preserve whatever is set
+        ResetThinkingIfNotSupported();
+    }
+
+    private void OnModelChanged(ChangeEventArgs args)
+    {
+        editModel = args.Value?.ToString() ?? string.Empty;
+        ResetThinkingIfNotSupported();
+    }
+
+    private void ResetThinkingIfNotSupported()
+    {
+        var supportsReasoning = ModelRegistry.GetModelsForExecutor(editExecutor.Value)
+            .FirstOrDefault(m => m.Id == editModel)
+            ?.Capabilities.HasFlag(ModelCapabilities.Reasoning) == true;
+        if (!supportsReasoning)
+            editThinkingLevel = ThinkingLevel.Off;
     }
 
     private void LaunchAgent()
@@ -382,7 +485,11 @@ else
         RunnerService.StopAgent(Slug, AgentSlug);
     }
 
-    public void Dispose() => _pollTimer?.Dispose();
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+        ExecutorHealthMonitor.Changed -= OnHealthChanged;
+    }
 
     private bool ShowOllamaToolWarning =>
         editExecutor == AgentExecutorName.Ollama
@@ -405,7 +512,7 @@ else
     {
         savingMeta = true;
         metaStatus = SaveStatus.Idle;
-        var err = AgentService.SaveAgentMeta(Slug, AgentSlug, editName, editDescription, editModel, editExecutor)
+        var err = AgentService.SaveAgentMeta(Slug, AgentSlug, editName, editDescription, editModel, editExecutor, [.. editSkills], editThinkingLevel)
             .ToErrorMessage();
         savingMeta = false;
         if (err != null) { metaStatus = SaveStatus.Error; return; }
@@ -413,6 +520,8 @@ else
         originalDescription = editDescription;
         originalModel = editModel;
         originalExecutor = editExecutor;
+        originalThinkingLevel = editThinkingLevel;
+        originalSkills = [.. editSkills];
         ReloadAgentState();
         metaStatus = SaveStatus.Saved;
         Task.Delay(2000).ContinueWith(_ => { metaStatus = SaveStatus.Idle; InvokeAsync(StateHasChanged); });

@@ -2,8 +2,10 @@
   "slug": "pm-standard",
   "name": "Project Manager",
   "role": "project-manager",
-  "model": "gemma3:27b",
-  "executor": "ollama",
+  "model": "claude-sonnet-4-5",
+  "executor": "claude",
+  "skills": [],
   "description": "Receives briefs, decomposes work into tasks, coordinates agents, and tracks board progress.",
-  "content": ""
+  "content": "",
+  "thinkingLevel": 0
 }

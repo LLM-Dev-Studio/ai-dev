@@ -2,9 +2,12 @@
 @rendermode InteractiveServer
 @inject AgentService AgentService
 @inject AgentRunnerService RunnerService
+@inject IModelRegistry ModelRegistry
 @inject IJSRuntime JS
 @using AiDev.Features.Agent
 @using AiDev.Models.Types
+@using AiDev.Executors
+@using AiDev.Services
 @implements IDisposable
 
 <a href="@($"/projects/{Slug}/agents/{AgentSlug}")"
@@ -27,7 +30,7 @@
 
     @if (dates.Length > 0)
     {
-        <div class="flex items-center gap-1">
+        <div class="flex items-center gap-1 flex-wrap">
             @foreach (var d in dates)
             {
                 var isActive = d == selectedDate;
@@ -35,6 +38,25 @@
                         class="text-xs px-2.5 py-1 rounded-md border transition-colors @(isActive ? "border-border bg-accent text-foreground" : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/50")">
                     @FormatDateTab(d)
                 </button>
+            }
+            @if (selectedDateUsage != null)
+            {
+                <span class="ml-2 text-xs text-muted-foreground border border-border rounded-md px-2 py-0.5">
+                    in: @selectedDateUsage.InputTokens.ToString("N0") · out: @selectedDateUsage.OutputTokens.ToString("N0")
+                    @if (selectedDateUsage.CacheReadTokens > 0)
+                    {
+                        <span> · cache: @selectedDateUsage.CacheReadTokens.ToString("N0")</span>
+                    }
+                    @if (agent != null)
+                    {
+                        var model = ModelRegistry?.Find(agent.Executor, agent.Model);
+                        var cost = selectedDateUsage.EstimatedCost(model);
+                        @if (cost != null)
+                        {
+                            <span> · ~$@cost.Value.ToString("F4")</span>
+                        }
+                    }
+                </span>
             }
         </div>
     }
@@ -79,6 +101,14 @@ else
                 {
                     <p class="text-red-400/80"><span class="text-muted-foreground/40">@line.Timestamp</span> <span class="text-red-500/60">[error]</span> @line.Message</p>
                 }
+                else if (line.Kind == LineKind.ToolCall)
+                {
+                    <p class="text-sky-400/70"><span class="text-muted-foreground/40">@line.Timestamp</span> @line.Message</p>
+                }
+                else if (line.Kind == LineKind.Progress)
+                {
+                    <p class="text-muted-foreground/50 italic"><span class="text-muted-foreground/40">@line.Timestamp</span> @line.Message</p>
+                }
                 else if (line.Kind == LineKind.Stdout)
                 {
                     <p class="text-foreground/80"><span class="text-muted-foreground/40">@line.Timestamp</span> @line.Message</p>
@@ -107,8 +137,9 @@ else
     private bool isRunning;
     private Timer? _pollTimer;
     private int _lastLineCount;
+    private TokenUsage? selectedDateUsage;
 
-    private enum LineKind { Stdout, Stderr, Error, SessionHeader, Blank }
+    private enum LineKind { Stdout, Stderr, Error, ToolCall, Progress, SessionHeader, Blank }
 
     private record TranscriptLine(LineKind Kind, string Text, string Timestamp = "", string Message = "");
 
@@ -120,6 +151,8 @@ else
         isRunning = RunnerService.IsRunning(Slug, AgentSlug);
 
         LoadTranscript();
+        if (selectedDate != null)
+            selectedDateUsage = RunnerService.GetSessionUsage(Slug, AgentSlug, selectedDate);
 
         _pollTimer = new Timer(_ =>
         {
@@ -139,6 +172,8 @@ else
                         selectedDate = dates.FirstOrDefault();
                 }
                 LoadTranscript();
+                if (selectedDate != null)
+                    selectedDateUsage = RunnerService.GetSessionUsage(Slug, AgentSlug, selectedDate);
                 InvokeAsync(async () =>
                 {
                     StateHasChanged();
@@ -163,6 +198,7 @@ else
     {
         selectedDate = date;
         LoadTranscript();
+        selectedDateUsage = RunnerService.GetSessionUsage(Slug, AgentSlug, date);
     }
 
     private void LoadTranscript()
@@ -211,6 +247,16 @@ else
                     if (rest.StartsWith("[error] "))
                     {
                         result.Add(new(LineKind.Error, line, FormatTs(ts), rest[8..]));
+                        continue;
+                    }
+                    if (rest.StartsWith("▶ "))
+                    {
+                        result.Add(new(LineKind.ToolCall, line, FormatTs(ts), rest));
+                        continue;
+                    }
+                    if (rest.StartsWith("⟳ "))
+                    {
+                        result.Add(new(LineKind.Progress, line, FormatTs(ts), rest));
                         continue;
                     }
                     result.Add(new(LineKind.Stdout, line, FormatTs(ts), rest));

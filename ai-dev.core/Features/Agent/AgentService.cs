@@ -16,6 +16,7 @@ file class AgentJson
     public string[]? Skills { get; init; }
     public string? LastError { get; init; }
     public string? LastErrorAt { get; init; }
+    public string? Thinking { get; init; }
 }
 
 public class AgentService(
@@ -23,7 +24,8 @@ public class AgentService(
     StudioSettingsService settings,
     AgentTemplatesService templates,
     AtomicFileWriter fileWriter,
-    ProjectMutationCoordinator coordinator)
+    ProjectMutationCoordinator coordinator,
+    IModelRegistry modelRegistry)
 {
     private static readonly DomainError InvalidAgentSlugError = new("AGENT_INVALID_SLUG", "Invalid agent slug.");
     private static readonly DomainError AgentNotFoundError = new("AGENT_NOT_FOUND", "Agent not found.");
@@ -52,6 +54,9 @@ public class AgentService(
             var data = JsonSerializer.Deserialize<AgentJson>(json, JsonDefaults.Read);
             if (data == null) return null;
 
+            var executor = data.Executor ?? AgentExecutorName.Default;
+            var model = MigrateModelAlias(data.Model, executor, jsonPath);
+
             var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
             var inboxCount = inboxDir.Exists() ? Directory.GetFiles(inboxDir, "*.md").Length : 0;
 
@@ -60,20 +65,60 @@ public class AgentService(
                 name: data.Name ?? agentSlug,
                 role: data.Role ?? string.Empty,
                 description: data.Description ?? string.Empty,
-                model: data.Model,
+                model: model,
                 status: AgentStatus.From(data.Status),
                 lastRunAt: DateTime.TryParse(data.LastRunAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastRun) ? lastRun : null,
                 inboxCount: inboxCount,
-                executor: data.Executor,
+                executor: executor,
                 skills: data.Skills ?? [],
                 lastError: data.LastError,
-                lastErrorAt: DateTime.TryParse(data.LastErrorAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastErrorAt) ? lastErrorAt : null);
+                lastErrorAt: DateTime.TryParse(data.LastErrorAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastErrorAt) ? lastErrorAt : null,
+                thinkingLevel: ThinkingLevelExtensions.Parse(data.Thinking));
         }
         catch { return null; }
     }
 
+    /// <summary>
+    /// Resolves a stored model value to a real model ID.
+    /// If the stored value is a known legacy alias for this executor (e.g. "sonnet" on Claude),
+    /// rewrites agent.json in-place with the canonical ID.
+    /// Returns the stored value unchanged when the alias belongs to a different executor
+    /// or is already a real model ID.
+    /// </summary>
+    private string? MigrateModelAlias(string? storedModel, AgentExecutorName executor, AgentJsonFile jsonPath)
+    {
+        if (string.IsNullOrWhiteSpace(storedModel)) return storedModel;
+
+        // Already a known real model ID — nothing to do.
+        if (modelRegistry.Find(executor.Value, storedModel) != null) return storedModel;
+
+        // Try the deterministic legacy alias map, scoped to the correct executor.
+        var resolved = LegacyModelAliases.Resolve(storedModel, executor.Value);
+        if (resolved != null)
+        {
+            PatchModelInJson(jsonPath, resolved);
+            return resolved;
+        }
+
+        // Unknown value — return as-is (free-text model, different executor, or user override).
+        return storedModel;
+    }
+
+    private void PatchModelInJson(AgentJsonFile jsonPath, string newModelId)
+    {
+        try
+        {
+            var json = File.ReadAllText(jsonPath);
+            var raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, JsonDefaults.Read) ?? [];
+            var updated = raw.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
+            updated["model"] = newModelId;
+            fileWriter.WriteAllText(jsonPath, JsonSerializer.Serialize(updated, JsonDefaults.Write));
+        }
+        catch { /* migration is best-effort */ }
+    }
+
     public Result<Unit> SaveAgentMeta(ProjectSlug projectSlug, AgentSlug agentSlug, string name, string description,
-        string model, AgentExecutorName executor, IReadOnlyList<string>? skills = null)
+        string model, AgentExecutorName executor, IReadOnlyList<string>? skills = null, ThinkingLevel thinkingLevel = ThinkingLevel.Off)
     {
         try { _ = paths.AgentDir(projectSlug, agentSlug); }
         catch (ArgumentException) { return new Err<Unit>(InvalidAgentSlugError); }
@@ -96,6 +141,10 @@ public class AgentService(
                     updated["skills"] = skills;
                 else
                     updated.Remove("skills");
+                if (thinkingLevel != ThinkingLevel.Off)
+                    updated["thinking"] = thinkingLevel.Serialize();
+                else
+                    updated.Remove("thinking");
                 fileWriter.WriteAllText(jsonPath, JsonSerializer.Serialize(updated, JsonDefaults.Write));
                 return new Ok<Unit>(Unit.Value);
             }
@@ -150,21 +199,31 @@ public class AgentService(
                 var description = tmpl.Description;
                 var model = tmpl.Model;
                 var claudeContent = tmpl.Content;
+                var executor = AgentExecutorName.TryParse(tmpl.Executor, out var tmplExecutor)
+                    ? tmplExecutor
+                    : AgentExecutorName.Default;
 
-                var agentJson = new
+                // Only write skills when the template explicitly configures them.
+                // Omitting the field means "use executor defaults" (DefaultEnabled skills are active).
+                var agentJsonDict = new Dictionary<string, object?>
                 {
-                    slug = slug.Value,
-                    name,
-                    role = role ?? string.Empty,
-                    model,
-                    executor = AgentExecutorName.Default.Value,
-                    status = "idle",
-                    description = description ?? string.Empty,
+                    ["slug"] = slug.Value,
+                    ["name"] = name,
+                    ["role"] = role ?? string.Empty,
+                    ["model"] = model,
+                    ["executor"] = executor.Value,
+                    ["status"] = "idle",
+                    ["description"] = description ?? string.Empty,
                 };
+                if (tmpl.Skills is { Count: > 0 } templateSkills)
+                    agentJsonDict["skills"] = templateSkills;
+                if (tmpl.ThinkingLevel != ThinkingLevel.Off)
+                    agentJsonDict["thinking"] = tmpl.ThinkingLevel.Serialize();
+
                 paths.AgentInboxDir(projectSlug, slug).Create();
                 paths.AgentOutboxDir(projectSlug, slug).Create();
                 paths.AgentJournalDir(projectSlug, slug).Create();
-                fileWriter.WriteAllText(paths.AgentJsonPath(projectSlug, slug), JsonSerializer.Serialize(agentJson, JsonDefaults.Write));
+                fileWriter.WriteAllText(paths.AgentJsonPath(projectSlug, slug), JsonSerializer.Serialize(agentJsonDict, JsonDefaults.Write));
                 fileWriter.WriteAllText(paths.AgentClaudeMdPath(projectSlug, slug), claudeContent ?? $"# {name}\n\nYou are {name}.\n");
 
                 return new Ok<Unit>(Unit.Value);
@@ -206,6 +265,4 @@ public class AgentService(
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
     }
-
-    public List<string> GetModelAliases() => [.. settings.GetSettings().Models.Keys];
 }

@@ -1,3 +1,4 @@
+using AiDev.Executors;
 using AiDev.Features.Agent;
 using AiDev.Features.Board;
 using AiDev.Features.Decision;
@@ -36,6 +37,7 @@ public static class CoreServiceExtensions
         services.AddSingleton<DecisionChangedNotifier>();
         services.AddSingleton<MessagesService>();
         services.AddSingleton<DecisionsService>();
+        services.AddSingleton<DecisionChatService>();
         services.AddSingleton<JournalsService>();
         services.AddSingleton<KbService>();
         services.AddSingleton<PlaybookService>();
@@ -48,6 +50,9 @@ public static class CoreServiceExtensions
         // Registered as both a singleton (so it can be injected by name) and a hosted service.
         services.AddSingleton<ExecutorHealthMonitor>();
         services.AddHostedService(sp => sp.GetRequiredService<ExecutorHealthMonitor>());
+
+        // ModelRegistry aggregates KnownModels + health-discovered models from all executors.
+        services.AddSingleton<IModelRegistry, ModelRegistry>();
 
         services.AddHostedService<ConsistencyCheckHostedService>();
         services.AddHostedService<DispatcherService>();

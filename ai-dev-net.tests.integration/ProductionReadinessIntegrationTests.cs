@@ -1,4 +1,5 @@
 using AiDev;
+using AiDev.Executors;
 using AiDev.Features.Agent;
 using AiDev.Features.Board;
 using AiDev.Features.Decision;
@@ -11,6 +12,7 @@ using AiDev.Services;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace AiDevNet.Tests.Integration;
 
@@ -148,12 +150,16 @@ public class ProductionReadinessIntegrationTests : IDisposable
     [Fact]
     public void AgentService_CreateAgent_WritesFilesAtomically()
     {
+        var modelRegistry = Substitute.For<IModelRegistry>();
+        modelRegistry.Find(Arg.Any<string>(), Arg.Any<string>()).Returns((ModelDescriptor?)null);
+        modelRegistry.GetModelsForExecutor(Arg.Any<string>()).Returns([]);
         var service = new AgentService(
             _paths,
             new StudioSettingsService(new ConfigurationBuilder().Build()),
             new AgentTemplatesService(_paths),
             _fileWriter,
-            _coordinator);
+            _coordinator,
+            modelRegistry);
         var projectSlug = new ProjectSlug("demo-project");
         var workspaceService = new WorkspaceService(_paths, _fileWriter);
         workspaceService.CreateProject(projectSlug.Value, "Demo Project", null).ShouldBeOfType<Ok<Unit>>();

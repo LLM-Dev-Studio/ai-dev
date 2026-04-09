@@ -34,6 +34,15 @@ public sealed class AnthropicAgentExecutor(
 
     public IReadOnlyList<ExecutorSkill> AvailableSkills { get; } = AnthropicSkills.All;
 
+    public IReadOnlyList<ModelDescriptor> KnownModels { get; } =
+    [
+        new("claude-sonnet-4-5",              "Claude Sonnet 4.5",              "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
+        new("claude-sonnet-4-6",              "Claude Sonnet 4.6",              "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
+        new("claude-opus-4-5",               "Claude Opus 4.5",               "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
+        new("claude-opus-4-6",               "Claude Opus 4.6",               "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
+        new("claude-haiku-4-5-20251001",     "Claude Haiku 4.5",              "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 0.80m,  OutputCostPer1MTokens:  4.00m),
+    ];
+
     private const int MaxToolIterations = 30;
     private const int DefaultMaxTokens  = 8096;
 
@@ -62,24 +71,25 @@ public sealed class AnthropicAgentExecutor(
             if (!response.IsSuccessStatusCode)
                 return new ExecutorHealthResult(false, $"Anthropic returned HTTP {(int)response.StatusCode}");
 
-            List<string> models = [];
+            List<ModelDescriptor> discovered = [];
             try
             {
                 await using var contentStream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
                 var doc  = await JsonDocument.ParseAsync(contentStream, cancellationToken: ct).ConfigureAwait(false);
-                models   = doc?.RootElement.GetProperty("data")
+                discovered = doc?.RootElement.GetProperty("data")
                     .EnumerateArray()
                     .Select(m => m.GetProperty("id").GetString() ?? string.Empty)
                     .Where(id => id.Length > 0)
+                    .Select(id => new ModelDescriptor(id, id, "anthropic"))
                     .ToList() ?? [];
             }
             catch { /* model list is best-effort */ }
 
-            var message = models.Count > 0
-                ? $"{models.Count} model(s) available"
+            var message = discovered.Count > 0
+                ? $"{discovered.Count} model(s) available"
                 : "Connected";
 
-            return new ExecutorHealthResult(true, message, models);
+            return new ExecutorHealthResult(true, message, discovered);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -125,12 +135,13 @@ public sealed class AnthropicAgentExecutor(
 
         var http      = httpClientFactory.CreateClient("anthropic");
         int iteration = 0;
+        TokenUsage? totalUsage = null;
 
         while (iteration++ < MaxToolIterations)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
 
-            var requestBody = BuildRequest(context.ModelId, systemPrompt, messages, enableTools);
+            var requestBody = BuildRequest(context.ModelId, systemPrompt, messages, enableTools, context.ThinkingLevel);
 
             HttpResponseMessage response;
             try
@@ -139,7 +150,7 @@ public sealed class AnthropicAgentExecutor(
                 {
                     Content = new StringContent(requestBody, Encoding.UTF8, "application/json"),
                 };
-                AddHeaders(httpRequest, apiKey);
+                AddHeaders(httpRequest, apiKey, includeThinkingBeta: context.ThinkingLevel != ThinkingLevel.Off);
 
                 response = await http.SendAsync(
                     httpRequest, HttpCompletionOption.ResponseHeadersRead, context.CancellationToken)
@@ -177,8 +188,12 @@ public sealed class AnthropicAgentExecutor(
             logger.LogInformation("[anthropic] Streaming response — iteration {N}", iteration);
 
             // --- Stream and parse SSE ---
-            var (stopReason, textContent, toolUses) =
+            var (stopReason, textContent, toolUses, iterationUsage) =
                 await StreamSseAsync(response, output, context.CancellationToken).ConfigureAwait(false);
+
+            // Accumulate usage across all tool-call iterations.
+            if (iterationUsage != null)
+                totalUsage = totalUsage == null ? iterationUsage : totalUsage + iterationUsage;
 
             // --- End turn: final response ---
             if (stopReason == "end_turn" || toolUses.Count == 0)
@@ -186,7 +201,7 @@ public sealed class AnthropicAgentExecutor(
                 logger.LogInformation(
                     "[anthropic] Session complete — {Chars} chars | iterations: {N}",
                     textContent.Length, iteration);
-                return new ExecutorResult(0);
+                return new ExecutorResult(0, Usage: totalUsage);
             }
 
             // --- Tool use: execute calls and loop ---
@@ -263,9 +278,9 @@ public sealed class AnthropicAgentExecutor(
 
     /// <summary>Streams the Anthropic SSE response, emitting text tokens as they arrive.</summary>
     /// <returns>
-    /// stop_reason string, accumulated text content, and any tool_use blocks.
+    /// stop_reason string, accumulated text content, any tool_use blocks, and token usage.
     /// </returns>
-    private async Task<(string StopReason, string TextContent, List<ToolUse> ToolUses)>
+    private async Task<(string StopReason, string TextContent, List<ToolUse> ToolUses, TokenUsage? Usage)>
         StreamSseAsync(HttpResponseMessage response, ChannelWriter<string> output, CancellationToken ct)
     {
         await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
@@ -275,6 +290,7 @@ public sealed class AnthropicAgentExecutor(
         var stopReason   = "end_turn";
         var toolUses     = new List<ToolUse>();
         ToolUse? current = null; // tool_use block being accumulated
+        long inputTokens = 0, outputTokens = 0, cacheReadTokens = 0, cacheWriteTokens = 0;
 
         string? line;
         while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) != null)
@@ -294,6 +310,19 @@ public sealed class AnthropicAgentExecutor(
 
             switch (type)
             {
+                case "message_start":
+                {
+                    // message_start contains input_tokens from the prompt
+                    if (evt.TryGetProperty("message", out var msg)
+                        && msg.TryGetProperty("usage", out var usage))
+                    {
+                        inputTokens      += usage.TryGetProperty("input_tokens",               out var it)  ? it.GetInt64()  : 0;
+                        cacheReadTokens  += usage.TryGetProperty("cache_read_input_tokens",    out var cr)  ? cr.GetInt64()  : 0;
+                        cacheWriteTokens += usage.TryGetProperty("cache_creation_input_tokens",out var cw)  ? cw.GetInt64()  : 0;
+                    }
+                    break;
+                }
+
                 case "content_block_start":
                 {
                     if (!evt.TryGetProperty("content_block", out var block)) break;
@@ -336,14 +365,15 @@ public sealed class AnthropicAgentExecutor(
                         && delta.TryGetProperty("stop_reason", out var sr))
                     {
                         stopReason = sr.GetString() ?? "end_turn";
+                    }
 
-                        if (evt.TryGetProperty("usage", out var usage))
-                        {
-                            var inputTokens  = usage.TryGetProperty("input_tokens",  out var it) ? it.GetInt32() : 0;
-                            var outputTokens = usage.TryGetProperty("output_tokens", out var ot) ? ot.GetInt32() : 0;
+                    // message_delta.usage contains the final output_tokens count
+                    if (evt.TryGetProperty("usage", out var usage))
+                    {
+                        outputTokens += usage.TryGetProperty("output_tokens", out var ot) ? ot.GetInt64() : 0;
+                        if (inputTokens > 0 || outputTokens > 0)
                             output.TryWrite(
                                 $"[{DateTime.UtcNow:o}] [anthropic] tokens: {inputTokens} prompt / {outputTokens} generated");
-                        }
                     }
                     break;
                 }
@@ -355,7 +385,11 @@ public sealed class AnthropicAgentExecutor(
             .Select(u => u with { InputJson = new StringBuilder(u.InputJson.ToString()) })
             .ToList();
 
-        return (stopReason, textBuilder.ToString(), completedUses);
+        var capturedUsage = (inputTokens > 0 || outputTokens > 0)
+            ? new TokenUsage(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens)
+            : null;
+
+        return (stopReason, textBuilder.ToString(), completedUses, capturedUsage);
     }
 
     // -------------------------------------------------------------------------
@@ -363,16 +397,29 @@ public sealed class AnthropicAgentExecutor(
     // -------------------------------------------------------------------------
 
     private static string BuildRequest(
-        string modelId, string systemPrompt, List<JsonNode> messages, bool includeTools)
+        string modelId, string systemPrompt, List<JsonNode> messages, bool includeTools,
+        ThinkingLevel thinkingLevel = ThinkingLevel.Off)
     {
+        var budget = thinkingLevel.BudgetTokens();
+        var maxTokens = budget > 0 ? DefaultMaxTokens + budget : DefaultMaxTokens;
+
         var obj = new JsonObject
         {
             ["model"]      = modelId,
-            ["max_tokens"] = DefaultMaxTokens,
+            ["max_tokens"] = maxTokens,
             ["system"]     = systemPrompt,
             ["messages"]   = new JsonArray(messages.Select(m => m.DeepClone()).ToArray()),
             ["stream"]     = true,
         };
+
+        if (budget > 0)
+        {
+            obj["thinking"] = new JsonObject
+            {
+                ["type"]         = "enabled",
+                ["budget_tokens"] = budget,
+            };
+        }
 
         if (includeTools)
             obj["tools"] = JsonNode.Parse(AnthropicToolSchemas.ToolsJson)!.AsArray();
@@ -380,10 +427,12 @@ public sealed class AnthropicAgentExecutor(
         return obj.ToJsonString();
     }
 
-    private static void AddHeaders(HttpRequestMessage request, string apiKey)
+    private static void AddHeaders(HttpRequestMessage request, string apiKey, bool includeThinkingBeta = false)
     {
         request.Headers.Add("x-api-key", apiKey);
         request.Headers.Add("anthropic-version", "2023-06-01");
+        if (includeThinkingBeta)
+            request.Headers.Add("anthropic-beta", "interleaved-thinking-2025-05-14");
     }
 
     private static string BuildSystemPrompt(string workingDir)

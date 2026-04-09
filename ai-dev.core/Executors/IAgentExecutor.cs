@@ -26,6 +26,15 @@ public interface IAgentExecutor
     IReadOnlyList<ExecutorSkill> AvailableSkills { get; }
 
     /// <summary>
+    /// The built-in models this executor can run.
+    /// Static executors (Claude CLI, Anthropic) return a hardcoded list.
+    /// Dynamic executors (Ollama, GitHub Models) return an empty list — their models
+    /// are discovered at runtime via <see cref="CheckHealthAsync"/> and exposed through
+    /// <see cref="ExecutorHealthResult.Models"/>.
+    /// </summary>
+    IReadOnlyList<ModelDescriptor> KnownModels { get; }
+
+    /// <summary>
     /// Checks whether the runtime is available and ready to run agents.
     /// Called by ExecutorHealthMonitor on a 30-second polling interval.
     /// Should be fast and non-blocking — a simple probe only.

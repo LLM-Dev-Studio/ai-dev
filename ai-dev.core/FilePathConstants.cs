@@ -13,6 +13,7 @@ public static class FilePathConstants
     public const string DecisionsDirName = "decisions";
     public const string PendingDirName = "pending";
     public const string ResolvedDirName = "resolved";
+    public const string ChatsDirName = "chats";
     public const string KbDirName = "kb";
     public const string PlaybooksDirName = "playbooks";
     public const string AgentJsonFileName = "agent.json";
