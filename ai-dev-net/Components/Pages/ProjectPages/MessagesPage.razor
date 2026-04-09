@@ -62,7 +62,7 @@ else
                                             }
                                             @if (!string.IsNullOrEmpty(msg.Type))
                                             {
-                                                <span class="text-xs px-1.5 py-0.5 rounded border border-border text-muted-foreground flex-shrink-0">@msg.Type</span>
+                                                <span class="text-xs px-1.5 py-0.5 rounded border flex-shrink-0 @TypeColor(msg.Type)">@msg.Type</span>
                                             }
                                             @if (!msg.IsProcessed && msg.Priority.IsUrgent)
                                             {
@@ -105,7 +105,7 @@ else
                         <span>@FormatDateTime(selectedMsg.Date)</span>
                         @if (!string.IsNullOrEmpty(selectedMsg.Type))
                         {
-                            <span class="ml-2 px-1.5 py-0.5 rounded border border-border">@selectedMsg.Type</span>
+                            <span class="ml-2 px-1.5 py-0.5 rounded border @TypeColor(selectedMsg.Type)">@selectedMsg.Type</span>
                         }
                     </p>
                 </div>
@@ -184,6 +184,17 @@ else
         var value when value.IsCritical => "text-red-400",
         var value when value.IsHigh     => "text-orange-400",
         _          => "text-muted-foreground",
+    };
+
+    private static string TypeColor(string? type) => type switch
+    {
+        "task"             => "bg-blue-500/10 text-blue-400 border-blue-500/30",
+        "bug-report"       => "bg-red-500/10 text-red-400 border-red-500/30",
+        "question"         => "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
+        "approval"         => "bg-green-500/10 text-green-400 border-green-500/30",
+        "update"           => "bg-purple-500/10 text-purple-400 border-purple-500/30",
+        "decision-request" => "bg-orange-500/10 text-orange-400 border-orange-500/30",
+        _                  => "border-border text-muted-foreground",
     };
 
     private static string FormatDateTime(DateTime? dt) =>
