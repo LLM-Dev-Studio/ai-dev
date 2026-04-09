@@ -47,6 +47,7 @@ public record AgentJournalDir(string Value) : DirPath(Value);
 public record AgentTranscriptsDir(string Value) : DirPath(Value);
 
 public record TranscriptFile(string Value) : FilePath(Value);
+public record SecretsFile(string Value) : FilePath(Value);
 public record KbArticleFile(string Value) : FilePath(Value);
 public record PlaybookArticleFile(string Value) : FilePath(Value);
 public record TemplateFile(string Value) : FilePath(Value);
@@ -85,6 +86,7 @@ public class WorkspacePaths
     public DecisionsResolvedDir DecisionsResolvedDir(ProjectSlug p) => ProjectDir(p).DecisionsResolvedDir();
     public DecisionChatsDir DecisionChatsDir(ProjectSlug p) => ProjectDir(p).DecisionChatsDir();
     public KbDir KbDir(ProjectSlug p) => ProjectDir(p).KbDir();
+    public SecretsFile SecretsPath(ProjectSlug p) => ProjectDir(p).SecretsFile();
     public PlaybooksDir PlaybooksDir(ProjectSlug p) => ProjectDir(p).PlaybooksDir();
 
     public AgentDir AgentDir(ProjectSlug p, AgentSlug a) => AgentsDir(p).AgentDir(a);

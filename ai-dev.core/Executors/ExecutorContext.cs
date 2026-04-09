@@ -38,4 +38,9 @@ public sealed record ExecutorContext(
     /// Extended reasoning budget. Off = no thinking. Only applied when the model
     /// has <see cref="ModelCapabilities.Reasoning"/> and the executor supports it.
     /// </summary>
-    ThinkingLevel ThinkingLevel = ThinkingLevel.Off);
+    ThinkingLevel ThinkingLevel = ThinkingLevel.Off,
+
+    /// <summary>
+    /// Project secrets to inject as environment variables. Values are sensitive — never log them.
+    /// </summary>
+    IReadOnlyDictionary<string, string>? Secrets = null);

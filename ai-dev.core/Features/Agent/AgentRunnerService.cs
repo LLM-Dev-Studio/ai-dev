@@ -1,6 +1,7 @@
 using AiDev.Executors;
 using AiDev.Features.KnowledgeBase;
 using AiDev.Features.Playbook;
+using AiDev.Features.Secrets;
 using AiDev.Models;
 using AiDev.Services;
 
@@ -19,6 +20,7 @@ public class AgentRunnerService(
     MessageChangedNotifier messageNotifier,
     KbService kbService,
     PlaybookService playbookService,
+    SecretsService secretsService,
     ILogger<AgentRunnerService> logger)
 {
     private static readonly ActivitySource ActivitySource = new("AiDevNet.AgentRunner");
@@ -280,6 +282,9 @@ public class AgentRunnerService(
         string? sessionError = null;
         TokenUsage? sessionUsage = null;
 
+        // Load project secrets for environment injection — values are sensitive, never log them.
+        var secrets = secretsService.LoadDecryptedSecrets(projectSlug);
+
         var context = new ExecutorContext(
             WorkingDir: agentDir,
             ModelId: modelId,
@@ -295,7 +300,8 @@ public class AgentRunnerService(
                 activity?.AddEvent(new("process.started"));
             },
             Trigger: info.Trigger,
-            ThinkingLevel: agentConfig.ThinkingLevel);
+            ThinkingLevel: agentConfig.ThinkingLevel,
+            Secrets: secrets.Count > 0 ? secrets : null);
 
         try
         {

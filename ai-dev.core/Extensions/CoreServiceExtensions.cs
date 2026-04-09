@@ -6,6 +6,7 @@ using AiDev.Features.Digest;
 using AiDev.Features.Journal;
 using AiDev.Features.KnowledgeBase;
 using AiDev.Features.Playbook;
+using AiDev.Features.Secrets;
 using AiDev.Features.Workspace;
 using AiDev.Services;
 
@@ -28,6 +29,7 @@ public static class CoreServiceExtensions
         services.AddSingleton<AtomicFileWriter>();
         services.AddSingleton<ProjectMutationCoordinator>();
         services.AddSingleton<ConsistencyCheckService>();
+        services.AddSingleton<SecretsService>();
         services.AddSingleton<WorkspaceService>();
         services.AddSingleton<StudioSettingsService>();
         services.AddSingleton<AgentTemplatesService>();

@@ -92,6 +92,15 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
     {
         var skills = ClaudeSkills.Resolve(context.EnabledSkills);
         var psi = BuildProcessStartInfo(context.WorkingDir, context.ModelId, skills);
+
+        // Inject project secrets as environment variables.
+        // Values are sensitive — they are set on the child process environment only; never logged.
+        if (context.Secrets is { Count: > 0 } secrets)
+        {
+            foreach (var (name, value) in secrets)
+                psi.Environment[name] = value;
+        }
+
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
         var isRateLimited = false;

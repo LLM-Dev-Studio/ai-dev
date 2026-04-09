@@ -23,4 +23,5 @@ public static class FilePathConstants
     public const string OutboxDirName = "outbox";
     public const string JournalDirName = "journal";
     public const string TranscriptsDirName = "transcripts";
+    public const string SecretsJsonFileName = "secrets.json";
 }

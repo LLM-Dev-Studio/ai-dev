@@ -32,6 +32,7 @@ public static class WorkspacePathsExtensions
             FilePathConstants.DecisionsDirName, FilePathConstants.ChatsDirName));
 
         public KbDir KbDir() => new(Path.Combine(dir.Value, FilePathConstants.KbDirName));
+        public SecretsFile SecretsFile() => new(Path.Combine(dir.Value, FilePathConstants.SecretsJsonFileName));
         public PlaybooksDir PlaybooksDir() => new(Path.Combine(dir.Value, FilePathConstants.PlaybooksDirName));
     }
 
