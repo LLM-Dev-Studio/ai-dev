@@ -10,9 +10,7 @@ using AiDev.Models;
 using AiDev.Models.Types;
 using AiDev.Services;
 
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
-using NSubstitute;
 
 namespace AiDevNet.Tests.Integration;
 
@@ -45,7 +43,7 @@ public class ProductionReadinessIntegrationTests : IDisposable
 
         service.SaveBoard(projectSlug, new Board(projectSlug));
 
-        var result = await service.CreateTaskAsync(projectSlug, ColumnId.Backlog.Value, "Investigate failure", null, Priority.Normal.Value, "backend-dev");
+        var result = await service.CreateTaskAsync(projectSlug, ColumnId.Backlog.Value, "Investigate failure", null, Priority.Normal.Value, "backend-dev", TestContext.Current.CancellationToken);
 
         result.ShouldBeOfType<Err<BoardTask>>();
         ((Err<BoardTask>)result).Error.Code.ShouldBe("DOMAIN_EVENT_HANDLER_FAILED");
@@ -155,7 +153,6 @@ public class ProductionReadinessIntegrationTests : IDisposable
         modelRegistry.GetModelsForExecutor(Arg.Any<string>()).Returns([]);
         var service = new AgentService(
             _paths,
-            new StudioSettingsService(new ConfigurationBuilder().Build()),
             new AgentTemplatesService(_paths),
             _fileWriter,
             _coordinator,

@@ -348,7 +348,7 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
 
         result.ExitCode.ShouldBe(1);
         result.PreserveInbox.ShouldBeTrue();
-        result.ErrorMessage.ShouldContain("does not support workspace tools");
+        result.ErrorMessage!.ShouldContain("does not support workspace tools");
         h.Requests.ShouldBeEmpty();
         output.ShouldContain(l => l.Contains("does not support workspace tools"));
     }
@@ -366,7 +366,7 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
 
         result.ExitCode.ShouldBe(1);
         result.PreserveInbox.ShouldBeTrue();
-        result.ErrorMessage.ShouldContain("does not support workspace tools");
+        result.ErrorMessage!.ShouldContain("does not support workspace tools");
         output.ShouldContain(l => l.Contains("does not support workspace tools"));
     }
 

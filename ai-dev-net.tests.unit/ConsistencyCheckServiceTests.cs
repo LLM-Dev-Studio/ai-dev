@@ -49,7 +49,7 @@ public class ConsistencyCheckServiceTests
         Directory.CreateDirectory(paths.DecisionsPendingDir(projectSlug));
         File.WriteAllText(Path.Combine(paths.DecisionsPendingDir(projectSlug), "20260101-000000-test.md"), "---\nstatus: resolved\nsubject: Test\nfrom: overwatch\npriority: normal\n---\n\nBody");
 
-        var report = await service.CheckProjectAsync(projectSlug);
+        var report = await service.CheckProjectAsync(projectSlug, TestContext.Current.CancellationToken);
 
         report.Findings.ShouldContain(f => f.Code == "DECISION_STATUS_DIRECTORY_MISMATCH");
     }

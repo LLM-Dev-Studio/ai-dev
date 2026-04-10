@@ -9,8 +9,10 @@
 @inject DecisionsService DecisionsService
 @inject DecisionChatService ChatService
 @inject AgentRunnerService RunnerService
+@inject AgentService AgentService
 @inject DecisionChangedNotifier DecisionNotifier
 @inject NavigationManager NavigationManager
+@inject ILogger<DecisionDetailPage> Logger
 @implements IDisposable
 
 <a href="@($"/projects/{Slug}/decisions")"
@@ -74,7 +76,18 @@ else
                     </div>
                 }
 
-                @if (agentIsRunning)
+                @if (messageQueued)
+                {
+                    <div class="flex justify-start">
+                        <div class="rounded-lg px-4 py-3 border border-border bg-card text-muted-foreground">
+                            <div class="flex items-center gap-2 text-xs">
+                                <div class="w-1.5 h-1.5 rounded-full bg-sky-400"></div>
+                                @decision.From reply queued…
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (agentIsRunning)
                 {
                     <div class="flex justify-start">
                         <div class="rounded-lg px-4 py-3 border border-border bg-card text-muted-foreground">
@@ -82,6 +95,18 @@ else
                                 <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
                                 @decision.From is thinking…
                             </div>
+                        </div>
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(agentFailure))
+                {
+                    <div class="flex justify-start">
+                        <div class="rounded-lg px-4 py-3 border border-amber-500/30 bg-amber-500/10 text-amber-100/90 max-w-[80%]">
+                            <div class="flex items-center gap-2 text-xs text-amber-200 mb-1">
+                                <SvgIcon Name="alert-triangle" Class="w-3.5 h-3.5" />
+                                @decision.From stopped before replying
+                            </div>
+                            <p class="text-xs">@agentFailure</p>
                         </div>
                     </div>
                 }
@@ -167,8 +192,12 @@ else
     private string chatInput = string.Empty;
     private bool sendingMessage;
     private string chatError = string.Empty;
+    private AgentInfo? agentInfo;
     private bool agentIsRunning;
+    private bool messageQueued;
+    private string? agentFailure;
     private Timer? _pollTimer;
+    private bool _disposed;
 
     private bool showResolveDialog;
     private string resolveResponse = string.Empty;
@@ -180,29 +209,12 @@ else
         decision = DecisionsService.GetDecision(Slug, DecisionId);
         if (decision == null) return;
 
-        chatMessages = ChatService.GetMessages(Slug, DecisionId);
-        agentIsRunning = RunnerService.IsRunning(Slug, decision.From);
-
         DecisionNotifier.Changed += OnDecisionChanged;
-
-        // Flush any agent replies that arrived before the page opened.
-        ChatService.FlushAgentReplies(Slug, DecisionId, decision.From);
-        chatMessages = ChatService.GetMessages(Slug, DecisionId);
+        RefreshDecisionState(flushReplies: true);
 
         if (decision.Status.IsPending)
         {
-            // Poll every 3s to detect agent replies and running state changes.
-            _pollTimer = new Timer(_ =>
-            {
-                InvokeAsync(() =>
-                {
-                    var running = RunnerService.IsRunning(Slug, decision?.From ?? string.Empty);
-                    ChatService.FlushAgentReplies(Slug, DecisionId, decision?.From ?? string.Empty);
-                    chatMessages = ChatService.GetMessages(Slug, DecisionId);
-                    agentIsRunning = running;
-                    StateHasChanged();
-                });
-            }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+            _pollTimer = new Timer(_ => _ = InvokeAsync(PollAsync), null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
         }
     }
 
@@ -211,10 +223,31 @@ else
         if (project.Value != Slug) return;
         InvokeAsync(() =>
         {
-            chatMessages = ChatService.GetMessages(Slug, DecisionId);
-            decision = DecisionsService.GetDecision(Slug, DecisionId);
+            RefreshDecisionState(flushReplies: false);
             StateHasChanged();
         });
+    }
+
+    private Task PollAsync()
+    {
+        if (_disposed || decision == null)
+            return Task.CompletedTask;
+
+        try
+        {
+            RefreshDecisionState(flushReplies: true);
+            StateHasChanged();
+        }
+        catch (IOException ex)
+        {
+            Logger.LogDebug(ex, "Decision detail refresh hit transient I/O for {ProjectSlug}/{DecisionId}", Slug, DecisionId);
+        }
+        catch (InvalidOperationException ex) when (_disposed)
+        {
+            Logger.LogDebug(ex, "Decision detail refresh stopped after disposal for {ProjectSlug}/{DecisionId}", Slug, DecisionId);
+        }
+
+        return Task.CompletedTask;
     }
 
     private async Task SendMessage()
@@ -225,12 +258,39 @@ else
         var content = chatInput;
         chatInput = string.Empty;
 
-        var err = ChatService.SendHumanMessage(Slug, DecisionId, decision.From, content);
-        sendingMessage = false;
-        if (err != null) { chatError = err; chatInput = content; return; }
+        try
+        {
+            var err = ChatService.SendHumanMessage(Slug, DecisionId, decision.From, content);
+            if (err != null)
+            {
+                chatError = err;
+                chatInput = content;
+                return;
+            }
 
-        chatMessages = ChatService.GetMessages(Slug, DecisionId);
-        agentIsRunning = RunnerService.IsRunning(Slug, decision.From);
+            RefreshDecisionState(flushReplies: false);
+        }
+        catch (IOException ex)
+        {
+            Logger.LogWarning(ex, "Decision send failed with transient I/O for {ProjectSlug}/{DecisionId}", Slug, DecisionId);
+            chatError = "Failed to send the reply due to a temporary file error.";
+            chatInput = content;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Logger.LogWarning(ex, "Decision send failed with access error for {ProjectSlug}/{DecisionId}", Slug, DecisionId);
+            chatError = "Failed to send the reply because the workspace files could not be updated.";
+            chatInput = content;
+        }
+        catch (InvalidOperationException ex) when (_disposed)
+        {
+            Logger.LogDebug(ex, "Decision send stopped after disposal for {ProjectSlug}/{DecisionId}", Slug, DecisionId);
+        }
+        finally
+        {
+            sendingMessage = false;
+        }
+
         await InvokeAsync(StateHasChanged);
     }
 
@@ -262,6 +322,7 @@ else
 
     public void Dispose()
     {
+        _disposed = true;
         _pollTimer?.Dispose();
         DecisionNotifier.Changed -= OnDecisionChanged;
     }
@@ -272,4 +333,37 @@ else
 
     private static string FormatDateTime(DateTime? dt) =>
         dt.HasValue ? dt.Value.ToLocalTime().ToString("MMM d HH:mm") : string.Empty;
+
+    private void RefreshDecisionState(bool flushReplies)
+    {
+        if (decision == null)
+            return;
+
+        if (flushReplies)
+            ChatService.FlushAgentReplies(Slug, DecisionId, decision.From);
+
+        decision = DecisionsService.GetDecision(Slug, DecisionId);
+        if (decision == null)
+        {
+            chatMessages = [];
+            agentInfo = null;
+            agentIsRunning = false;
+            messageQueued = false;
+            agentFailure = null;
+            return;
+        }
+
+        chatMessages = ChatService.GetMessages(Slug, DecisionId);
+        agentInfo = AgentService.LoadAgent(Slug, decision.From);
+
+        var waitingForReply = decision.Status.IsPending && chatMessages.LastOrDefault() is { IsHuman: true };
+        var isRunning = RunnerService.IsRunning(Slug, decision.From);
+        var inboxCount = agentInfo?.InboxCount ?? 0;
+
+        messageQueued = waitingForReply && inboxCount > 0;
+        agentIsRunning = waitingForReply && isRunning && !messageQueued;
+        agentFailure = waitingForReply && agentInfo?.Status.IsError == true
+            ? agentInfo.LastError
+            : null;
+    }
 }

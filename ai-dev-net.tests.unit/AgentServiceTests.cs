@@ -1,8 +1,3 @@
-using AiDev.Executors;
-using AiDev.Services;
-using Microsoft.Extensions.Configuration;
-using NSubstitute;
-
 namespace AiDevNet.Tests.Unit;
 
 public class AgentServiceTests
@@ -72,7 +67,7 @@ public class AgentServiceTests
 
         agent.ShouldNotBeNull();
         agent!.Status.IsError.ShouldBeTrue();
-        agent.LastError.ShouldContain("does not support workspace tools");
+        agent.LastError!.ShouldContain("does not support workspace tools");
         agent.LastErrorAt.ShouldBe(errorAt);
     }
 
@@ -85,7 +80,6 @@ public class AgentServiceTests
         modelRegistry.GetModelsForExecutor(Arg.Any<string>()).Returns([]);
         return new AgentService(
             paths,
-            new StudioSettingsService(new ConfigurationBuilder().Build()),
             new AgentTemplatesService(paths),
             new AtomicFileWriter(),
             new ProjectMutationCoordinator(),

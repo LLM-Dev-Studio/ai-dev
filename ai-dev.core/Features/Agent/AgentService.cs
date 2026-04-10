@@ -1,5 +1,4 @@
 using AiDev.Executors;
-using AiDev.Services;
 
 namespace AiDev.Features.Agent;
 
@@ -21,7 +20,6 @@ file class AgentJson
 
 public class AgentService(
     WorkspacePaths paths,
-    StudioSettingsService settings,
     AgentTemplatesService templates,
     AtomicFileWriter fileWriter,
     ProjectMutationCoordinator coordinator,

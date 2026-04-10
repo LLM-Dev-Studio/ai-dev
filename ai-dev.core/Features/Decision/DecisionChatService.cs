@@ -24,19 +24,21 @@ public class DecisionChatService(
         var chatPath = ChatPath(projectSlug, decisionId);
         if (!File.Exists(chatPath)) return [];
 
-        var messages = new List<DecisionChatMessage>();
         try
         {
-            foreach (var line in File.ReadLines(chatPath))
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                var msg = System.Text.Json.JsonSerializer.Deserialize<DecisionChatMessage>(line, JsonDefaults.Read);
-                if (msg != null) messages.Add(msg);
-            }
+            var json = File.ReadAllText(chatPath);
+            return ParseMessages(json, decisionId);
         }
-        catch (Exception ex) { logger.LogWarning(ex, "[decision-chat] Failed to read chat for {DecisionId}", decisionId); }
+        catch (IOException ex)
+        {
+            logger.LogDebug(ex, "[decision-chat] Failed to read chat for {DecisionId}", decisionId);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            logger.LogWarning(ex, "[decision-chat] Failed to read chat for {DecisionId}", decisionId);
+        }
 
-        return messages;
+        return [];
     }
 
     // -------------------------------------------------------------------------
@@ -176,7 +178,7 @@ public class DecisionChatService(
         {
             var chatPath = ChatPath(projectSlug, decisionId);
             Directory.CreateDirectory(Path.GetDirectoryName(chatPath)!);
-            var line = System.Text.Json.JsonSerializer.Serialize(msg, JsonDefaults.Write);
+            var line = System.Text.Json.JsonSerializer.Serialize(msg, JsonDefaults.WriteCompact);
             File.AppendAllText(chatPath, line + "\n");
             return null;
         }
@@ -189,4 +191,38 @@ public class DecisionChatService(
 
     private string ChatPath(ProjectSlug projectSlug, string decisionId) =>
         Path.Combine(paths.DecisionChatsDir(projectSlug), $"{decisionId}.jsonl");
+
+    private IReadOnlyList<DecisionChatMessage> ParseMessages(string json, string decisionId)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        var messages = new List<DecisionChatMessage>();
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var reader = new Utf8JsonReader(bytes, new JsonReaderOptions
+        {
+            AllowMultipleValues = true,
+        });
+
+        while (true)
+        {
+            try
+            {
+                if (!reader.Read())
+                    break;
+
+                var message = System.Text.Json.JsonSerializer.Deserialize<DecisionChatMessage>(ref reader, JsonDefaults.Read);
+                if (message != null)
+                    messages.Add(message);
+            }
+            catch (JsonException ex)
+            {
+                logger.LogWarning(ex, "[decision-chat] Failed to parse chat history for {DecisionId}; returning {MessageCount} message(s)",
+                    decisionId, messages.Count);
+                break;
+            }
+        }
+
+        return messages;
+    }
 }

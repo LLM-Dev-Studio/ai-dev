@@ -4,6 +4,7 @@
 @inject AgentRunnerService RunnerService
 @inject IModelRegistry ModelRegistry
 @inject IJSRuntime JS
+@inject ILogger<TranscriptPage> Logger
 @using AiDev.Features.Agent
 @using AiDev.Models.Types
 @using AiDev.Executors
@@ -138,6 +139,7 @@ else
     private Timer? _pollTimer;
     private int _lastLineCount;
     private TokenUsage? selectedDateUsage;
+    private bool _disposed;
 
     private enum LineKind { Stdout, Stderr, Error, ToolCall, Progress, SessionHeader, Blank }
 
@@ -154,44 +156,13 @@ else
         if (selectedDate != null)
             selectedDateUsage = RunnerService.GetSessionUsage(Slug, AgentSlug, selectedDate);
 
-        _pollTimer = new Timer(_ =>
-        {
-            var running = RunnerService.IsRunning(Slug, AgentSlug);
-            var changed = running != isRunning;
-            isRunning = running;
-
-            if (running || changed)
-            {
-                agent = AgentService.LoadAgent(Slug, AgentSlug);
-                // Refresh date list in case today's file was just created
-                var newDates = AgentService.ListTranscriptDates(Slug, AgentSlug);
-                if (!newDates.SequenceEqual(dates))
-                {
-                    dates = newDates;
-                    if (selectedDate == null || !dates.Contains(selectedDate))
-                        selectedDate = dates.FirstOrDefault();
-                }
-                LoadTranscript();
-                if (selectedDate != null)
-                    selectedDateUsage = RunnerService.GetSessionUsage(Slug, AgentSlug, selectedDate);
-                InvokeAsync(async () =>
-                {
-                    StateHasChanged();
-                    if (isRunning && selectedDate?.IsToday == true)
-                        await JS.InvokeVoidAsync("scrollToBottom", "transcript-output");
-                });
-            }
-            else if (changed)
-            {
-                InvokeAsync(StateHasChanged);
-            }
-        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+        _pollTimer = new Timer(_ => _ = InvokeAsync(PollAsync), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && (isRunning && selectedDate?.IsToday == true || parsedLines.Count > 0))
-            await JS.InvokeVoidAsync("scrollToBottom", "transcript-output");
+            await ScrollTranscriptToBottomAsync();
     }
 
     private void SelectDate(TranscriptDate date)
@@ -279,5 +250,81 @@ else
     private static string FormatDateTab(TranscriptDate date) =>
         date.IsToday ? "Today" : date.ToDateOnly().ToString("MMM d");
 
-    public void Dispose() => _pollTimer?.Dispose();
+    private async Task PollAsync()
+    {
+        if (_disposed)
+            return;
+
+        try
+        {
+            var running = RunnerService.IsRunning(Slug, AgentSlug);
+            var changed = running != isRunning;
+            isRunning = running;
+
+            if (running || changed)
+            {
+                agent = AgentService.LoadAgent(Slug, AgentSlug);
+                var newDates = AgentService.ListTranscriptDates(Slug, AgentSlug);
+                if (!newDates.SequenceEqual(dates))
+                {
+                    dates = newDates;
+                    if (selectedDate == null || !dates.Contains(selectedDate))
+                        selectedDate = dates.FirstOrDefault();
+                }
+
+                LoadTranscript();
+                if (selectedDate != null)
+                    selectedDateUsage = RunnerService.GetSessionUsage(Slug, AgentSlug, selectedDate);
+
+                StateHasChanged();
+                if (isRunning && selectedDate?.IsToday == true)
+                    await ScrollTranscriptToBottomAsync();
+            }
+            else if (changed)
+            {
+                StateHasChanged();
+            }
+        }
+        catch (IOException ex)
+        {
+            Logger.LogDebug(ex, "Transcript refresh hit transient I/O for {ProjectSlug}/{AgentSlug}", Slug, AgentSlug);
+        }
+        catch (InvalidOperationException ex) when (_disposed)
+        {
+            Logger.LogDebug(ex, "Transcript refresh stopped after disposal for {ProjectSlug}/{AgentSlug}", Slug, AgentSlug);
+        }
+    }
+
+    private async Task ScrollTranscriptToBottomAsync()
+    {
+        if (_disposed)
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("scrollToBottom", "transcript-output");
+        }
+        catch (JSDisconnectedException ex)
+        {
+            Logger.LogDebug(ex, "Transcript scroll skipped because the Blazor circuit disconnected for {ProjectSlug}/{AgentSlug}", Slug, AgentSlug);
+        }
+        catch (TaskCanceledException ex)
+        {
+            Logger.LogDebug(ex, "Transcript scroll was canceled for {ProjectSlug}/{AgentSlug}", Slug, AgentSlug);
+        }
+        catch (ObjectDisposedException ex)
+        {
+            Logger.LogDebug(ex, "Transcript scroll skipped after disposal for {ProjectSlug}/{AgentSlug}", Slug, AgentSlug);
+        }
+        catch (InvalidOperationException ex) when (_disposed)
+        {
+            Logger.LogDebug(ex, "Transcript scroll skipped after disposal for {ProjectSlug}/{AgentSlug}", Slug, AgentSlug);
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _pollTimer?.Dispose();
+    }
 }

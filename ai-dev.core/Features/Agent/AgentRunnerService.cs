@@ -2,8 +2,6 @@ using AiDev.Executors;
 using AiDev.Features.KnowledgeBase;
 using AiDev.Features.Playbook;
 using AiDev.Features.Secrets;
-using AiDev.Models;
-using AiDev.Services;
 
 namespace AiDev.Features.Agent;
 
@@ -193,7 +191,7 @@ public class AgentRunnerService(
             return;
         }
 
-        var modelId = agentConfig.ModelAlias;
+        var modelId = ResolveModelId(agentConfig.ModelAlias, agentConfig.Executor);
         var executorName = agentConfig.Executor;
         activity?.SetTag("agent.executor", executorName.Value);
 
@@ -401,7 +399,7 @@ public class AgentRunnerService(
 
             await UpdateAgentStatusAsync(agentDir, new()
             {
-                ["status"] = exitCode == 0 || exitCode == 130 ? "idle" : "error",
+                ["status"] = exitCode is 0 or 130 ? "idle" : "error",
                 ["pid"] = null,
                 ["sessionStartedAt"] = null,
                 ["lastError"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : sessionError,
@@ -505,6 +503,19 @@ public class AgentRunnerService(
             return new(ModelAlias: model, Executor: executor, Skills: skills, ThinkingLevel: thinking);
         }
         catch { return null; }
+    }
+
+    private string ResolveModelId(string modelOrAlias, AgentExecutorName executor)
+    {
+        if (string.IsNullOrWhiteSpace(modelOrAlias))
+            return modelOrAlias;
+
+        var configuredModels = settings.GetSettings().Models;
+        if (configuredModels.TryGetValue(modelOrAlias, out var configuredModelId)
+            && !string.IsNullOrWhiteSpace(configuredModelId))
+            return configuredModelId;
+
+        return LegacyModelAliases.Resolve(modelOrAlias, executor.Value) ?? modelOrAlias;
     }
 
     private static async Task UpdateAgentStatusAsync(string agentDir, Dictionary<string, object?> updates)
