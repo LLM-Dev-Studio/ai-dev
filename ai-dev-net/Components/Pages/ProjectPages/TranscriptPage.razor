@@ -6,6 +6,7 @@
 @inject IJSRuntime JS
 @inject ILogger<TranscriptPage> Logger
 @using AiDev.Features.Agent
+@using AiDev.Models
 @using AiDev.Models.Types
 @using AiDev.Executors
 @using AiDev.Services
@@ -78,6 +79,65 @@
 
 <FailoverNotificationBanner Agent="@agent" />
 
+@if (selectedInsight != null && !isRunning)
+{
+    <div class="mb-4 rounded-lg border border-border bg-card p-4 space-y-3">
+        <div class="flex items-center gap-2">
+            <SvgIcon Name="sparkles" Class="w-4 h-4 text-purple-400 flex-shrink-0" />
+            <p class="text-sm font-semibold text-foreground">Session Insights</p>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300">
+                @selectedInsight.TaskClassification
+            </span>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-muted border border-border text-muted-foreground">
+                @selectedInsight.SessionSizeRating
+            </span>
+        </div>
+
+        @if (selectedInsight.Issues.Count > 0)
+        {
+            <div>
+                <p class="text-xs font-medium text-muted-foreground mb-1.5">Issues</p>
+                <div class="space-y-1">
+                    @foreach (var issue in selectedInsight.Issues)
+                    {
+                        var impactClass = issue.Impact switch
+                        {
+                            "high"   => "text-red-400 border-red-500/30 bg-red-500/10",
+                            "medium" => "text-amber-400 border-amber-500/30 bg-amber-500/10",
+                            _        => "text-sky-400 border-sky-500/30 bg-sky-500/10",
+                        };
+                        <div class="flex items-start gap-2">
+                            <span class="text-xs px-1.5 py-0.5 rounded border @impactClass flex-shrink-0 mt-0.5">@issue.Impact</span>
+                            <p class="text-xs text-foreground/80">@issue.Description</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (selectedInsight.KnowledgeGaps.Count > 0)
+        {
+            <div>
+                <p class="text-xs font-medium text-muted-foreground mb-1.5">Knowledge gaps</p>
+                <ul class="list-disc list-inside space-y-0.5">
+                    @foreach (var gap in selectedInsight.KnowledgeGaps)
+                    {
+                        <li class="text-xs text-foreground/70">@gap</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(selectedInsight.ImprovedPromptSuggestion))
+        {
+            <div>
+                <p class="text-xs font-medium text-muted-foreground mb-1.5">Improved prompt suggestion</p>
+                <p class="text-xs text-foreground/80 rounded-md border border-border bg-muted/40 px-3 py-2">@selectedInsight.ImprovedPromptSuggestion</p>
+            </div>
+        }
+    </div>
+}
+
 @if (dates.Length == 0)
 {
     <EmptyState Icon="file-text" Title="No transcripts yet" Description="Transcripts are written when the agent runs" />
@@ -141,6 +201,7 @@ else
     private Timer? _pollTimer;
     private int _lastLineCount;
     private TokenUsage? selectedDateUsage;
+    private InsightResult? selectedInsight;
     private bool _disposed;
 
     private enum LineKind { Stdout, Stderr, Error, ToolCall, Progress, SessionHeader, Blank }
@@ -156,7 +217,10 @@ else
 
         LoadTranscript();
         if (selectedDate != null)
+        {
             selectedDateUsage = RunnerService.GetSessionUsage(Slug, AgentSlug, selectedDate);
+            selectedInsight = AgentService.ReadInsights(Slug, AgentSlug, selectedDate);
+        }
 
         _pollTimer = new Timer(_ => _ = InvokeAsync(PollAsync), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
     }
@@ -172,6 +236,7 @@ else
         selectedDate = date;
         LoadTranscript();
         selectedDateUsage = RunnerService.GetSessionUsage(Slug, AgentSlug, date);
+        selectedInsight = AgentService.ReadInsights(Slug, AgentSlug, date);
     }
 
     private void LoadTranscript()
@@ -276,7 +341,10 @@ else
 
                 LoadTranscript();
                 if (selectedDate != null)
+                {
                     selectedDateUsage = RunnerService.GetSessionUsage(Slug, AgentSlug, selectedDate);
+                    selectedInsight = AgentService.ReadInsights(Slug, AgentSlug, selectedDate);
+                }
 
                 StateHasChanged();
                 if (isRunning && selectedDate?.IsToday == true)

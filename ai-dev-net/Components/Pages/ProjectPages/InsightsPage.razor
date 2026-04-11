@@ -1,0 +1,189 @@
+@page "/projects/{Slug}/insights"
+@rendermode InteractiveServer
+@inject AgentService AgentService
+@using AiDev.Features.Agent
+@using AiDev.Models
+@using AiDev.Models.Types
+
+<h1 class="text-xl font-semibold text-primary mb-1">Insights</h1>
+<p class="text-sm text-muted-foreground mb-4">AI-generated qualitative analysis of completed agent sessions.</p>
+
+@if (agents.Count == 0)
+{
+    <EmptyState Icon="sparkles" Title="No agents yet" Description="Insights are generated after agent sessions complete." />
+}
+else
+{
+    <div class="flex gap-4">
+
+        <div class="w-48 flex-shrink-0 space-y-1">
+            @foreach (var a in agents)
+            {
+                var isSelected = selectedAgent?.Value == a.Slug.Value;
+                <button @onclick="() => SelectAgent(a.Slug)"
+                        class="w-full text-left px-3 py-2 rounded-md text-sm transition-colors @(isSelected ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50")">
+                    <span class="block truncate">@a.Name</span>
+                    <span class="block text-xs text-muted-foreground/60 truncate">@a.Slug</span>
+                </button>
+            }
+        </div>
+
+        <div class="flex-1 min-w-0">
+            @if (selectedAgent is null)
+            {
+                <EmptyState Icon="sparkles" Title="Select an agent to view insights" />
+            }
+            else if (dates.Length == 0)
+            {
+                <EmptyState Icon="sparkles" Title="No sessions recorded"
+                            Description="@($"No transcripts found for {selectedAgent}.")" />
+            }
+            else
+            {
+                <div class="flex gap-3">
+
+                    <div class="w-36 flex-shrink-0 space-y-1">
+                        @foreach (var d in dates)
+                        {
+                            var isActive = d == selectedDate;
+                            <button @onclick="() => SelectDate(d)"
+                                    class="w-full text-left px-3 py-2 rounded-md text-xs transition-colors @(isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50")">
+                                @FormatDateLabel(d)
+                            </button>
+                        }
+                    </div>
+
+                    <div class="flex-1 min-w-0">
+                        @if (selectedDate is null)
+                        {
+                            <EmptyState Icon="sparkles" Title="Select a session date" />
+                        }
+                        else if (selectedInsight is null)
+                        {
+                            <div class="rounded-lg border border-border bg-card p-6">
+                                <div class="flex items-center gap-2 mb-3">
+                                    <SvgIcon Name="sparkles" Class="w-4 h-4 text-muted-foreground" />
+                                    <p class="text-sm font-medium text-foreground">No insights available</p>
+                                </div>
+                                <p class="text-xs text-muted-foreground mb-3">
+                                    Insights are generated automatically after each session when
+                                    <code class="font-mono bg-muted px-1 rounded">InsightsExecutor</code>
+                                    is configured in Studio Settings.
+                                </p>
+                                <a href="@($"/projects/{Slug}/agents/{selectedAgent}/transcript")"
+                                   class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
+                                    <SvgIcon Name="scroll-text" Class="w-3 h-3" />
+                                    View raw transcript
+                                </a>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="space-y-4">
+                                <div class="rounded-lg border border-border bg-card p-5">
+                                    <div class="flex flex-wrap items-center gap-2 mb-4">
+                                        <SvgIcon Name="sparkles" Class="w-4 h-4 text-purple-400 flex-shrink-0" />
+                                        <p class="text-sm font-semibold text-foreground">Session Insights</p>
+                                        <span class="text-xs px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300">
+                                            @selectedInsight.TaskClassification
+                                        </span>
+                                        <span class="text-xs px-2 py-0.5 rounded-full bg-muted border border-border text-muted-foreground">
+                                            @selectedInsight.SessionSizeRating
+                                        </span>
+                                        <a href="@($"/projects/{Slug}/agents/{selectedAgent}/transcript")"
+                                           class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1">
+                                            <SvgIcon Name="scroll-text" Class="w-3 h-3" />
+                                            Transcript
+                                        </a>
+                                    </div>
+
+                                    @if (selectedInsight.Issues.Count > 0)
+                                    {
+                                        <div class="mb-4">
+                                            <p class="text-xs font-medium text-muted-foreground mb-2">Issues</p>
+                                            <div class="space-y-1.5">
+                                                @foreach (var issue in selectedInsight.Issues)
+                                                {
+                                                    var impactClass = issue.Impact switch
+                                                    {
+                                                        "high"   => "text-red-400 border-red-500/30 bg-red-500/10",
+                                                        "medium" => "text-amber-400 border-amber-500/30 bg-amber-500/10",
+                                                        _        => "text-sky-400 border-sky-500/30 bg-sky-500/10",
+                                                    };
+                                                    <div class="flex items-start gap-2">
+                                                        <span class="text-xs px-1.5 py-0.5 rounded border @impactClass flex-shrink-0 mt-0.5">@issue.Impact</span>
+                                                        <p class="text-xs text-foreground/80">@issue.Description</p>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+
+                                    @if (selectedInsight.KnowledgeGaps.Count > 0)
+                                    {
+                                        <div class="mb-4">
+                                            <p class="text-xs font-medium text-muted-foreground mb-2">Knowledge gaps</p>
+                                            <ul class="list-disc list-inside space-y-0.5">
+                                                @foreach (var gap in selectedInsight.KnowledgeGaps)
+                                                {
+                                                    <li class="text-xs text-foreground/70">@gap</li>
+                                                }
+                                            </ul>
+                                        </div>
+                                    }
+
+                                    @if (!string.IsNullOrWhiteSpace(selectedInsight.ImprovedPromptSuggestion))
+                                    {
+                                        <div>
+                                            <p class="text-xs font-medium text-muted-foreground mb-2">Improved prompt suggestion</p>
+                                            <p class="text-xs text-foreground/80 rounded-md border border-border bg-muted/40 px-3 py-2 leading-relaxed">
+                                                @selectedInsight.ImprovedPromptSuggestion
+                                            </p>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+
+    private List<AgentInfo> agents = [];
+    private AgentSlug? selectedAgent;
+    private TranscriptDate[] dates = [];
+    private TranscriptDate? selectedDate;
+    private InsightResult? selectedInsight;
+
+    protected override void OnInitialized()
+    {
+        agents = AgentService.ListAgents(Slug);
+        if (agents.Count == 1)
+            SelectAgent(agents[0].Slug);
+    }
+
+    private void SelectAgent(AgentSlug slug)
+    {
+        selectedAgent = slug;
+        selectedDate = null;
+        selectedInsight = null;
+        dates = AgentService.ListTranscriptDates(Slug, slug);
+        if (dates.Length > 0)
+            SelectDate(dates[0]);
+    }
+
+    private void SelectDate(TranscriptDate date)
+    {
+        selectedDate = date;
+        if (selectedAgent is not null)
+            selectedInsight = AgentService.ReadInsights(Slug, selectedAgent, date);
+    }
+
+    private static string FormatDateLabel(TranscriptDate date) =>
+        date.IsToday ? "Today" : date.ToDateOnly().ToString("MMM d");
+}

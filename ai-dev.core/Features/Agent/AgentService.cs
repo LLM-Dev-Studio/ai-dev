@@ -306,4 +306,20 @@ public class AgentService(
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
     }
+
+    /// <summary>
+    /// Reads the AI-generated insight result for the given session date,
+    /// or returns null if no insights file exists or it cannot be parsed.
+    /// </summary>
+    public InsightResult? ReadInsights(ProjectSlug projectSlug, AgentSlug agentSlug, TranscriptDate date)
+    {
+        var path = paths.InsightPath(projectSlug, agentSlug, date);
+        if (!path.Exists()) return null;
+        try
+        {
+            var json = File.ReadAllText(path.Value);
+            return System.Text.Json.JsonSerializer.Deserialize<InsightResult>(json, JsonDefaults.Read);
+        }
+        catch { return null; }
+    }
 }

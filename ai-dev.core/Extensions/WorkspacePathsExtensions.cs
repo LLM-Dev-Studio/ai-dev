@@ -72,6 +72,10 @@ public static class WorkspacePathsExtensions
     public static TranscriptFile TranscriptFile(this AgentTranscriptsDir dir, TranscriptDate date) =>
     new(Path.Combine(dir.Value, $"{date}.md"));
 
+    /// <summary>Returns the insights .json path for a validated date. Cannot escape the directory.</summary>
+    public static InsightFile InsightFile(this AgentTranscriptsDir dir, TranscriptDate date) =>
+        new(Path.Combine(dir.Value, $"{date}.insights.json"));
+
     /// <summary>Returns the playbook .md path for a user-supplied slug, or null if it escapes the directory.</summary>
     public static PlaybookArticleFile? SafePlaybookFile(this PlaybooksDir dir, string slug)
     {
