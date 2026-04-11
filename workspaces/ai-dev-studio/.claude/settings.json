@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "ads-workspace": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "/path/to/ai-dev.mcp",
+        "--",
+        "/path/to/workspaces/ai-dev-studio"
+      ]
+    }
+  },
+  "permissions": {
+    "allow": [
+      "mcp__ads-workspace__*"
+    ],
+    "deny": [
+      "Read",
+      "Write",
+      "Edit",
+      "Bash",
+      "Glob",
+      "Grep",
+      "NotebookRead",
+      "NotebookEdit"
+    ]
+  },
+  "defaultMode": "dontAsk"
+}
