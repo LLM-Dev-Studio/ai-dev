@@ -9,6 +9,21 @@ namespace AiDev.Executors;
 /// </summary>
 public static class ClaudeSkills
 {
+    /// <summary>
+    /// The MCP server name used in .claude/settings.json and in the wildcard allow rule.
+    /// </summary>
+    public const string McpServerName = "ads-workspace";
+
+    /// <summary>
+    /// Built-in Claude CLI tools that agents must not use directly when the
+    /// MCP workspace skill is active. The same list is written to settings.json
+    /// (permissions.deny) and passed as --disallowedTools at runtime.
+    /// </summary>
+    public static readonly IReadOnlyList<string> DeniedRawTools =
+    [
+        "Read", "Write", "Edit", "Bash", "Glob", "Grep", "NotebookRead", "NotebookEdit",
+    ];
+
     public static readonly ExecutorSkill GitRead = new(
         Key: "git-read",
         DisplayName: "Git read-only",
@@ -68,15 +83,10 @@ public static class ClaudeSkills
     /// </summary>
     internal static IEnumerable<string> ToDisallowedTools(HashSet<string> skills)
     {
-        if (skills.Contains("mcp-workspace"))
+        if (skills.Contains(McpWorkspace.Key))
         {
-            yield return "Read";
-            yield return "Write";
-            yield return "Edit";
-            yield return "Glob";
-            yield return "Grep";
-            yield return "NotebookRead";
-            yield return "NotebookEdit";
+            foreach (var tool in DeniedRawTools)
+                yield return tool;
         }
     }
 }

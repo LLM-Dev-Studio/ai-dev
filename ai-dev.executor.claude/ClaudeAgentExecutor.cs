@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using System.Threading;
 using Microsoft.Extensions.Logging;
@@ -91,6 +92,13 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
     public async Task<ExecutorResult> RunAsync(ExecutorContext context, ChannelWriter<string> output)
     {
         var skills = ClaudeSkills.Resolve(context.EnabledSkills);
+
+        // Regenerate .claude/settings.json with correct absolute paths before every run.
+        // This ensures the MCP server registration always points to the right project path
+        // regardless of where the repository is checked out.
+        var workspaceRoot = Path.GetFullPath(Path.Combine(context.WorkingDir, "..", ".."));
+        WriteClaudeSettings(workspaceRoot, skills);
+
         var psi = BuildProcessStartInfo(context.WorkingDir, context.ModelId, skills);
 
         // Inject project secrets as environment variables.
@@ -220,7 +228,6 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
 
         psi.ArgumentList.Add("-p");
         psi.ArgumentList.Add("--verbose");
-        psi.ArgumentList.Add("--dangerously-skip-permissions");
         psi.ArgumentList.Add("--output-format");
         psi.ArgumentList.Add("stream-json");
         psi.ArgumentList.Add("--model");
@@ -264,6 +271,60 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
             return doc.RootElement.TryGetProperty("codebasePath", out var val) ? val.GetString() : null;
         }
         catch { return null; }
+    }
+
+    /// <summary>
+    /// Writes (or overwrites) <c>.claude/settings.json</c> in the workspace root with the
+    /// MCP server registration and permission rules. Uses absolute paths so the file is valid
+    /// regardless of where Claude CLI resolves it from.
+    /// </summary>
+    private static void WriteClaudeSettings(string workspaceRoot, HashSet<string> skills)
+    {
+        // The MCP project lives two levels above the workspace root:
+        //   {repoRoot}/workspaces/{project}/  →  {repoRoot}/ai-dev.mcp/
+        var repoRoot     = Path.GetFullPath(Path.Combine(workspaceRoot, "..", ".."));
+        var mcpProject   = Path.Combine(repoRoot, "ai-dev.mcp");
+
+        var claudeDir = Path.Combine(workspaceRoot, ".claude");
+        Directory.CreateDirectory(claudeDir);
+
+        var denyTools = new JsonArray(ClaudeSkills.DeniedRawTools.Select(t => JsonValue.Create(t)).ToArray<JsonNode?>());
+
+        JsonObject mcpServers;
+        JsonArray allowTools;
+
+        if (skills.Contains(ClaudeSkills.McpWorkspace.Key))
+        {
+            mcpServers = new JsonObject
+            {
+                [ClaudeSkills.McpServerName] = new JsonObject
+                {
+                    ["type"]    = "stdio",
+                    ["command"] = "dotnet",
+                    ["args"]    = new JsonArray("run", "--project", mcpProject, "--", workspaceRoot),
+                },
+            };
+            allowTools = new JsonArray($"mcp__{ClaudeSkills.McpServerName}__*");
+        }
+        else
+        {
+            mcpServers = new JsonObject();
+            allowTools = new JsonArray();
+        }
+
+        var settings = new JsonObject
+        {
+            ["mcpServers"]   = mcpServers,
+            ["permissions"]  = new JsonObject
+            {
+                ["allow"] = allowTools,
+                ["deny"]  = denyTools,
+            },
+            ["defaultMode"]  = "dontAsk",
+        };
+
+        var settingsPath = Path.Combine(claudeDir, "settings.json");
+        File.WriteAllText(settingsPath, settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private static bool IsRateLimitLine(string line) =>
