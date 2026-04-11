@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ai-dev.core\ai-dev.core.csproj" />
     <ProjectReference Include="..\ai-dev.executor.ollama\ai-dev.executor.ollama.csproj" />
+    <ProjectReference Include="..\ai-dev.executor.lmstudio\ai-dev.executor.lmstudio.csproj" />
   </ItemGroup>
 
   <ItemGroup>
