@@ -94,7 +94,7 @@ public class DecisionChatServiceTests
             new KbService(paths, fileWriter, new ProjectMutationCoordinator()),
             new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()),
             new SecretsService(paths, fileWriter),
-            new InsightsService(Substitute.For<IHttpClientFactory>(), settings, NullLogger<InsightsService>.Instance),
+            new InsightsService([], settings, NullLogger<InsightsService>.Instance),
             NullLogger<AgentRunnerService>.Instance);
     }
 
