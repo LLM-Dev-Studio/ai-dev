@@ -16,6 +16,8 @@ file class AgentJson
     public string? LastError { get; init; }
     public string? LastErrorAt { get; init; }
     public string? Thinking { get; init; }
+    public string? FailoverExecutor { get; init; }
+    public string? FailedOverAt { get; init; }
 }
 
 public class AgentService(
@@ -71,7 +73,9 @@ public class AgentService(
                 skills: data.Skills ?? [],
                 lastError: data.LastError,
                 lastErrorAt: DateTime.TryParse(data.LastErrorAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastErrorAt) ? lastErrorAt : null,
-                thinkingLevel: ThinkingLevelExtensions.Parse(data.Thinking));
+                thinkingLevel: ThinkingLevelExtensions.Parse(data.Thinking),
+                failoverExecutor: AgentExecutorName.TryParse(data.FailoverExecutor, out var failoverExecutor) ? failoverExecutor : null,
+                failedOverAt: DateTime.TryParse(data.FailedOverAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var failedOverAt) ? failedOverAt : null);
         }
         catch { return null; }
     }
@@ -143,6 +147,45 @@ public class AgentService(
                     updated["thinking"] = thinkingLevel.Serialize();
                 else
                     updated.Remove("thinking");
+                fileWriter.WriteAllText(jsonPath, JsonSerializer.Serialize(updated, JsonDefaults.Write));
+                return new Ok<Unit>(Unit.Value);
+            }
+            catch (JsonException ex) { return new Err<Unit>(new DomainError("AGENT_INVALID_METADATA", ex.Message)); }
+            catch (IOException ex) { return new Err<Unit>(new DomainError("AGENT_IO_ERROR", ex.Message)); }
+            catch (UnauthorizedAccessException ex) { return new Err<Unit>(new DomainError("AGENT_IO_ERROR", ex.Message)); }
+        });
+    }
+
+
+    /// <summary>
+    /// Persists a failover event for an agent. Writes failoverExecutor and failedOverAt to agent.json.
+    /// Pass null executor to clear the failover state.
+    /// </summary>
+    public Result<Unit> SaveFailoverState(ProjectSlug projectSlug, AgentSlug agentSlug, AgentExecutorName? failoverExecutor, DateTime? failedOverAt)
+    {
+        try { _ = paths.AgentDir(projectSlug, agentSlug); }
+        catch (ArgumentException) { return new Err<Unit>(InvalidAgentSlugError); }
+
+        return coordinator.Execute<Result<Unit>>(projectSlug, () =>
+        {
+            var jsonPath = paths.AgentJsonPath(projectSlug, agentSlug);
+            if (!jsonPath.Exists()) return new Err<Unit>(AgentNotFoundError);
+
+            try
+            {
+                var json = File.ReadAllText(jsonPath);
+                var raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, JsonDefaults.Read) ?? [];
+                var updated = raw.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
+                if (failoverExecutor != null)
+                {
+                    updated["failoverExecutor"] = failoverExecutor.Value;
+                    updated["failedOverAt"] = (failedOverAt ?? DateTime.UtcNow).ToString("O");
+                }
+                else
+                {
+                    updated.Remove("failoverExecutor");
+                    updated.Remove("failedOverAt");
+                }
                 fileWriter.WriteAllText(jsonPath, JsonSerializer.Serialize(updated, JsonDefaults.Write));
                 return new Ok<Unit>(Unit.Value);
             }

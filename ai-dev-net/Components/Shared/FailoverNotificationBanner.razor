@@ -1,0 +1,29 @@
+@using AiDev.Features.Agent
+@using AiDev.Executors
+
+@if (Agent?.FailoverExecutor != null)
+{
+    <div class="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+        <div class="flex items-start gap-3">
+            <SvgIcon Name="shield-alert" Class="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+            <div>
+                <p class="text-sm font-medium text-amber-200">Auto-switched to @Agent.FailoverExecutor.DisplayName</p>
+                <p class="text-sm text-amber-100/90 mt-1">
+                    This agent was automatically moved to <span class="font-mono text-amber-200">@Agent.FailoverExecutor.Value</span>
+                    after its previous executor became unavailable.
+                    @if (Agent.FailedOverAt.HasValue)
+                    {
+                        <span class="text-amber-100/70 ml-1">(@FormatDate(Agent.FailedOverAt.Value))</span>
+                    }
+                </p>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public AgentInfo? Agent { get; set; }
+
+    private static string FormatDate(DateTime dt) =>
+        dt.ToLocalTime().ToString("MMM d 'at' HH:mm");
+}

@@ -10,7 +10,7 @@ public class AgentTemplateTests
         t.Slug.ShouldBeNull();
         t.Name.ShouldBe(string.Empty);
         t.Role.ShouldBe(string.Empty);
-        t.Model.ShouldBe("sonnet");
+        t.Model.ShouldBe("claude-sonnet-4-6");
         t.Description.ShouldBe(string.Empty);
         t.Content.ShouldBe(string.Empty);
     }

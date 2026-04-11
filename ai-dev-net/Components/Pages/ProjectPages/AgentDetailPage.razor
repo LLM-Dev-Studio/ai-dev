@@ -141,14 +141,16 @@ else
                                 class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
                             @foreach (var option in executorOptions)
                             {
-                                <option value="@option.Name.Value" selected="@(option.Name == editExecutor)">@option.DisplayName</option>
+                                <option value="@option.Name.Value" selected="@(option.Name == editExecutor)">
+                                        @(option.Health.IsHealthy ? option.DisplayName : option.DisplayName + " (offline)")
+                                    </option>
                             }
                         </select>
-                        @if (SelectedExecutorOption is { } selectedExecutor)
+                        @if (SelectedExecutorOption is { } selectedExecutor && !selectedExecutor.Health.IsHealthy)
                         {
-                            <p class="mt-1 text-xs @(selectedExecutor.Health.IsHealthy ? "text-muted-foreground" : "text-amber-300")">
-                                @(selectedExecutor.Health.IsHealthy ? selectedExecutor.DisplayName : selectedExecutor.Health.Message)
-                            </p>
+                            <div class="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+                                This executor is offline. The agent may not start until it comes back online.
+                            </div>
                         }
                     </div>
                     <div>

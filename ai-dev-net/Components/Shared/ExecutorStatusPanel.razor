@@ -1,0 +1,63 @@
+@using AiDev.Executors
+@using AiDev.Services
+@inject ExecutorHealthMonitor ExecutorHealthMonitor
+@implements IDisposable
+
+<div class="space-y-2">
+    @foreach (var entry in _entries)
+    {
+        <div class="flex items-center justify-between py-2 px-3 rounded-md border border-border bg-background">
+            <div class="flex items-center gap-2">
+                @if (entry.IsHealthy)
+                {
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0"></span>
+                }
+                else
+                {
+                    <span class="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0"></span>
+                }
+                <span class="text-sm text-foreground">@entry.DisplayName</span>
+            </div>
+            <span class="text-xs @(entry.IsHealthy ? "text-muted-foreground" : "text-amber-300") truncate max-w-xs ml-3">
+                @entry.StatusMessage
+            </span>
+        </div>
+    }
+    @if (_entries.Count == 0)
+    {
+        <p class="text-sm text-muted-foreground">No executors registered.</p>
+    }
+</div>
+
+@code {
+    private sealed record ExecutorEntry(string DisplayName, bool IsHealthy, string StatusMessage);
+
+    private List<ExecutorEntry> _entries = [];
+
+    protected override void OnInitialized()
+    {
+        LoadEntries();
+        ExecutorHealthMonitor.Changed += OnChanged;
+    }
+
+    private void LoadEntries()
+    {
+        _entries = ExecutorHealthMonitor.GetExecutorHealth()
+            .Select(e => new ExecutorEntry(
+                e.Executor.DisplayName,
+                e.Health.IsHealthy,
+                e.Health.IsHealthy ? "Online" : e.Health.Message))
+            .ToList();
+    }
+
+    private void OnChanged()
+    {
+        InvokeAsync(() =>
+        {
+            LoadEntries();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => ExecutorHealthMonitor.Changed -= OnChanged;
+}

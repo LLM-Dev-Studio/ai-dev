@@ -2,6 +2,8 @@
 @using AiDev.Features.Digest
 @rendermode InteractiveServer
 @inject DigestService DigestService
+@inject AgentService AgentService
+@using AiDev.Features.Agent
 
 <h1 class="text-xl font-semibold text-primary mb-1">Digest</h1>
 
@@ -79,13 +81,17 @@ else
     }
 }
 
+<ProjectEventLog Agents="@(_agents ?? [])" ProjectSlug="@Slug" />
+
 @code {
     [Parameter] public string Slug { get; set; } = string.Empty;
     private DigestData? digest;
+    private List<AgentInfo>? _agents;
 
     protected override void OnInitialized()
     {
         var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
         digest = DigestService.GetDigest(Slug, today);
+        _agents = AgentService.ListAgents(Slug);
     }
 }
