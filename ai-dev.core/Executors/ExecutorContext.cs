@@ -7,6 +7,12 @@ namespace AiDev.Executors;
 /// Replaces the previous flat parameter list on IAgentExecutor.RunAsync.
 /// </summary>
 public sealed record ExecutorContext(
+    /// <summary>The absolute path to the shared workspace root.</summary>
+    string WorkspaceRoot,
+
+    /// <summary>The slug of the project associated with the current agent session.</summary>
+    string ProjectSlug,
+
     /// <summary>The agent's directory (contains CLAUDE.md, inbox, etc.).</summary>
     string WorkingDir,
 

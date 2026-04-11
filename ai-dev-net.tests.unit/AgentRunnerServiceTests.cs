@@ -46,6 +46,42 @@ public class AgentRunnerServiceTests
         capturedModelId.ShouldBe("claude-sonnet-4-6");
     }
 
+    [Fact]
+    public async Task LaunchAgent_PassesWorkspaceRootProjectSlugAndProjectScopedMcpPrompt()
+    {
+        var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        var paths = new WorkspacePaths(root);
+        var projectSlug = new ProjectSlug("demo-project");
+        var agentSlug = new AgentSlug("pm-standard");
+        var agentDir = paths.AgentDir(projectSlug, agentSlug).Value;
+        var fileWriter = new AtomicFileWriter();
+        var runner = CreateRunner(paths, fileWriter, out var executor);
+
+        Directory.CreateDirectory(agentDir);
+        Directory.CreateDirectory(paths.AgentInboxDir(projectSlug, agentSlug).Value);
+        File.WriteAllText(paths.AgentClaudeMdPath(projectSlug, agentSlug).Value, "# PM Standard\n\nYou are PM Standard.\n");
+        File.WriteAllText(paths.AgentJsonPath(projectSlug, agentSlug).Value, """
+        {
+          "slug": "pm-standard",
+          "name": "PM Standard",
+          "role": "PM",
+          "description": "Routes work",
+          "model": "claude-sonnet-4-6",
+          "executor": "anthropic",
+          "status": "idle"
+        }
+        """);
+
+        runner.LaunchAgent(projectSlug, agentSlug).ShouldBeTrue();
+
+        var capturedContext = await executor.CapturedContext.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await WaitForAgentToFinishAsync(runner, projectSlug, agentSlug);
+
+        capturedContext.WorkspaceRoot.ShouldBe(root.Value);
+        capturedContext.ProjectSlug.ShouldBe(projectSlug.Value);
+        capturedContext.Prompt.ShouldContain($"pass projectSlug='{projectSlug.Value}'");
+    }
+
     private static AgentRunnerService CreateRunner(WorkspacePaths paths, AtomicFileWriter fileWriter, out CapturingExecutor executor)
     {
         executor = new CapturingExecutor();
@@ -92,6 +128,7 @@ public class AgentRunnerServiceTests
     private sealed class CapturingExecutor : IAgentExecutor
     {
         private readonly TaskCompletionSource<string> _capturedModelId = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<ExecutorContext> _capturedContext = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public string Name => AgentExecutorName.AnthropicValue;
         public string DisplayName => "Anthropic API";
@@ -102,6 +139,7 @@ public class AgentRunnerServiceTests
         ];
 
         public Task<string> CapturedModelId => _capturedModelId.Task;
+        public Task<ExecutorContext> CapturedContext => _capturedContext.Task;
 
         public Task<ExecutorHealthResult> CheckHealthAsync(CancellationToken ct = default)
             => Task.FromResult(new ExecutorHealthResult(true, "Connected"));
@@ -109,6 +147,7 @@ public class AgentRunnerServiceTests
         public Task<ExecutorResult> RunAsync(ExecutorContext context, ChannelWriter<string> output)
         {
             _capturedModelId.TrySetResult(context.ModelId);
+            _capturedContext.TrySetResult(context);
             return Task.FromResult(new ExecutorResult(0));
         }
     }

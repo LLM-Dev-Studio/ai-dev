@@ -13,22 +13,28 @@ public static class DecisionTools
     public static string WriteDecision(
         PathValidator validator,
         AuditLog audit,
+        [Description("Project slug (e.g. 'demo-project')")] string projectSlug,
         [Description("Decision filename (e.g. '20260402-090000-auth-middleware.md')")] string filename,
         [Description("Full decision content including YAML frontmatter")] string content)
     {
+        PathValidator.ValidateSlug(projectSlug, "projectSlug");
         if (string.IsNullOrWhiteSpace(filename))
             return "Filename is required.";
         if (filename.Contains("..") || filename.Contains('/') || filename.Contains('\\'))
             return $"Invalid filename: '{filename}'.";
 
-        var pendingDir = validator.Resolve(Path.Combine("decisions", "pending"));
+        var pendingDir = validator.ResolveProject(projectSlug, Path.Combine("decisions", "pending"));
         Directory.CreateDirectory(pendingDir);
 
         var filePath = validator.ValidateAbsolute(Path.Combine(pendingDir, filename));
         File.WriteAllText(filePath, content);
 
-        var parms = new Dictionary<string, string?> { ["filename"] = filename };
+        var parms = new Dictionary<string, string?>
+        {
+            ["projectSlug"] = projectSlug,
+            ["filename"] = filename
+        };
         audit.Record("write_decision", parms, "ok");
-        return $"Decision written to decisions/pending/{filename}";
+        return $"Decision written to {projectSlug}/decisions/pending/{filename}";
     }
 }

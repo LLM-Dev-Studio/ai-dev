@@ -22,14 +22,21 @@ public static class BoardTools
     [McpServerTool, Description(
         "Atomically update the board state. Accepts the complete board JSON. " +
         "The JSON is parsed and re-serialised to prevent malformed data. " +
-        "The board file is at board/board.json in the workspace.")]
+        "The board file is at board/board.json in the target project.")]
     public static string UpdateBoard(
         PathValidator validator,
         AuditLog audit,
+        [Description("Project slug (e.g. 'demo-project')")] string projectSlug,
         [Description("Complete board JSON content (must be valid JSON matching the board schema)")] string boardJson)
     {
-        var boardPath = validator.Resolve(Path.Combine("board", "board.json"));
-        var parms = new Dictionary<string, string?> { ["boardJson"] = "(board data)" };
+        PathValidator.ValidateSlug(projectSlug, "projectSlug");
+
+        var boardPath = validator.ResolveProject(projectSlug, Path.Combine("board", "board.json"));
+        var parms = new Dictionary<string, string?>
+        {
+            ["projectSlug"] = projectSlug,
+            ["boardJson"] = "(board data)"
+        };
 
         // Parse to validate JSON structure, then re-serialise to ensure clean output
         JsonDocument doc;

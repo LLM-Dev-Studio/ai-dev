@@ -15,5 +15,8 @@
 - Leave mostly read-only services like `GitService`, `MessagesService`, and `JournalsService` on null/empty semantics.
 - Model supported executor types in `agent.json` as a first-class supported type rather than a magic string, and ensure executor details are editable in the agent detail UI.
 
+## Application Hosting
+- Aspire must start both the MCP server and the web app; do not simplify AppHost to only run the web project.
+
 ## Hardening Work
 - Prioritize startup consistency checks, timeout/cancellation policy, and full OpenTelemetry observability via Aspire, as these directly affect users.

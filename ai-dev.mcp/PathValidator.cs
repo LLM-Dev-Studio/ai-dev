@@ -17,8 +17,39 @@ public sealed class PathValidator(string workspaceRoot)
     public string Resolve(string relativePath)
     {
         var full = Path.GetFullPath(Path.Combine(WorkspaceRoot, relativePath));
-        if (!full.StartsWith(_root, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"Path escapes workspace root: {relativePath}");
+        ValidateWithinRoot(_root, full, relativePath);
+        return full;
+    }
+
+    /// <summary>
+    /// Returns the absolute root directory for a specific project slug within the workspace.
+    /// </summary>
+    public string ResolveProjectRoot(string projectSlug)
+    {
+        ValidateSlug(projectSlug, "projectSlug");
+        return Resolve(projectSlug);
+    }
+
+    /// <summary>
+    /// Returns the resolved absolute path for a path within a specific project root.
+    /// Throws <see cref="InvalidOperationException"/> on traversal attempts.
+    /// </summary>
+    public string ResolveProject(string projectSlug, string relativePath)
+    {
+        var projectRoot = EnsureTrailingSeparator(ResolveProjectRoot(projectSlug));
+        var full = Path.GetFullPath(Path.Combine(projectRoot, relativePath));
+        ValidateWithinRoot(projectRoot, full, relativePath);
+        return full;
+    }
+
+    /// <summary>
+    /// Validates that an already-absolute path falls within the specified project root.
+    /// </summary>
+    public string ValidateProjectAbsolute(string projectSlug, string absolutePath)
+    {
+        var projectRoot = EnsureTrailingSeparator(ResolveProjectRoot(projectSlug));
+        var full = Path.GetFullPath(absolutePath);
+        ValidateWithinRoot(projectRoot, full, absolutePath);
         return full;
     }
 
@@ -37,8 +68,7 @@ public sealed class PathValidator(string workspaceRoot)
     public string ValidateAbsolute(string absolutePath)
     {
         var full = Path.GetFullPath(absolutePath);
-        if (!full.StartsWith(_root, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"Path escapes workspace root: {absolutePath}");
+        ValidateWithinRoot(_root, full, absolutePath);
         return full;
     }
 
@@ -57,4 +87,10 @@ public sealed class PathValidator(string workspaceRoot)
         path.EndsWith(Path.DirectorySeparatorChar) || path.EndsWith(Path.AltDirectorySeparatorChar)
             ? path
             : path + Path.DirectorySeparatorChar;
+
+    private static void ValidateWithinRoot(string root, string fullPath, string originalPath)
+    {
+        if (!fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Path escapes workspace root: {originalPath}");
+    }
 }

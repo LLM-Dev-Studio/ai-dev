@@ -94,12 +94,12 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         var skills = ClaudeSkills.Resolve(context.EnabledSkills);
 
         // Regenerate .claude/settings.json with correct absolute paths before every run.
-        // This ensures the MCP server registration always points to the right project path
+        // This ensures the MCP server registration always points to the shared workspace root
         // regardless of where the repository is checked out.
-        var workspaceRoot = Path.GetFullPath(Path.Combine(context.WorkingDir, "..", ".."));
-        WriteClaudeSettings(workspaceRoot, skills);
+        var projectRoot = Path.Combine(context.WorkspaceRoot, context.ProjectSlug);
+        WriteClaudeSettings(projectRoot, context.WorkspaceRoot, skills);
 
-        var psi = BuildProcessStartInfo(context.WorkingDir, context.ModelId, skills);
+        var psi = BuildProcessStartInfo(context.WorkingDir, context.ModelId, projectRoot, skills);
 
         // Inject project secrets as environment variables.
         // Values are sensitive — they are set on the child process environment only; never logged.
@@ -198,7 +198,7 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
     // Private helpers
     // -------------------------------------------------------------------------
 
-    private static ProcessStartInfo BuildProcessStartInfo(string workingDir, string modelId, HashSet<string> skills)
+    private static ProcessStartInfo BuildProcessStartInfo(string workingDir, string modelId, string projectRoot, HashSet<string> skills)
     {
         var psi = new ProcessStartInfo
         {
@@ -250,8 +250,7 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
 
         // If the project has a codebase path, add it as a context directory
         // so its CLAUDE.md (if any) is loaded by the CLI.
-        var workspaceRoot = Path.GetFullPath(Path.Combine(workingDir, "..", ".."));
-        var codebasePath = ReadCodebasePath(workspaceRoot);
+        var codebasePath = ReadCodebasePath(projectRoot);
         if (!string.IsNullOrEmpty(codebasePath))
         {
             psi.ArgumentList.Add("--add-dir");
@@ -261,9 +260,9 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         return psi;
     }
 
-    private static string? ReadCodebasePath(string workspaceRoot)
+    private static string? ReadCodebasePath(string projectRoot)
     {
-        var projectJson = Path.Combine(workspaceRoot, "project.json");
+        var projectJson = Path.Combine(projectRoot, "project.json");
         if (!File.Exists(projectJson)) return null;
         try
         {
@@ -278,14 +277,14 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
     /// MCP server registration and permission rules. Uses absolute paths so the file is valid
     /// regardless of where Claude CLI resolves it from.
     /// </summary>
-    private static void WriteClaudeSettings(string workspaceRoot, HashSet<string> skills)
+    private static void WriteClaudeSettings(string projectRoot, string workspaceRoot, HashSet<string> skills)
     {
-        // The MCP project lives two levels above the workspace root:
-        //   {repoRoot}/workspaces/{project}/  →  {repoRoot}/ai-dev.mcp/
-        var repoRoot     = Path.GetFullPath(Path.Combine(workspaceRoot, "..", ".."));
+        // The MCP project lives one level above the shared workspaces root:
+        //   {repoRoot}/workspaces/  →  {repoRoot}/ai-dev.mcp/
+        var repoRoot     = Path.GetFullPath(Path.Combine(workspaceRoot, ".."));
         var mcpProject   = Path.Combine(repoRoot, "ai-dev.mcp");
 
-        var claudeDir = Path.Combine(workspaceRoot, ".claude");
+        var claudeDir = Path.Combine(projectRoot, ".claude");
         Directory.CreateDirectory(claudeDir);
 
         var denyTools = new JsonArray(ClaudeSkills.DeniedRawTools.Select(t => JsonValue.Create(t)).ToArray<JsonNode?>());

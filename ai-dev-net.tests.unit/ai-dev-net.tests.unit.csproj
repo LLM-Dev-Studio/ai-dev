@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ai-dev.core\ai-dev.core.csproj" />
+    <ProjectReference Include="..\ai-dev.mcp\ai-dev.mcp.csproj" />
   </ItemGroup>
 
   <ItemGroup>

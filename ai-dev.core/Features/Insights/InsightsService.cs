@@ -90,9 +90,10 @@ public class InsightsService(
 
         // Create an isolated working directory so we can control the system prompt (CLAUDE.md)
         // without affecting any real agent. The directory structure mimics a workspace tree so
-        // path-traversal logic in executors (e.g. workspaceRoot = workingDir/../..) lands safely
-        // inside the temp directory.
+        // executors that rely on workspace-root plus project-slug context stay inside the temp directory.
         var tempRoot = Path.Combine(Path.GetTempPath(), $"ai-insights-{Guid.NewGuid():N}");
+        var workspaceRoot = Path.Combine(tempRoot, "workspaces");
+        const string projectSlug = "_insights";
         var workingDir = Path.Combine(tempRoot, "workspaces", "_insights", "agents", "insights");
 
         try
@@ -112,6 +113,8 @@ public class InsightsService(
             });
 
             var context = new ExecutorContext(
+                WorkspaceRoot: workspaceRoot,
+                ProjectSlug: projectSlug,
                 WorkingDir: workingDir,
                 ModelId: modelId,
                 Prompt: prompt,

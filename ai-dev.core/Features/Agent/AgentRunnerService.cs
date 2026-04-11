@@ -28,6 +28,8 @@ public class AgentRunnerService(
         executors.GroupBy(e => e.Name).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
     private const string AgentPrompt =
         "Read your inbox and action any messages. Follow your CLAUDE.md session protocol.";
+    private const string ProjectScopedMcpPrompt =
+        "Your assigned project slug is '{0}'. For every MCP workspace tool call, pass projectSlug='{0}' unless the tool explicitly operates on the whole workspace.";
 
     private sealed class SessionInfo(CancellationTokenSource cts)
     {
@@ -251,7 +253,9 @@ public class AgentRunnerService(
         });
 
         // Build prompt: inject playbook and KB articles before the standard instruction.
-        var effectivePrompt = AgentPrompt;
+        var effectivePrompt = string.Join("\n\n",
+            string.Format(ProjectScopedMcpPrompt, projectSlug.Value),
+            AgentPrompt);
         var inboxText = ReadInboxText(inboxDir, inboxSnapshot);
 
         var kbContext = kbService.BuildInjectionContext(projectSlug, inboxText);
@@ -286,6 +290,8 @@ public class AgentRunnerService(
         var secrets = secretsService.LoadDecryptedSecrets(projectSlug);
 
         var context = new ExecutorContext(
+            WorkspaceRoot: paths.Root,
+            ProjectSlug: projectSlug.Value,
             WorkingDir: agentDir,
             ModelId: modelId,
             Prompt: effectivePrompt,

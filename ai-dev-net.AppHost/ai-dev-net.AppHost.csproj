@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ai-dev-net\ai-dev.ui.web.csproj" />
+    <ProjectReference Include="..\ai-dev.mcp\ai-dev.mcp.csproj" />
   </ItemGroup>
 
 </Project>

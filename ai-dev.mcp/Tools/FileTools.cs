@@ -9,16 +9,23 @@ namespace AiDev.Mcp.Tools;
 public static class FileTools
 {
     [McpServerTool, Description(
-        "Read a file within the workspace. Path is relative to the workspace root " +
+        "Read a file within a project. Path is relative to the project root " +
         "(e.g. 'board/board.json', 'agents/dev-alex/inbox/msg.md'). " +
-        "Also accepts absolute paths within the workspace.")]
+        "Also accepts absolute paths within the target project.")]
     public static string ReadFile(
         PathValidator validator,
         AuditLog audit,
+        [Description("Project slug (e.g. 'demo-project')")] string projectSlug,
         [Description("Relative or absolute path to the file")] string path)
     {
-        var resolved = ResolvePath(validator, path);
-        var parms = new Dictionary<string, string?> { ["path"] = path };
+        PathValidator.ValidateSlug(projectSlug, "projectSlug");
+
+        var resolved = ResolvePath(validator, projectSlug, path);
+        var parms = new Dictionary<string, string?>
+        {
+            ["projectSlug"] = projectSlug,
+            ["path"] = path
+        };
 
         if (!File.Exists(resolved))
         {
@@ -31,15 +38,22 @@ public static class FileTools
     }
 
     [McpServerTool, Description(
-        "List files and subdirectories in a directory within the workspace. " +
-        "Path is relative to the workspace root.")]
+        "List files and subdirectories in a directory within a project. " +
+        "Path is relative to the project root.")]
     public static string ListDirectory(
         PathValidator validator,
         AuditLog audit,
+        [Description("Project slug (e.g. 'demo-project')")] string projectSlug,
         [Description("Relative or absolute path to the directory")] string path)
     {
-        var resolved = ResolvePath(validator, path);
-        var parms = new Dictionary<string, string?> { ["path"] = path };
+        PathValidator.ValidateSlug(projectSlug, "projectSlug");
+
+        var resolved = ResolvePath(validator, projectSlug, path);
+        var parms = new Dictionary<string, string?>
+        {
+            ["projectSlug"] = projectSlug,
+            ["path"] = path
+        };
 
         if (!Directory.Exists(resolved))
         {
@@ -57,11 +71,11 @@ public static class FileTools
         return sb.Length > 0 ? sb.ToString() : "(empty directory)";
     }
 
-    private static string ResolvePath(PathValidator validator, string path)
+    private static string ResolvePath(PathValidator validator, string projectSlug, string path)
     {
-        // Support both relative and absolute paths — both must resolve within workspace
+        // Support both relative and absolute paths — both must resolve within the target project
         if (Path.IsPathRooted(path))
-            return validator.ValidateAbsolute(path);
-        return validator.Resolve(path);
+            return validator.ValidateProjectAbsolute(projectSlug, path);
+        return validator.ResolveProject(projectSlug, path);
     }
 }

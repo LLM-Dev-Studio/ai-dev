@@ -14,44 +14,56 @@ internal static class AnthropicToolSchemas
     [
       {
         "name": "read_file",
-        "description": "Read a file within the workspace. Path is relative to the workspace root (e.g. 'board/board.json', 'agents/dev-alex/inbox/msg.md'). Also accepts absolute paths within the workspace.",
+        "description": "Read a file within a project. Path is relative to the project root (e.g. 'board/board.json', 'agents/dev-alex/inbox/msg.md'). Also accepts absolute paths within the target project.",
         "input_schema": {
           "type": "object",
           "properties": {
+            "project_slug": {
+              "type": "string",
+              "description": "Project slug (e.g. 'demo-project')"
+            },
             "path": {
               "type": "string",
               "description": "Relative or absolute path to the file"
             }
           },
-          "required": ["path"]
+          "required": ["project_slug", "path"]
         }
       },
       {
         "name": "list_directory",
-        "description": "List files and subdirectories in a directory within the workspace. Path is relative to the workspace root.",
+        "description": "List files and subdirectories in a directory within a project. Path is relative to the project root.",
         "input_schema": {
           "type": "object",
           "properties": {
+            "project_slug": {
+              "type": "string",
+              "description": "Project slug (e.g. 'demo-project')"
+            },
             "path": {
               "type": "string",
               "description": "Relative path to the directory (e.g. 'agents/dev-alex/inbox', 'board')"
             }
           },
-          "required": ["path"]
+          "required": ["project_slug", "path"]
         }
       },
       {
         "name": "update_board",
-        "description": "Atomically update the board state. Accepts the complete board JSON. The JSON is parsed and re-serialised to prevent malformed data. The board file is at board/board.json in the workspace.",
+        "description": "Atomically update the board state. Accepts the complete board JSON. The JSON is parsed and re-serialised to prevent malformed data. The board file is at board/board.json in the target project.",
         "input_schema": {
           "type": "object",
           "properties": {
+            "project_slug": {
+              "type": "string",
+              "description": "Project slug (e.g. 'demo-project')"
+            },
             "board_json": {
               "type": "string",
               "description": "Complete board JSON content (must be valid JSON with 'columns' and 'tasks' properties)"
             }
           },
-          "required": ["board_json"]
+          "required": ["project_slug", "board_json"]
         }
       },
       {
@@ -60,6 +72,10 @@ internal static class AnthropicToolSchemas
         "input_schema": {
           "type": "object",
           "properties": {
+            "project_slug": {
+              "type": "string",
+              "description": "Project slug (e.g. 'demo-project')"
+            },
             "agent_slug": {
               "type": "string",
               "description": "Agent slug (e.g. 'dev-alex', 'pm-morgan')"
@@ -77,15 +93,19 @@ internal static class AnthropicToolSchemas
               "description": "Process ID, or omit to clear"
             }
           },
-          "required": ["agent_slug", "status"]
+          "required": ["project_slug", "agent_slug", "status"]
         }
       },
       {
         "name": "write_journal",
-        "description": "Append to or create a daily journal entry for an agent. Journal files live at agents/{slug}/journal/YYYY-MM-DD.md.",
+        "description": "Append to or create a daily journal entry for an agent. Journal files live at agents/{slug}/journal/YYYY-MM-DD.md in the target project.",
         "input_schema": {
           "type": "object",
           "properties": {
+            "project_slug": {
+              "type": "string",
+              "description": "Project slug (e.g. 'demo-project')"
+            },
             "agent_slug": {
               "type": "string",
               "description": "Agent slug"
@@ -99,7 +119,7 @@ internal static class AnthropicToolSchemas
               "description": "Markdown content to append to the journal"
             }
           },
-          "required": ["agent_slug", "date", "content"]
+          "required": ["project_slug", "agent_slug", "date", "content"]
         }
       },
       {
@@ -108,6 +128,10 @@ internal static class AnthropicToolSchemas
         "input_schema": {
           "type": "object",
           "properties": {
+            "project_slug": {
+              "type": "string",
+              "description": "Project slug (e.g. 'demo-project')"
+            },
             "agent_slug": {
               "type": "string",
               "description": "Slug of the target agent (e.g. 'dev-alex')"
@@ -121,7 +145,7 @@ internal static class AnthropicToolSchemas
               "description": "Full message content including YAML frontmatter"
             }
           },
-          "required": ["agent_slug", "filename", "content"]
+          "required": ["project_slug", "agent_slug", "filename", "content"]
         }
       },
       {
@@ -130,6 +154,10 @@ internal static class AnthropicToolSchemas
         "input_schema": {
           "type": "object",
           "properties": {
+            "project_slug": {
+              "type": "string",
+              "description": "Project slug (e.g. 'demo-project')"
+            },
             "agent_slug": {
               "type": "string",
               "description": "Slug of the sending agent (your own slug)"
@@ -143,7 +171,7 @@ internal static class AnthropicToolSchemas
               "description": "Full message content including YAML frontmatter"
             }
           },
-          "required": ["agent_slug", "filename", "content"]
+          "required": ["project_slug", "agent_slug", "filename", "content"]
         }
       },
       {
@@ -152,6 +180,10 @@ internal static class AnthropicToolSchemas
         "input_schema": {
           "type": "object",
           "properties": {
+            "project_slug": {
+              "type": "string",
+              "description": "Project slug (e.g. 'demo-project')"
+            },
             "filename": {
               "type": "string",
               "description": "Decision filename (e.g. '20260402-090000-auth-middleware.md')"
@@ -161,21 +193,25 @@ internal static class AnthropicToolSchemas
               "description": "Full decision content including YAML frontmatter"
             }
           },
-          "required": ["filename", "content"]
+          "required": ["project_slug", "filename", "content"]
         }
       },
       {
         "name": "read_kb",
-        "description": "Read a knowledge base article by slug. Articles are markdown files in the kb/ directory.",
+        "description": "Read a knowledge base article by slug. Articles are markdown files in the kb/ directory of the target project.",
         "input_schema": {
           "type": "object",
           "properties": {
+            "project_slug": {
+              "type": "string",
+              "description": "Project slug (e.g. 'demo-project')"
+            },
             "slug": {
               "type": "string",
               "description": "Article slug (filename without .md extension, e.g. 'agent-setup-guide')"
             }
           },
-          "required": ["slug"]
+          "required": ["project_slug", "slug"]
         }
       }
     ]

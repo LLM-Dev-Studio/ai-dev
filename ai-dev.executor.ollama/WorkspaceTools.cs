@@ -27,35 +27,41 @@ public static class WorkspaceTools
     {
         var validator = new PathValidator(workspaceRoot);
         var audit = new AuditLog(workspaceRoot);
+        var projectSlug = RequireString(arguments, "project_slug");
 
         try
         {
             return toolName switch
             {
-                ReadFile          => FileTools.ReadFile(validator, audit, RequireString(arguments, "path")),
-                ListDirectory     => FileTools.ListDirectory(validator, audit, RequireString(arguments, "path")),
-                UpdateBoard       => BoardTools.UpdateBoard(validator, audit, RequireString(arguments, "board_json")),
+                ReadFile          => FileTools.ReadFile(validator, audit, projectSlug, RequireString(arguments, "path")),
+                ListDirectory     => FileTools.ListDirectory(validator, audit, projectSlug, RequireString(arguments, "path")),
+                UpdateBoard       => BoardTools.UpdateBoard(validator, audit, projectSlug, RequireString(arguments, "board_json")),
                 UpdateAgentStatus => AgentTools.UpdateAgentStatus(validator, audit, 
+                    projectSlug,
                     RequireString(arguments, "agent_slug"), 
                     RequireString(arguments, "status"), 
                     OptionalString(arguments, "session_started_at"), 
                     OptionalInt(arguments, "pid")),
                 WriteJournal      => AgentTools.WriteJournal(validator, audit, 
+                    projectSlug,
                     RequireString(arguments, "agent_slug"), 
                     RequireString(arguments, "date"), 
                     RequireString(arguments, "content")),
                 WriteInbox        => MessageTools.WriteInbox(validator, audit, 
+                    projectSlug,
                     RequireString(arguments, "agent_slug"), 
                     RequireString(arguments, "filename"), 
                     RequireString(arguments, "content")),
                 WriteOutbox       => MessageTools.WriteOutbox(validator, audit, 
+                    projectSlug,
                     RequireString(arguments, "agent_slug"), 
                     RequireString(arguments, "filename"), 
                     RequireString(arguments, "content")),
                 WriteDecision     => DecisionTools.WriteDecision(validator, audit, 
+                    projectSlug,
                     RequireString(arguments, "filename"), 
                     RequireString(arguments, "content")),
-                ReadKb            => KbTools.ReadKb(validator, audit, RequireString(arguments, "slug")),
+                ReadKb            => KbTools.ReadKb(validator, audit, projectSlug, RequireString(arguments, "slug")),
                 _                 => $"Unknown tool: {toolName}",
             };
         }
