@@ -29,12 +29,14 @@ public class StudioSettingsService(IConfiguration configuration)
 
         var ollamaBaseUrl = GetConfiguredValue(nameof(StudioSettings.OllamaBaseUrl));
         var anthropicApiKey = GetConfiguredValue(nameof(StudioSettings.AnthropicApiKey));
+        var enableInsightsStr = GetConfiguredValue(nameof(StudioSettings.EnableInsights));
 
         return new StudioSettings
         {
             Models = models,
             OllamaBaseUrl = string.IsNullOrWhiteSpace(ollamaBaseUrl) ? DefaultOllamaBaseUrl : ollamaBaseUrl,
             AnthropicApiKey = string.IsNullOrWhiteSpace(anthropicApiKey) ? null : anthropicApiKey,
+            EnableInsights = bool.TryParse(enableInsightsStr, out var enableInsights) && enableInsights,
         };
     }
 

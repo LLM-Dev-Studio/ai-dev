@@ -12,4 +12,10 @@ public class StudioSettings
 
     /// <summary>GitHub personal access token for the GitHub Models executor. Set to null to disable.</summary>
     public string? GitHubToken { get; set; }
+
+    /// <summary>
+    /// When true, generates AI-powered session insights via the Anthropic API after each session ends.
+    /// Disabled by default because it incurs an extra API call per session.
+    /// </summary>
+    public bool EnableInsights { get; set; }
 }

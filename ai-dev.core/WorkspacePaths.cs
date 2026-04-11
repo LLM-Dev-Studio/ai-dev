@@ -47,6 +47,7 @@ public record AgentJournalDir(string Value) : DirPath(Value);
 public record AgentTranscriptsDir(string Value) : DirPath(Value);
 
 public record TranscriptFile(string Value) : FilePath(Value);
+public record InsightFile(string Value) : FilePath(Value);
 public record SecretsFile(string Value) : FilePath(Value);
 public record KbArticleFile(string Value) : FilePath(Value);
 public record PlaybookArticleFile(string Value) : FilePath(Value);
@@ -99,6 +100,7 @@ public class WorkspacePaths
     public AgentTranscriptsDir AgentTranscriptsDir(ProjectSlug p, AgentSlug a) => AgentDir(p, a).AgentTranscriptsDir();
 
     public TranscriptFile TranscriptPath(ProjectSlug p, AgentSlug a, TranscriptDate date) => AgentTranscriptsDir(p, a).TranscriptFile(date);
+    public InsightFile InsightPath(ProjectSlug p, AgentSlug a, TranscriptDate date) => AgentTranscriptsDir(p, a).InsightFile(date);
     public KbArticleFile? SafeKbArticlePath(ProjectSlug p, string slug) => KbDir(p).SafeKbArticleFile(slug);
     public PlaybookArticleFile? SafePlaybookPath(ProjectSlug p, string slug) => PlaybooksDir(p).SafePlaybookFile(slug);
     public TemplateFile? SafeTemplatePath(string slug, string extension) => AgentTemplatesDir.SafeTemplateFile(slug, extension);

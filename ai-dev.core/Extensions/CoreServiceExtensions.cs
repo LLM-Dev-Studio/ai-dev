@@ -3,6 +3,7 @@ using AiDev.Features.Agent;
 using AiDev.Features.Board;
 using AiDev.Features.Decision;
 using AiDev.Features.Digest;
+using AiDev.Features.Insights;
 using AiDev.Features.Journal;
 using AiDev.Features.KnowledgeBase;
 using AiDev.Features.Playbook;
@@ -46,7 +47,14 @@ public static class CoreServiceExtensions
         services.AddSingleton<DigestService>();
         services.AddSingleton<GitService>();
         services.AddSingleton<PromptEnhancerService>();
+        services.AddSingleton<InsightsService>();
         services.AddSingleton<AgentRunnerService>();
+
+        // Named HTTP client for insights generation (non-streaming, moderate timeout).
+        services.AddHttpClient("anthropic-insights", client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(2);
+        });
 
         // ExecutorHealthMonitor polls all registered IAgentExecutor implementations.
         // Registered as both a singleton (so it can be injected by name) and a hosted service.

@@ -1,4 +1,5 @@
 using AiDev.Features.Decision;
+using AiDev.Features.Insights;
 using AiDev.Features.KnowledgeBase;
 using AiDev.Features.Playbook;
 using AiDev.Features.Secrets;
@@ -93,6 +94,7 @@ public class DecisionChatServiceTests
             new KbService(paths, fileWriter, new ProjectMutationCoordinator()),
             new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()),
             new SecretsService(paths, fileWriter),
+            new InsightsService(Substitute.For<IHttpClientFactory>(), settings, NullLogger<InsightsService>.Instance),
             NullLogger<AgentRunnerService>.Instance);
     }
 

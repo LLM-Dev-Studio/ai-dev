@@ -1,4 +1,5 @@
 using AiDev.Executors;
+using AiDev.Features.Insights;
 using AiDev.Features.KnowledgeBase;
 using AiDev.Features.Playbook;
 using AiDev.Features.Secrets;
@@ -19,6 +20,7 @@ public class AgentRunnerService(
     KbService kbService,
     PlaybookService playbookService,
     SecretsService secretsService,
+    InsightsService insightsService,
     ILogger<AgentRunnerService> logger)
 {
     private static readonly ActivitySource ActivitySource = new("AiDevNet.AgentRunner");
@@ -394,6 +396,17 @@ public class AgentRunnerService(
             activity?.SetTag("agent.finishedAt", exitedAt.ToString("o"));
             activity?.AddEvent(new("session.finished"));
             logger.LogInformation("[runner] Agent {Key} finished (exit={Code}) at {Time}", key, exitCode, exitedAt);
+
+            // Generate AI insights for the completed session (fire-and-forget; CancellationToken.None so
+            // insights finish writing even after the session CT is cancelled at shutdown).
+            var insightPath = paths.InsightPath(projectSlug, agentSlug, transcriptDate).Value;
+            _ = insightsService.GenerateAndSaveAsync(transcriptPath, insightPath, CancellationToken.None)
+                .ContinueWith(t =>
+                {
+                    if (t.Exception != null)
+                        logger.LogWarning(t.Exception, "[runner] Insights generation faulted for {Project}/{Agent}",
+                            projectSlug.Value, agentSlug.Value);
+                }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 
             _sessions.TryRemove(key, out _);
 
