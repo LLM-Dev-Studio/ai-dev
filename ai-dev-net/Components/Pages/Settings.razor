@@ -68,6 +68,12 @@
     </div>
 </div>
 
+<div class="rounded-lg border border-border bg-card p-6 mt-4">
+    <p class="text-sm font-semibold text-foreground mb-1">Executors</p>
+    <p class="text-xs text-muted-foreground mb-4">Live health status for all registered AI executors.</p>
+    <ExecutorStatusPanel />
+</div>
+
 @code {
     private record AliasRow(string Alias, string ModelId);
 

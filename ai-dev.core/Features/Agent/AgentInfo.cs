@@ -17,7 +17,9 @@ public sealed class AgentInfo
         IReadOnlyList<string>? skills = null,
         string? lastError = null,
         DateTime? lastErrorAt = null,
-        ThinkingLevel thinkingLevel = ThinkingLevel.Off)
+        ThinkingLevel thinkingLevel = ThinkingLevel.Off,
+        AgentExecutorName? failoverExecutor = null,
+        DateTime? failedOverAt = null)
     {
         ArgumentNullException.ThrowIfNull(slug);
         if (string.IsNullOrWhiteSpace(name))
@@ -38,6 +40,8 @@ public sealed class AgentInfo
         LastError = string.IsNullOrWhiteSpace(lastError) ? null : lastError;
         LastErrorAt = lastErrorAt;
         ThinkingLevel = thinkingLevel;
+        FailoverExecutor = failoverExecutor;
+        FailedOverAt = failoverExecutor == null ? null : failedOverAt;
     }
 
     public AgentSlug Slug { get; }
@@ -58,6 +62,17 @@ public sealed class AgentInfo
     /// Empty means the executor uses its own defaults (preserves behaviour for existing agents).
     /// </summary>
     public IReadOnlyList<string> Skills { get; private set; }
+
+    /// <summary>
+    /// The executor this agent was automatically failed over to, or null if no failover has occurred.
+    /// Set by AgentRunnerService when it detects an executor failure and switches the agent.
+    /// </summary>
+    public AgentExecutorName? FailoverExecutor { get; private set; }
+
+    /// <summary>
+    /// When the automatic failover occurred, or null if no failover has occurred.
+    /// </summary>
+    public DateTime? FailedOverAt { get; private set; }
 
     /// <summary>
     /// Updates editable agent metadata while keeping defaults and null handling consistent.
@@ -113,5 +128,23 @@ public sealed class AgentInfo
             throw new ArgumentOutOfRangeException(nameof(inboxCount));
 
         InboxCount = inboxCount;
+    }
+
+    /// <summary>
+    /// Records that this agent was automatically failed over to a fallback executor.
+    /// </summary>
+    public void RecordFailover(AgentExecutorName executor, DateTime at)
+    {
+        FailoverExecutor = executor;
+        FailedOverAt = at;
+    }
+
+    /// <summary>
+    /// Clears any recorded failover state (e.g. after the user manually reassigns the executor).
+    /// </summary>
+    public void ClearFailover()
+    {
+        FailoverExecutor = null;
+        FailedOverAt = null;
     }
 }

@@ -1,0 +1,44 @@
+@using AiDev.Features.Agent
+
+@{
+    var failoverAgents = Agents.Where(a => a.FailoverExecutor != null).OrderByDescending(a => a.FailedOverAt).ToList();
+}
+
+@if (failoverAgents.Count > 0)
+{
+    <div class="mt-8">
+        <h2 class="text-sm font-semibold text-foreground mb-3">Events</h2>
+        <div class="space-y-2">
+            @foreach (var agent in failoverAgents)
+            {
+                <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+                    <div class="flex items-start gap-3">
+                        <SvgIcon Name="shield-alert" Class="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center justify-between gap-2">
+                                <p class="text-sm font-medium text-foreground truncate">
+                                    <a href="@($"/projects/{ProjectSlug}/agents/{agent.Slug}")"
+                                       class="hover:text-amber-300 transition-colors">@agent.Name</a>
+                                    auto-switched to
+                                    <span class="font-mono text-amber-300">@agent.FailoverExecutor!.Value</span>
+                                </p>
+                                @if (agent.FailedOverAt.HasValue)
+                                {
+                                    <span class="text-xs text-muted-foreground flex-shrink-0">@FormatDate(agent.FailedOverAt.Value)</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<AgentInfo> Agents { get; set; } = [];
+    [Parameter, EditorRequired] public string ProjectSlug { get; set; } = string.Empty;
+
+    private static string FormatDate(DateTime dt) =>
+        dt.ToLocalTime().ToString("MMM d 'at' HH:mm");
+}

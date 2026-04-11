@@ -1,0 +1,149 @@
+@using AiDev.Executors
+@using AiDev.Features.Agent
+@using AiDev.Models
+@using AiDev.Models.Types
+@using AiDev.Services
+@inject ExecutorHealthMonitor ExecutorHealthMonitor
+@inject AgentService AgentService
+@inject IModelRegistry ModelRegistry
+
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @onclick="OnClose">
+    <div class="bg-card border border-border rounded-lg w-full max-w-lg p-6" @onclick:stopPropagation="true">
+        <div class="flex items-center justify-between mb-5">
+            <p class="text-sm font-semibold text-foreground">Switch all agents to executor</p>
+            <button @onclick="OnClose" class="p-1 text-muted-foreground hover:text-foreground transition-colors">
+                <SvgIcon Name="x" Class="w-4 h-4" />
+            </button>
+        </div>
+
+        <!-- Target executor selector -->
+        <div class="mb-5">
+            <label class="block text-xs text-muted-foreground mb-1">Target executor</label>
+            @if (_onlineExecutors.Count == 0)
+            {
+                <p class="text-sm text-amber-300">No executors are currently online.</p>
+            }
+            else
+            {
+                <select @bind="_targetExecutorValue"
+                        class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                    <option value="">— select executor —</option>
+                    @foreach (var opt in _onlineExecutors)
+                    {
+                        <option value="@opt.Name.Value">@opt.DisplayName</option>
+                    }
+                </select>
+            }
+        </div>
+
+        <!-- Agent list showing current assignments -->
+        <div class="mb-5">
+            <p class="text-xs text-muted-foreground mb-2">Current agent assignments</p>
+            @if (Agents.Count == 0)
+            {
+                <p class="text-sm text-muted-foreground">No agents in this project.</p>
+            }
+            else
+            {
+                <div class="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                    @foreach (var agent in Agents)
+                    {
+                        <div class="flex items-center justify-between py-1.5 px-3 rounded-md border border-border bg-muted/30 text-sm">
+                            <span class="text-foreground">@agent.Name</span>
+                            <span class="text-xs text-muted-foreground font-mono">@agent.Executor.DisplayName</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <p class="text-xs text-destructive mb-4">@_errorMessage</p>
+        }
+
+        <div class="flex justify-end gap-3">
+            <button @onclick="OnClose"
+                    class="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors">
+                Cancel
+            </button>
+            <button @onclick="ApplySwitch"
+                    disabled="@(string.IsNullOrEmpty(_targetExecutorValue) || _applying || _onlineExecutors.Count == 0)"
+                    class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                @(_applying ? "Switching…" : "Switch all")
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string ProjectSlug { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public List<AgentInfo> Agents { get; set; } = [];
+    [Parameter, EditorRequired] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSwitched { get; set; }
+
+    private sealed record ExecutorOption(AgentExecutorName Name, string DisplayName);
+
+    private List<ExecutorOption> _onlineExecutors = [];
+    private string _targetExecutorValue = string.Empty;
+    private bool _applying;
+    private string _errorMessage = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        _onlineExecutors = ExecutorHealthMonitor.GetExecutorHealth()
+            .Where(e => e.Health.IsHealthy)
+            .Select(e => new ExecutorOption(
+                AgentExecutorName.TryParse(e.Executor.Name, out var name) ? name : AgentExecutorName.Default,
+                e.Executor.DisplayName))
+            .DistinctBy(o => o.Name)
+            .OrderBy(o => o.DisplayName)
+            .ToList();
+    }
+
+    private async Task ApplySwitch()
+    {
+        if (string.IsNullOrEmpty(_targetExecutorValue)) return;
+        if (!AgentExecutorName.TryParse(_targetExecutorValue, out var targetExecutor)) return;
+
+        _applying = true;
+        _errorMessage = string.Empty;
+        StateHasChanged();
+        await Task.Yield();
+
+        foreach (var agent in Agents)
+        {
+            var newModel = agent.Model;
+            var executorModels = ModelRegistry.GetModelsForExecutor(targetExecutor.Value);
+            if (executorModels.Count > 0 && !executorModels.Any(m => m.Id == newModel))
+                newModel = executorModels[0].Id;
+
+            var supportsReasoning = executorModels
+                .FirstOrDefault(m => m.Id == newModel)
+                ?.Capabilities.HasFlag(ModelCapabilities.Reasoning) == true;
+            var newThinkingLevel = supportsReasoning ? agent.ThinkingLevel : ThinkingLevel.Off;
+
+            var err = AgentService.SaveAgentMeta(
+                ProjectSlug,
+                agent.Slug,
+                agent.Name,
+                agent.Description,
+                newModel,
+                targetExecutor,
+                agent.Skills,
+                newThinkingLevel)
+                .ToErrorMessage();
+
+            if (err != null)
+            {
+                _errorMessage = $"Failed to update {agent.Name}: {err}";
+                _applying = false;
+                return;
+            }
+        }
+
+        _applying = false;
+        _ = OnSwitched.InvokeAsync();
+        _ = OnClose.InvokeAsync();
+    }
+}

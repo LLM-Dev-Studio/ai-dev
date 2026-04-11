@@ -88,8 +88,8 @@ else
 
     protected override Task OnInitializedAsync()
     {
-        Load();
         DecisionChangedNotifier.Changed += OnDecisionsChanged;
+        Load();
         return Task.CompletedTask;
     }
 

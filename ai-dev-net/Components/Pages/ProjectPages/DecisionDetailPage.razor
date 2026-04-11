@@ -43,14 +43,6 @@ else
                     <span class="text-xs px-1.5 py-0.5 rounded border @StatusBadge(decision.Status.Value)">@decision.Status.Value</span>
                 </div>
             </div>
-            @if (decision.Status.IsPending && !showResolveDialog)
-            {
-                <button @onclick="() => showResolveDialog = true"
-                        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors flex-shrink-0">
-                    <SvgIcon Name="check-circle-2" Class="w-3 h-3" />
-                    Resolve
-                </button>
-            }
         </div>
 
         <!-- Original decision body -->
@@ -126,59 +118,65 @@ else
             </div>
         }
 
-        <!-- Chat input for pending decisions -->
-        @if (decision.Status.IsPending && !showResolveDialog)
+        <!-- Chat input and resolve for pending decisions -->
+        @if (decision.Status.IsPending)
         {
-            <div class="rounded-lg border border-border bg-card p-4">
-                <textarea value="@chatInput"
-                          @oninput="e => chatInput = e.Value?.ToString() ?? string.Empty"
-                          @onkeydown="OnChatKeyDown"
-                          placeholder="Type your message… (Shift+Enter for new line, Enter to send)"
-                          rows="3"
-                          class="w-full bg-background border border-border rounded-md p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-3"></textarea>
-                @if (!string.IsNullOrEmpty(chatError))
-                {
-                    <p class="text-xs text-destructive mb-2">@chatError</p>
-                }
-                <div class="flex justify-end">
-                    <button @onclick="SendMessage"
-                            disabled="@(sendingMessage || string.IsNullOrWhiteSpace(chatInput))"
-                            class="flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors">
-                        <SvgIcon Name="send" Class="w-3.5 h-3.5" />
-                        @(sendingMessage ? "Sending…" : "Send")
-                    </button>
+            @if (!showResolveDialog)
+            {
+                <div class="rounded-lg border border-border bg-card p-4">
+                    <textarea value="@chatInput"
+                              @oninput="e => chatInput = e.Value?.ToString() ?? string.Empty"
+                              @onkeydown="OnChatKeyDown"
+                              placeholder="Type your message… (Shift+Enter for new line, Enter to send)"
+                              rows="3"
+                              class="w-full bg-background border border-border rounded-md p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-3"></textarea>
+                    @if (!string.IsNullOrEmpty(chatError))
+                    {
+                        <p class="text-xs text-destructive mb-2">@chatError</p>
+                    }
+                    <div class="flex items-center justify-between">
+                        <button @onclick="StartResolve"
+                                class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors">
+                            <SvgIcon Name="check-circle-2" Class="w-3 h-3" />
+                            Resolve
+                        </button>
+                        <button @onclick="SendMessage"
+                                disabled="@(sendingMessage || string.IsNullOrWhiteSpace(chatInput))"
+                                class="flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors">
+                            <SvgIcon Name="send" Class="w-3.5 h-3.5" />
+                            @(sendingMessage ? "Sending…" : "Send")
+                        </button>
+                    </div>
                 </div>
-            </div>
-        }
-
-        <!-- Resolve dialog -->
-        @if (showResolveDialog)
-        {
-            <div class="rounded-lg border border-emerald-400/30 bg-card p-5">
-                <p class="text-sm font-medium text-foreground mb-1">Resolve this decision</p>
-                <p class="text-xs text-muted-foreground mb-3">Optionally provide a summary that will be sent to the agent.</p>
-                <textarea value="@resolveResponse"
-                          @oninput="e => resolveResponse = e.Value?.ToString() ?? string.Empty"
-                          placeholder="Resolution summary (optional)…"
-                          rows="3"
-                          class="w-full bg-background border border-border rounded-md p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-3"></textarea>
-                @if (!string.IsNullOrEmpty(resolveError))
-                {
-                    <p class="text-xs text-destructive mb-2">@resolveError</p>
-                }
-                <div class="flex justify-end gap-3">
-                    <button @onclick="() => { showResolveDialog = false; resolveError = string.Empty; }"
-                            class="px-3 py-1.5 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground transition-colors">
-                        Cancel
-                    </button>
-                    <button @onclick="Resolve"
-                            disabled="@submitting"
-                            class="flex items-center gap-1.5 px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium disabled:opacity-50 hover:bg-emerald-500 transition-colors">
-                        <SvgIcon Name="check-circle-2" Class="w-3.5 h-3.5" />
-                        @(submitting ? "Resolving…" : "Confirm Resolution")
-                    </button>
+            }
+            else
+            {
+                <div class="rounded-lg border border-emerald-400/30 bg-card p-5">
+                    <p class="text-sm font-medium text-foreground mb-1">Resolve this decision</p>
+                    <p class="text-xs text-muted-foreground mb-3">Optionally provide a summary that will be sent to the agent.</p>
+                    <textarea value="@resolveResponse"
+                              @oninput="e => resolveResponse = e.Value?.ToString() ?? string.Empty"
+                              placeholder="Resolution summary (optional)…"
+                              rows="3"
+                              class="w-full bg-background border border-border rounded-md p-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-3"></textarea>
+                    @if (!string.IsNullOrEmpty(resolveError))
+                    {
+                        <p class="text-xs text-destructive mb-2">@resolveError</p>
+                    }
+                    <div class="flex justify-end gap-3">
+                        <button @onclick="() => { showResolveDialog = false; resolveError = string.Empty; }"
+                                class="px-3 py-1.5 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground transition-colors">
+                            Cancel
+                        </button>
+                        <button @onclick="Resolve"
+                                disabled="@submitting"
+                                class="flex items-center gap-1.5 px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium disabled:opacity-50 hover:bg-emerald-500 transition-colors">
+                            <SvgIcon Name="check-circle-2" Class="w-3.5 h-3.5" />
+                            @(submitting ? "Resolving…" : "Confirm Resolution")
+                        </button>
+                    </div>
                 </div>
-            </div>
+            }
         }
     </div>
 }
@@ -269,6 +267,9 @@ else
             }
 
             RefreshDecisionState(flushReplies: false);
+            // Ensure queued indicator appears immediately even if agent picks up inbox before the poll
+            if (!messageQueued && !agentIsRunning)
+                messageQueued = decision?.Status.IsPending == true;
         }
         catch (IOException ex)
         {
@@ -292,6 +293,13 @@ else
         }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void StartResolve()
+    {
+        resolveResponse = chatInput.Trim();
+        chatInput = string.Empty;
+        showResolveDialog = true;
     }
 
     private async Task OnChatKeyDown(KeyboardEventArgs e)
