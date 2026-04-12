@@ -10,6 +10,7 @@ public sealed record AgentExecutorName
     public const string AnthropicValue = "anthropic";
     public const string OllamaValue = "ollama";
     public const string GitHubModelsValue = "github-models";
+    public const string LmStudioValue = "lmstudio";
 
     private AgentExecutorName(string value, string displayName)
     {
@@ -24,9 +25,10 @@ public sealed record AgentExecutorName
     public static AgentExecutorName Anthropic { get; } = new(AnthropicValue, "Anthropic API");
     public static AgentExecutorName Ollama { get; } = new(OllamaValue, "Ollama");
     public static AgentExecutorName GitHubModels { get; } = new(GitHubModelsValue, "GitHub Models");
+    public static AgentExecutorName LmStudio { get; } = new(LmStudioValue, "LM Studio");
 
     public static AgentExecutorName Default => Claude;
-    public static IReadOnlyList<AgentExecutorName> Supported { get; } = [Claude, Anthropic, Ollama, GitHubModels];
+    public static IReadOnlyList<AgentExecutorName> Supported { get; } = [Claude, Anthropic, Ollama, GitHubModels, LmStudio];
 
     public static bool TryParse(string? value, [NotNullWhen(true)] out AgentExecutorName? executor)
     {
@@ -36,6 +38,7 @@ public sealed record AgentExecutorName
             AnthropicValue => Anthropic,
             OllamaValue => Ollama,
             GitHubModelsValue => GitHubModels,
+            LmStudioValue => LmStudio,
             _ => null,
         };
 

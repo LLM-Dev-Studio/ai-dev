@@ -7,6 +7,7 @@ public class StudioSettingsService(IConfiguration configuration)
 {
     private const string StudioSettingsSectionName = "StudioSettings";
     private const string DefaultOllamaBaseUrl = "http://localhost:11434";
+    private const string DefaultLmStudioBaseUrl = "http://localhost:1234";
 
     private static readonly Dictionary<string, string> Defaults = new()
     {
@@ -28,6 +29,7 @@ public class StudioSettingsService(IConfiguration configuration)
         }
 
         var ollamaBaseUrl = GetConfiguredValue(nameof(StudioSettings.OllamaBaseUrl));
+        var lmStudioBaseUrl = GetConfiguredValue(nameof(StudioSettings.LmStudioBaseUrl));
         var anthropicApiKey = GetConfiguredValue(nameof(StudioSettings.AnthropicApiKey));
         var insightsExecutor = GetConfiguredValue(nameof(StudioSettings.InsightsExecutor));
         var insightsModel = GetConfiguredValue(nameof(StudioSettings.InsightsModel));
@@ -36,6 +38,7 @@ public class StudioSettingsService(IConfiguration configuration)
         {
             Models = models,
             OllamaBaseUrl = string.IsNullOrWhiteSpace(ollamaBaseUrl) ? DefaultOllamaBaseUrl : ollamaBaseUrl,
+            LmStudioBaseUrl = string.IsNullOrWhiteSpace(lmStudioBaseUrl) ? DefaultLmStudioBaseUrl : lmStudioBaseUrl,
             AnthropicApiKey = string.IsNullOrWhiteSpace(anthropicApiKey) ? null : anthropicApiKey,
             InsightsExecutor = string.IsNullOrWhiteSpace(insightsExecutor) ? null : insightsExecutor.Trim(),
             InsightsModel = string.IsNullOrWhiteSpace(insightsModel) ? null : insightsModel.Trim(),

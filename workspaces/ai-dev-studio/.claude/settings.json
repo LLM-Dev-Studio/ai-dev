@@ -6,9 +6,9 @@
       "args": [
         "run",
         "--project",
-        "/path/to/ai-dev.mcp",
+        "D:\\Code\\ai-dev-net\\ai-dev.mcp",
         "--",
-        "/path/to/workspaces/ai-dev-studio"
+        "D:\\Code\\ai-dev-net\\workspaces"
       ]
     }
   },

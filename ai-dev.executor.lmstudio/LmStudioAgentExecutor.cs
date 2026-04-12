@@ -1,0 +1,431 @@
+using System.Diagnostics;
+using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading.Channels;
+using AiDev.Services;
+using Microsoft.Extensions.Logging;
+
+namespace AiDev.Executors;
+
+/// <summary>
+/// Runs an agent session via the LM Studio HTTP API.
+///
+/// Health checks use the native <c>/api/v1/models</c> endpoint to discover loaded models.
+/// Inference uses the OpenAI-compatible <c>/v1/chat/completions</c> endpoint which supports
+/// streaming and function calling (the native <c>/api/v1/chat</c> does not support custom tools).
+///
+/// When the "mcp-workspace" skill is enabled, workspace tool schemas are included in the
+/// request (OpenAI function-calling format, same as the Ollama and GitHub Models executors).
+/// The executor handles tool_calls returned by the model, executes the corresponding workspace
+/// operations, appends results to the message history, and re-invokes the model — continuing
+/// until the model produces a final response with no further tool calls.
+/// </summary>
+public sealed class LmStudioAgentExecutor(
+    IHttpClientFactory httpClientFactory,
+    StudioSettingsService settingsService,
+    ILogger<LmStudioAgentExecutor> logger) : IAgentExecutor
+{
+    public string Name        => "lmstudio";
+    public string DisplayName => "LM Studio";
+
+    public IReadOnlyList<ExecutorSkill> AvailableSkills { get; } = LmStudioSkills.All;
+
+    /// <summary>
+    /// LM Studio models are loaded locally — none are known ahead of time.
+    /// The health check discovers them dynamically from /api/v1/models.
+    /// </summary>
+    public IReadOnlyList<ModelDescriptor> KnownModels => [];
+
+    private const int MaxToolIterations = 30;
+    private const int DefaultMaxTokens  = 4096;
+
+    // -------------------------------------------------------------------------
+    // Health check
+    // -------------------------------------------------------------------------
+
+    public async Task<ExecutorHealthResult> CheckHealthAsync(CancellationToken ct = default)
+    {
+        var baseUrl = settingsService.GetSettings().LmStudioBaseUrl.TrimEnd('/');
+        var url     = $"{baseUrl}/api/v1/models";
+
+        try
+        {
+            var http     = httpClientFactory.CreateClient("lmstudio-health");
+            var response = await http.GetAsync(url, ct).ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode)
+                return new ExecutorHealthResult(false, $"LM Studio returned HTTP {(int)response.StatusCode}");
+
+            List<ModelDescriptor> discovered = [];
+            try
+            {
+                var doc = await response.Content.ReadFromJsonAsync<JsonDocument>(ct).ConfigureAwait(false);
+
+                // LM Studio /api/v1/models returns { "models": [ { "key": "...", "display_name": "...", "type": "llm", "capabilities": {...} } ] }
+                if (doc?.RootElement.TryGetProperty("models", out var models) == true
+                    && models.ValueKind == JsonValueKind.Array)
+                {
+                    discovered = models.EnumerateArray()
+                        // Only include LLMs, not embedding models.
+                        .Where(m => !m.TryGetProperty("type", out var t) || t.GetString() != "embedding")
+                        .Select(m =>
+                        {
+                            var id   = m.TryGetProperty("key",          out var kp) ? kp.GetString() ?? string.Empty : string.Empty;
+                            var name = m.TryGetProperty("display_name", out var dp) ? dp.GetString() ?? id           : id;
+
+                            var caps = ModelCapabilities.Streaming;
+                            if (m.TryGetProperty("capabilities", out var capObj) && capObj.ValueKind == JsonValueKind.Object)
+                            {
+                                if (capObj.TryGetProperty("trained_for_tool_use", out var tu) && tu.GetBoolean())
+                                    caps |= ModelCapabilities.ToolCalling;
+                                if (capObj.TryGetProperty("vision", out var vis) && vis.GetBoolean())
+                                    caps |= ModelCapabilities.Vision;
+                            }
+
+                            return (id, name, caps);
+                        })
+                        .Where(t => t.id.Length > 0)
+                        .Select(t => new ModelDescriptor(t.id, t.name, "lmstudio", t.caps))
+                        .ToList();
+                }
+            }
+            catch { /* model list is best-effort */ }
+
+            var message = discovered.Count > 0
+                ? $"{discovered.Count} model(s) available"
+                : "Connected (no models loaded)";
+
+            return new ExecutorHealthResult(true, message, discovered);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "[lmstudio-health] Probe failed: {Message}", ex.Message);
+            return new ExecutorHealthResult(false, $"Connection refused: {ex.Message}");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Run
+    // -------------------------------------------------------------------------
+
+    public async Task<ExecutorResult> RunAsync(ExecutorContext context, ChannelWriter<string> output)
+    {
+        using var activity = AiDevTelemetry.ActivitySource.StartActivity("Executor.LmStudio.Run", ActivityKind.Client);
+        activity?.SetTag("executor.name", Name);
+        activity?.SetTag("project.slug", context.Trigger?.ProjectSlug);
+        activity?.SetTag("task.id", context.Trigger?.TaskId);
+        activity?.SetTag("decision.id", context.Trigger?.DecisionId);
+        activity?.SetTag("agent.trigger.source", context.Trigger?.Source);
+        activity?.SetTag("agent.trigger.reason", context.Trigger?.Reason);
+        activity?.SetTag("message.file", context.Trigger?.MessageFile);
+
+        var systemPrompt = BuildSystemPrompt(context.WorkingDir);
+        var rawBaseUrl   = settingsService.GetSettings().LmStudioBaseUrl.TrimEnd('/');
+
+        if (!Uri.TryCreate(rawBaseUrl, UriKind.Absolute, out var parsedUri)
+            || (parsedUri.Scheme != Uri.UriSchemeHttp && parsedUri.Scheme != Uri.UriSchemeHttps))
+        {
+            var msg = $"LmStudioBaseUrl '{rawBaseUrl}' is not a valid http/https URL. Aborting.";
+            logger.LogError("[lmstudio] {Message}", msg);
+            output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
+            return new ExecutorResult(1, ErrorMessage: msg);
+        }
+
+        // OpenAI-compatible endpoint for inference (supports tool calling).
+        var requestUri    = $"{rawBaseUrl}/v1/chat/completions";
+        var enableTools   = LmStudioSkills.AreWorkspaceToolsEnabled(context.EnabledSkills);
+        var workspaceRoot = enableTools ? DeriveWorkspaceRoot(context.WorkingDir) : null;
+
+        logger.LogInformation(
+            "[lmstudio] Starting session — model={Model} endpoint={Uri} tools={Tools}",
+            context.ModelId, requestUri, enableTools ? "enabled" : "disabled");
+        logger.LogInformation(
+            "[lmstudio] Trigger source={Source} reason={Reason} project={Project} task={TaskId} decision={DecisionId} message={MessageFile}",
+            context.Trigger?.Source,
+            context.Trigger?.Reason,
+            context.Trigger?.ProjectSlug,
+            context.Trigger?.TaskId,
+            context.Trigger?.DecisionId,
+            context.Trigger?.MessageFile);
+        output.TryWrite($"[{DateTime.UtcNow:o}] [lmstudio] model={context.ModelId} endpoint={requestUri}");
+
+        if (enableTools)
+            output.TryWrite($"[{DateTime.UtcNow:o}] [lmstudio] workspace tools enabled — root={workspaceRoot}");
+
+        // Build mutable message history for the tool execution loop.
+        var messages = new List<JsonNode>
+        {
+            new JsonObject { ["role"] = "system", ["content"] = systemPrompt },
+            new JsonObject { ["role"] = "user",   ["content"] = context.Prompt },
+        };
+
+        var http      = httpClientFactory.CreateClient("lmstudio");
+        int iteration = 0;
+        TokenUsage? totalUsage = null;
+
+        while (iteration++ < MaxToolIterations)
+        {
+            context.CancellationToken.ThrowIfCancellationRequested();
+
+            var requestBody = BuildRequest(context.ModelId, messages, enableTools);
+
+            HttpResponseMessage response;
+            try
+            {
+                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, requestUri)
+                {
+                    Content = new StringContent(requestBody, Encoding.UTF8, "application/json"),
+                };
+
+                response = await http.SendAsync(
+                    httpRequest, HttpCompletionOption.ResponseHeadersRead, context.CancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                var msg = $"Failed to connect to LM Studio at {requestUri}: {ex.Message}";
+                logger.LogError(ex, "[lmstudio] {Message}", msg);
+                output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
+                return new ExecutorResult(1, ErrorMessage: msg);
+            }
+
+            using var _ = response;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(context.CancellationToken).ConfigureAwait(false);
+                var msg  = $"LM Studio returned HTTP {(int)response.StatusCode}: {body}";
+                logger.LogError("[lmstudio] {Message}", msg);
+                output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
+                return new ExecutorResult(1, ErrorMessage: msg);
+            }
+
+            logger.LogInformation("[lmstudio] Streaming response — iteration {N}", iteration);
+
+            // Stream and parse OpenAI SSE response.
+            var (finishReason, textContent, toolCalls, sessionUsage) =
+                await StreamSseAsync(response, output, context.CancellationToken).ConfigureAwait(false);
+
+            // Accumulate usage across all tool-call iterations.
+            if (sessionUsage != null)
+                totalUsage = totalUsage == null ? sessionUsage : totalUsage + sessionUsage;
+
+            logger.LogInformation("[lmstudio] finish_reason={Reason} iteration={N}", finishReason, iteration);
+
+            // Final response: no tool calls.
+            if (toolCalls.Count == 0)
+            {
+                logger.LogInformation(
+                    "[lmstudio] Session complete — {Chars} chars | iterations: {N}",
+                    textContent.Length, iteration);
+                return new ExecutorResult(0, Usage: totalUsage);
+            }
+
+            // Tool calls requested — execute and loop.
+            logger.LogInformation(
+                "[lmstudio] Tool calls requested — count={Count} iteration={N}", toolCalls.Count, iteration);
+            output.TryWrite($"[{DateTime.UtcNow:o}] [lmstudio] tool calls: {toolCalls.Count} (iteration {iteration})");
+
+            // Append assistant message with tool_calls.
+            var toolCallsArray = new JsonArray();
+            foreach (var tc in toolCalls)
+            {
+                toolCallsArray.Add(new JsonObject
+                {
+                    ["id"]   = tc.Id,
+                    ["type"] = "function",
+                    ["function"] = new JsonObject
+                    {
+                        ["name"]      = tc.Name,
+                        ["arguments"] = tc.Arguments.ToString(),
+                    },
+                });
+            }
+
+            var assistantMsg = new JsonObject
+            {
+                ["role"]       = "assistant",
+                ["content"]    = textContent.Length > 0 ? (JsonNode?)textContent : null,
+                ["tool_calls"] = toolCallsArray,
+            };
+            messages.Add(assistantMsg);
+
+            // Execute each tool and append tool result messages.
+            foreach (var tc in toolCalls)
+            {
+                var argsJson    = tc.Arguments.ToString();
+                var argsPreview = argsJson.Length > 80 ? argsJson[..80] + "..." : argsJson;
+                output.TryWrite($"[{DateTime.UtcNow:o}] [tool:call] {tc.Name}({argsPreview})");
+                logger.LogInformation("[lmstudio] Executing tool — {Tool}({Args})", tc.Name, argsPreview);
+
+                JsonElement argsElement;
+                try   { argsElement = JsonDocument.Parse(argsJson).RootElement; }
+                catch { argsElement = JsonDocument.Parse("{}").RootElement; }
+
+                var result = workspaceRoot != null
+                    ? WorkspaceTools.Execute(workspaceRoot, tc.Name, argsElement)
+                    : "[error] mcp-workspace not enabled";
+
+                var preview = result.Length > 120
+                    ? result[..120].Replace('\n', ' ') + "..."
+                    : result.Replace('\n', ' ');
+                output.TryWrite($"[{DateTime.UtcNow:o}] [tool:result] {preview}");
+                logger.LogInformation("[lmstudio] Tool result — {Chars} chars", result.Length);
+
+                messages.Add(new JsonObject
+                {
+                    ["role"]         = "tool",
+                    ["tool_call_id"] = tc.Id,
+                    ["content"]      = result,
+                });
+            }
+        }
+
+        var limitMsg = $"Exceeded maximum tool-call iterations ({MaxToolIterations}). Aborting session.";
+        logger.LogError("[lmstudio] {Message}", limitMsg);
+        output.TryWrite($"[{DateTime.UtcNow:o}] [error] {limitMsg}");
+        return new ExecutorResult(1, ErrorMessage: limitMsg);
+    }
+
+    // -------------------------------------------------------------------------
+    // SSE streaming
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Streams the OpenAI-format SSE response, emitting text tokens as they arrive.
+    /// </summary>
+    private async Task<(string FinishReason, string TextContent, List<ToolCall> ToolCalls, TokenUsage? Usage)>
+        StreamSseAsync(HttpResponseMessage response, ChannelWriter<string> output, CancellationToken ct)
+    {
+        await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        using var reader       = new StreamReader(stream, Encoding.UTF8);
+
+        var textBuilder  = new StringBuilder();
+        var finishReason = string.Empty;
+        var toolCalls    = new Dictionary<int, ToolCall>(); // index -> accumulator
+        TokenUsage? capturedUsage = null;
+
+        string? line;
+        while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) != null)
+        {
+            if (!line.StartsWith("data: ", StringComparison.Ordinal)) continue;
+
+            var json = line["data: ".Length..];
+            if (json == "[DONE]") break;
+
+            JsonElement evt;
+            try   { evt = JsonDocument.Parse(json).RootElement; }
+            catch { continue; }
+
+            if (!evt.TryGetProperty("choices", out var choices)) continue;
+
+            foreach (var choice in choices.EnumerateArray())
+            {
+                if (choice.TryGetProperty("finish_reason", out var fr) && fr.ValueKind != JsonValueKind.Null)
+                    finishReason = fr.GetString() ?? string.Empty;
+
+                if (!choice.TryGetProperty("delta", out var delta)) continue;
+
+                // Text token
+                if (delta.TryGetProperty("content", out var contentProp)
+                    && contentProp.ValueKind == JsonValueKind.String)
+                {
+                    var text = contentProp.GetString() ?? "";
+                    textBuilder.Append(text);
+                    if (text.Length > 0)
+                        output.TryWrite($"[{DateTime.UtcNow:o}] {text}");
+                }
+
+                // Tool call deltas (streamed incrementally by index)
+                if (!delta.TryGetProperty("tool_calls", out var tcArray)) continue;
+
+                foreach (var tcDelta in tcArray.EnumerateArray())
+                {
+                    var idx = tcDelta.TryGetProperty("index", out var idxProp) ? idxProp.GetInt32() : 0;
+
+                    if (!toolCalls.TryGetValue(idx, out var tc))
+                    {
+                        var id = tcDelta.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : "";
+                        tc = new ToolCall(id);
+                        toolCalls[idx] = tc;
+                    }
+
+                    if (!tcDelta.TryGetProperty("function", out var fn)) continue;
+
+                    if (fn.TryGetProperty("name", out var nameProp) && nameProp.ValueKind == JsonValueKind.String)
+                        tc.Name = nameProp.GetString() ?? tc.Name;
+
+                    if (fn.TryGetProperty("arguments", out var argsProp) && argsProp.ValueKind == JsonValueKind.String)
+                        tc.Arguments.Append(argsProp.GetString());
+                }
+            }
+
+            // Usage on the final chunk
+            if (evt.TryGetProperty("usage", out var usage) && usage.ValueKind != JsonValueKind.Null)
+            {
+                var promptTokens = usage.TryGetProperty("prompt_tokens",     out var pt)  ? pt.GetInt32()  : 0;
+                var outputTokens = usage.TryGetProperty("completion_tokens", out var ct2) ? ct2.GetInt32() : 0;
+                if (promptTokens > 0 || outputTokens > 0)
+                {
+                    capturedUsage = new TokenUsage(promptTokens, outputTokens);
+                    output.TryWrite(
+                        $"[{DateTime.UtcNow:o}] [lmstudio] tokens: {promptTokens} prompt / {outputTokens} generated");
+                }
+            }
+        }
+
+        var completedCalls = toolCalls
+            .OrderBy(kv => kv.Key)
+            .Select(kv => kv.Value)
+            .Where(tc => tc.Name.Length > 0)
+            .ToList();
+
+        return (finishReason, textBuilder.ToString(), completedCalls, capturedUsage);
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    private static string BuildRequest(string modelId, List<JsonNode> messages, bool includeTools)
+    {
+        var obj = new JsonObject
+        {
+            ["model"]      = modelId,
+            ["max_tokens"] = DefaultMaxTokens,
+            ["messages"]   = new JsonArray(messages.Select(m => m.DeepClone()).ToArray()),
+            ["stream"]     = true,
+            ["stream_options"] = new JsonObject { ["include_usage"] = true },
+        };
+
+        if (includeTools)
+            obj["tools"] = OllamaToolSchemas.GetToolsArray();
+
+        return obj.ToJsonString();
+    }
+
+    private static string BuildSystemPrompt(string workingDir)
+    {
+        var claudeMd = Path.Combine(workingDir, "CLAUDE.md");
+        if (!File.Exists(claudeMd)) return "You are a helpful AI agent.";
+        try { return File.ReadAllText(claudeMd, Encoding.UTF8); }
+        catch { return "You are a helpful AI agent."; }
+    }
+
+    private static string DeriveWorkspaceRoot(string workingDir) =>
+        Path.GetFullPath(Path.Combine(workingDir, "../.."));
+
+    // -------------------------------------------------------------------------
+    // Tool call accumulator
+    // -------------------------------------------------------------------------
+
+    private sealed class ToolCall(string id)
+    {
+        public string        Id        { get; set; } = id;
+        public string        Name      { get; set; } = string.Empty;
+        public StringBuilder Arguments { get; }      = new();
+    }
+}

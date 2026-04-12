@@ -17,6 +17,7 @@
     <ProjectReference Include="..\ai-dev.executor.claude\ai-dev.executor.claude.csproj" />
     <ProjectReference Include="..\ai-dev.executor.github-models\ai-dev.executor.github-models.csproj" />
     <ProjectReference Include="..\ai-dev.executor.ollama\ai-dev.executor.ollama.csproj" />
+    <ProjectReference Include="..\ai-dev.executor.lmstudio\ai-dev.executor.lmstudio.csproj" />
   </ItemGroup>
 
 </Project>

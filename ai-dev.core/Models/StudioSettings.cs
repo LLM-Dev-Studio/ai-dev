@@ -10,6 +10,9 @@ public class StudioSettings
     /// <summary>Anthropic API key for the direct-API executor. Set to null to disable.</summary>
     public string? AnthropicApiKey { get; set; }
 
+    /// <summary>Base URL for the LM Studio HTTP API. Defaults to http://localhost:1234.</summary>
+    public string LmStudioBaseUrl { get; set; } = "http://localhost:1234";
+
     /// <summary>GitHub personal access token for the GitHub Models executor. Set to null to disable.</summary>
     public string? GitHubToken { get; set; }
 
