@@ -37,7 +37,8 @@
       "Read(//m/pi-mono/packages/ai/src/providers/**)",
       "Read(//m/pi-mono/packages/ai/src/**)",
       "Read(//m/pi-mono/packages/agent/src/**)",
-      "Read(//m/pi-mono/**)"
+      "Read(//m/pi-mono/**)",
+      "Read(//c/Users/Allan/Downloads/**)"
     ]
   }
 }

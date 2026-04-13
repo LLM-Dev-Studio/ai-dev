@@ -29,7 +29,9 @@ public class AgentRunnerService(
     private const string AgentPrompt =
         "Read your inbox and action any messages. Follow your CLAUDE.md session protocol.";
     private const string ProjectScopedMcpPrompt =
-        "Your assigned project slug is '{0}'. For every MCP workspace tool call, pass projectSlug='{0}' unless the tool explicitly operates on the whole workspace.";
+        "Your assigned project slug is '{0}' and your agent slug is '{1}'. " +
+        "For every MCP workspace tool call, pass projectSlug='{0}'. " +
+        "Wherever your CLAUDE.md instructions say '{your-slug}', substitute '{1}'.";
 
     private sealed class SessionInfo(CancellationTokenSource cts)
     {
@@ -254,7 +256,7 @@ public class AgentRunnerService(
 
         // Build prompt: inject playbook and KB articles before the standard instruction.
         var effectivePrompt = string.Join("\n\n",
-            string.Format(ProjectScopedMcpPrompt, projectSlug.Value),
+            string.Format(ProjectScopedMcpPrompt, projectSlug.Value, agentSlug.Value),
             AgentPrompt);
         var inboxText = ReadInboxText(inboxDir, inboxSnapshot);
 

@@ -115,9 +115,13 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         string? errorMessage = null;
         TokenUsage? capturedUsage = null;
 
+        // Track last activity time (ticks) for stall detection. Updated on every stdout/stderr line.
+        long lastActivityTicks = DateTime.UtcNow.Ticks;
+
         process.OutputDataReceived += (_, e) =>
         {
             if (e.Data == null) return;
+            Interlocked.Exchange(ref lastActivityTicks, DateTime.UtcNow.Ticks);
 
             if (!isRateLimited && IsRateLimitLine(e.Data))
             {
@@ -149,6 +153,7 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data == null) return;
+            Interlocked.Exchange(ref lastActivityTicks, DateTime.UtcNow.Ticks);
 
             if (!isRateLimited && IsRateLimitLine(e.Data))
                 isRateLimited = true;
@@ -176,6 +181,28 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
+        // Stall detector: writes a warning to the transcript if no output is received for
+        // StallCheckInterval. Helps diagnose hangs where the process is alive but silent
+        // (e.g. MCP server not yet started, waiting for auth, network timeout).
+        using var stallCts = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
+        var stallTask = Task.Run(async () =>
+        {
+            const int StallCheckInterval = 120; // seconds
+            while (!stallCts.Token.IsCancellationRequested)
+            {
+                try { await Task.Delay(TimeSpan.FromSeconds(StallCheckInterval), stallCts.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
+
+                var silentFor = TimeSpan.FromTicks(DateTime.UtcNow.Ticks - Interlocked.Read(ref lastActivityTicks));
+                if (silentFor.TotalSeconds >= StallCheckInterval)
+                {
+                    var msg = $"[stall-check] no output for {silentFor.TotalMinutes:F0}m — process PID={process.Id} still running";
+                    logger.LogWarning("[claude] {Message}", msg);
+                    output.TryWrite($"[{DateTime.UtcNow:o}] {msg}");
+                }
+            }
+        }, stallCts.Token);
+
         try
         {
             await process.WaitForExitAsync(context.CancellationToken).ConfigureAwait(false);
@@ -191,6 +218,11 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         {
             try { process.Kill(entireProcessTree: true); } catch { /* best-effort */ }
             throw;
+        }
+        finally
+        {
+            stallCts.Cancel();
+            try { await stallTask.ConfigureAwait(false); } catch { /* best-effort */ }
         }
     }
 
@@ -379,13 +411,64 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
                     }
                     else if (blockType == "tool_use")
                     {
-                        var toolName = block.TryGetProperty("name", out var tn) ? tn.GetString() : "tool";
-                        var desc = block.TryGetProperty("input", out var inp)
-                            && inp.TryGetProperty("description", out var d) ? d.GetString() : null;
+                        var toolName = block.TryGetProperty("name", out var tn) ? tn.GetString() ?? "tool" : "tool";
                         if (sb.Length > 0) sb.AppendLine();
                         sb.Append($"▶ {toolName}");
-                        if (!string.IsNullOrEmpty(desc)) sb.Append($": {desc}");
+                        // Log string input params so the transcript shows what the tool was called with —
+                        // critical for diagnosing stalls where the agent calls a tool and gets no response.
+                        if (block.TryGetProperty("input", out var inp) && inp.ValueKind == JsonValueKind.Object)
+                        {
+                            var parts = new System.Text.StringBuilder();
+                            foreach (var prop in inp.EnumerateObject())
+                            {
+                                if (prop.Value.ValueKind == JsonValueKind.String)
+                                {
+                                    if (parts.Length > 0) parts.Append(", ");
+                                    parts.Append($"{prop.Name}={prop.Value.GetString()}");
+                                }
+                            }
+                            if (parts.Length > 0) sb.Append($"({parts})");
+                        }
                     }
+                }
+                return (sb.Length > 0 ? sb.ToString() : null, null, null);
+            }
+
+            case "user":
+            {
+                // Surface tool_result errors — these are the primary cause of silent stalls.
+                // When an MCP tool call fails, the error is here and would otherwise be invisible.
+                if (!root.TryGetProperty("message", out var msg)) break;
+                if (!msg.TryGetProperty("content", out var content)) break;
+                var sb = new System.Text.StringBuilder();
+                foreach (var block in content.EnumerateArray())
+                {
+                    if (!block.TryGetProperty("type", out var bt)) continue;
+                    if (bt.GetString() != "tool_result") continue;
+                    var isError = block.TryGetProperty("is_error", out var ie) && ie.GetBoolean();
+                    if (!isError) continue;
+
+                    var toolUseId = block.TryGetProperty("tool_use_id", out var tid) ? tid.GetString() : "?";
+                    string? detail = null;
+                    if (block.TryGetProperty("content", out var c))
+                    {
+                        if (c.ValueKind == JsonValueKind.String)
+                            detail = c.GetString();
+                        else if (c.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var item in c.EnumerateArray())
+                            {
+                                if (item.TryGetProperty("type", out var it) && it.GetString() == "text"
+                                    && item.TryGetProperty("text", out var tx))
+                                {
+                                    detail = tx.GetString();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (sb.Length > 0) sb.AppendLine();
+                    sb.Append($"✗ tool error [{toolUseId}]: {detail ?? "(no detail)"}");
                 }
                 return (sb.Length > 0 ? sb.ToString() : null, null, null);
             }
@@ -424,7 +507,7 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
             }
         }
 
-        // user/tool_result/rate_limit_event and other events — nothing to emit.
+        // rate_limit_event and other unknown events — nothing to emit.
         return (null, null, null);
     }
 
