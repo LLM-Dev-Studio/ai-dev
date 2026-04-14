@@ -6,26 +6,11 @@
       "args": [
         "run",
         "--project",
-        "D:\\Code\\ai-dev-net\\ai-dev.mcp",
+        "..\\..\\..\\ai-dev-net\\ai-dev.mcp",
         "--",
-        "D:\\Code\\ai-dev-net\\workspaces"
+        "..\\..\\..\\ai-dev-net\\workspaces"
       ]
     }
-  },
-  "permissions": {
-    "allow": [
-      "mcp__ads-workspace__*"
-    ],
-    "deny": [
-      "Read",
-      "Write",
-      "Edit",
-      "Bash",
-      "Glob",
-      "Grep",
-      "NotebookRead",
-      "NotebookEdit"
-    ]
-  },
+  },  
   "defaultMode": "dontAsk"
 }
