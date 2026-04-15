@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="AiDev.WinUI.Views.Pages.ConsistencyPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="using:AiDev.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:NullToVisibilityConverter x:Key="NullToVisible" />
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <ScrollViewer>
+            <StackPanel Spacing="16">
+
+                <!-- Header row -->
+                <Grid>
+                    <StackPanel>
+                        <TextBlock Text="Consistency" Style="{StaticResource TitleTextBlockStyle}" />
+                        <TextBlock Text="Review startup findings and run an on-demand consistency scan."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <Button Content="Run scan" HorizontalAlignment="Right"
+                            Command="{Binding RunScanAsyncCommand}"
+                            IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBoolToVisible}}"
+                            Style="{StaticResource AccentButtonStyle}" />
+                </Grid>
+
+                <!-- Loading ring -->
+                <ProgressRing IsActive="{Binding IsLoading}"
+                              Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisible}}"
+                              HorizontalAlignment="Left" />
+
+                <!-- Summary row (after first run) -->
+                <StackPanel Orientation="Horizontal" Spacing="16"
+                            Visibility="{Binding HasRun, Converter={StaticResource BoolToVisible}}">
+                    <Border CornerRadius="6" Padding="12,8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="Warnings:" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="WarningCountText" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        </StackPanel>
+                    </Border>
+                    <Border CornerRadius="6" Padding="12,8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="Errors:" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="ErrorCountText" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- No issues found -->
+                <Border CornerRadius="8" Padding="14"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        Visibility="{Binding HasRun, Converter={StaticResource BoolToVisible}}">
+                    <TextBlock x:Name="NoIssuesText" Text="No issues found."
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               Visibility="Collapsed" />
+                </Border>
+
+                <!-- Findings list -->
+                <ItemsControl x:Name="FindingsList" ItemsSource="{Binding Findings}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,0,0,8" Padding="14" CornerRadius="8"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="{Binding Code}"
+                                               Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Text="{Binding Message}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding ResourceId}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                               FontFamily="Consolas" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

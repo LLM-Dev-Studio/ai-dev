@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="AiDev.WinUI.Views.Pages.AgentDetailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="using:AiDev.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:NullToVisibilityConverter x:Key="NullToVisible" />
+        <conv:AgentStatusColorConverter x:Key="StatusColor" />
+        <conv:AgentStatusTextConverter x:Key="StatusText" />
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <ProgressRing IsActive="{Binding IsLoading}"
+                      Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisible}}"
+                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <ScrollViewer Visibility="{Binding Agent, Converter={StaticResource NullToVisible}}">
+            <StackPanel Spacing="16">
+
+                <!-- Header row: name + run/stop/transcript -->
+                <Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Ellipse Width="12" Height="12" VerticalAlignment="Center"
+                                 Fill="{Binding Agent.Status, Converter={StaticResource StatusColor}}" />
+                        <TextBlock Text="{Binding Agent.Name}" Style="{StaticResource TitleTextBlockStyle}" />
+                        <TextBlock Text="{Binding Agent.Status, Converter={StaticResource StatusText}}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   VerticalAlignment="Center" />
+                        <!-- Running indicator -->
+                        <Border CornerRadius="10" Padding="8,3"
+                                Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
+                                Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible}}">
+                            <TextBlock Text="● Live" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button Content="Run" Style="{StaticResource AccentButtonStyle}"
+                                Command="{Binding RunCommand}"
+                                Visibility="{Binding IsRunning, Converter={StaticResource InverseBoolToVisible}}" />
+                        <Button Content="Stop" Command="{Binding StopCommand}"
+                                Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible}}" />
+                        <Button Content="Transcript" Command="{Binding ViewTranscriptCommand}" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Last error banner -->
+                <Border CornerRadius="8" Padding="12"
+                        Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                        BorderBrush="{ThemeResource SystemFillColorCautionBrush}"
+                        BorderThickness="1"
+                        Visibility="{Binding Agent.LastError, Converter={StaticResource NullToVisible}}">
+                    <TextBlock TextWrapping="Wrap">
+                        <Run Text="Last run error: " FontWeight="SemiBold" />
+                        <Run Text="{Binding Agent.LastError}" />
+                    </TextBlock>
+                </Border>
+
+                <!-- Edit meta card -->
+                <Border Padding="16" CornerRadius="8"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Agent configuration" Style="{StaticResource BodyStrongTextBlockStyle}" />
+
+                        <Grid ColumnSpacing="12" RowSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+                                <TextBlock Text="Name" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBox Text="{Binding EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                                <TextBlock Text="Description" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBox Text="{Binding EditDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
+                                <TextBlock Text="Model" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBox Text="{Binding EditModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         PlaceholderText="e.g. claude-sonnet-4-5" FontFamily="Consolas" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
+                                <TextBlock Text="Executor" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBox Text="{Binding EditExecutor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         PlaceholderText="e.g. claude" FontFamily="Consolas" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Error / saved feedback -->
+                        <TextBlock Text="{Binding SaveError}"
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                   Visibility="{Binding SaveError, Converter={StaticResource NullToVisible}}"
+                                   Style="{StaticResource CaptionTextBlockStyle}" />
+                        <TextBlock Text="Saved" Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                   Visibility="{Binding MetaSaved, Converter={StaticResource BoolToVisible}}"
+                                   Style="{StaticResource CaptionTextBlockStyle}" />
+
+                        <Button Content="Save changes" Style="{StaticResource AccentButtonStyle}"
+                                HorizontalAlignment="Right"
+                                Command="{Binding SaveMetaCommand}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- CLAUDE.md collapsible card -->
+                <Border Padding="0" CornerRadius="8"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel>
+                        <!-- Toggle header -->
+                        <Button Click="ToggleClaude_Click"
+                                HorizontalAlignment="Stretch"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Padding="16,12">
+                            <Grid HorizontalAlignment="Stretch">
+                                <StackPanel>
+                                    <TextBlock Text="Instructions (CLAUDE.md)"
+                                               Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Text="Passed to the agent on every session"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                                <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center"
+                                           Text="{Binding ClaudeExpanded, Converter={StaticResource BoolToVisible}}"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                            </Grid>
+                        </Button>
+
+                        <!-- Expanded editor -->
+                        <StackPanel Margin="16,0,16,16" Spacing="8"
+                                    Visibility="{Binding ClaudeExpanded, Converter={StaticResource BoolToVisible}}">
+                            <TextBox x:Name="ClaudeEditor"
+                                     Text="{Binding ClaudeContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     FontFamily="Consolas"
+                                     FontSize="12"
+                                     MinHeight="200"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                                <TextBlock Text="Saved" Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                           Visibility="{Binding ClaudeSaved, Converter={StaticResource BoolToVisible}}"
+                                           VerticalAlignment="Center"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <Button Content="Save CLAUDE.md" Style="{StaticResource AccentButtonStyle}"
+                                        Command="{Binding SaveClaudeCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Inbox -->
+                <TextBlock Text="Inbox" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                <TextBlock x:Name="InboxEmptyText" Text="Inbox is empty"
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                <ItemsControl ItemsSource="{Binding Inbox}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,0,0,8" Padding="12" CornerRadius="6"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1">
+                                <StackPanel Spacing="4">
+                                    <Grid>
+                                        <TextBlock Text="{Binding Re}"
+                                                   Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                        <TextBlock Text="{Binding Date}" HorizontalAlignment="Right"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                    </Grid>
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                        <Run Text="from " /><Run Text="{Binding From}" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding Body}"
+                                               TextWrapping="Wrap"
+                                               MaxLines="3"
+                                               TextTrimming="CharacterEllipsis"
+                                               Style="{StaticResource BodyTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

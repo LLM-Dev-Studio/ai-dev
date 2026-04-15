@@ -49,6 +49,18 @@ public class MessagesService(WorkspacePaths paths)
         return [.. results.OrderByDescending(m => m.Date)];
     }
 
+    public void MarkProcessed(ProjectSlug projectSlug, AgentSlug agentSlug, string filename)
+    {
+        var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
+        var processedDir = paths.AgentInboxProcessedDir(projectSlug, agentSlug);
+
+        var sourcePath = Path.Combine(inboxDir.Value, filename);
+        if (!File.Exists(sourcePath)) return;
+
+        Directory.CreateDirectory(processedDir.Value);
+        File.Move(sourcePath, Path.Combine(processedDir.Value, filename), overwrite: true);
+    }
+
     private static MessageItem? ParseMessageFile(string path, AgentSlug agentSlug, bool isProcessed)
     {
         try

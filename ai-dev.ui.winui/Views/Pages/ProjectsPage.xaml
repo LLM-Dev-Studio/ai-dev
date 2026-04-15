@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="AiDev.WinUI.Views.Pages.ProjectsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:AiDev.WinUI.Views.Pages"
+    xmlns:conv="using:AiDev.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:InverseBoolConverter x:Key="InverseBool" />
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="Projects"
+                       Style="{StaticResource TitleTextBlockStyle}" />
+            <TextBlock Text="Manage your AI development projects"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Margin="0,4,0,0" />
+        </StackPanel>
+
+        <!-- Create project form -->
+        <Border Grid.Row="1" Margin="0,0,0,20" Padding="16" CornerRadius="8"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+            <StackPanel>
+                <TextBlock Text="New Project"
+                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                           Margin="0,0,0,12" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="2*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             PlaceholderText="Project name"
+                             Text="{Binding NewProjectName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,8,0" />
+                    <TextBox Grid.Column="1"
+                             PlaceholderText="Description (optional)"
+                             Text="{Binding NewProjectDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,8,0" />
+                    <TextBox Grid.Column="2"
+                             PlaceholderText="Codebase path (optional)"
+                             Text="{Binding NewProjectCodebasePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,8,0" />
+                    <Button Grid.Column="3"
+                            Content="Create"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Click="CreateProject_Click"
+                            IsEnabled="{Binding IsCreatingProject, Converter={StaticResource InverseBool}}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Loading -->
+        <ProgressRing Grid.Row="2"
+                      IsActive="{Binding IsLoading}"
+                      Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisible}}"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center" />
+
+        <!-- Projects grid -->
+        <GridView Grid.Row="2"
+                  ItemsSource="{Binding Projects}"
+                  SelectionMode="None"
+                  IsItemClickEnabled="False"
+                  Visibility="{Binding IsLoading, Converter={StaticResource InverseBoolToVisible}}">
+            <GridView.ItemContainerStyle>
+                <Style TargetType="GridViewItem">
+                    <Setter Property="Margin" Value="0,0,16,16" />
+                    <Setter Property="Padding" Value="0" />
+                </Style>
+            </GridView.ItemContainerStyle>
+            <GridView.ItemTemplate>
+                <DataTemplate>
+                    <Border Width="280" Padding="16" CornerRadius="8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                                <FontIcon Glyph="&#xE8B7;"
+                                          FontSize="18"
+                                          Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                                          Margin="0,0,8,0"
+                                          VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Name}"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="1"
+                                       Text="{Binding Description}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,8" />
+
+                            <Grid Grid.Row="2">
+                                <Button Content="Open"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        HorizontalAlignment="Left"
+                                        Tag="{Binding}"
+                                        Click="OpenProject_Click" />
+                                <Button Content="Delete"
+                                        HorizontalAlignment="Right"
+                                        IsEnabled="False"
+                                        Tag="{Binding}"
+                                        Click="DeleteProject_Click" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
+    </Grid>
+</Page>

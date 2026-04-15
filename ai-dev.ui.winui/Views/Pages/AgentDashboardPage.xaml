@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="AiDev.WinUI.Views.Pages.AgentDashboardPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="using:AiDev.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:AgentStatusColorConverter x:Key="StatusColor" />
+        <conv:AgentStatusTextConverter x:Key="StatusText" />
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <StackPanel>
+                <TextBlock Text="Agents" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="Manage and run agents for this project"
+                           Style="{StaticResource BodyTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,4,0,0" />
+            </StackPanel>
+            <Button Content="Add Agent"
+                    Style="{StaticResource AccentButtonStyle}"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Click="AddAgent_Click" />
+        </Grid>
+
+        <!-- Add agent quick form -->
+        <Border Grid.Row="1" Margin="0,0,0,20" Padding="16" CornerRadius="8"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                Visibility="{Binding IsAddingAgent, Converter={StaticResource BoolToVisible}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" PlaceholderText="Agent name"
+                         Text="{Binding NewAgentName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,0,8,0" />
+                <TextBox Grid.Column="1" PlaceholderText="Role (optional)"
+                         Text="{Binding NewAgentRole, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,0,8,0" />
+                <Button Grid.Column="2" Content="Create"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Click="CreateAgent_Click"
+                        Margin="0,0,8,0" />
+                <Button Grid.Column="3" Content="Cancel"
+                        Click="CancelAddAgent_Click" />
+            </Grid>
+        </Border>
+
+        <!-- Loading -->
+        <ProgressRing Grid.Row="2"
+                      IsActive="{Binding IsLoading}"
+                      Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisible}}"
+                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <!-- Agent cards -->
+        <GridView Grid.Row="2"
+                  ItemsSource="{Binding Agents}"
+                  SelectionMode="None"
+                  IsItemClickEnabled="False"
+                  Visibility="{Binding IsLoading, Converter={StaticResource InverseBoolToVisible}}">
+            <GridView.ItemContainerStyle>
+                <Style TargetType="GridViewItem">
+                    <Setter Property="Margin" Value="0,0,16,16" />
+                    <Setter Property="Padding" Value="0" />
+                </Style>
+            </GridView.ItemContainerStyle>
+            <GridView.ItemTemplate>
+                <DataTemplate>
+                    <Border Width="300" Padding="16" CornerRadius="8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- Name + status -->
+                            <Grid Grid.Row="0" Margin="0,0,0,8">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="10" Height="10"
+                                             Fill="{Binding Status, Converter={StaticResource StatusColor}}"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,8,0" />
+                                    <TextBlock Text="{Binding Name}"
+                                               Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding Status, Converter={StaticResource StatusText}}"
+                                           HorizontalAlignment="Right"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+
+                            <!-- Role + model -->
+                            <StackPanel Grid.Row="1" Margin="0,0,0,8">
+                                <TextBlock Text="{Binding Role}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <Border CornerRadius="4" Padding="6,2" Margin="0,0,6,0"
+                                            Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                                        <TextBlock Text="{Binding Model}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                    </Border>
+                                    <Border CornerRadius="4" Padding="6,2"
+                                            Background="{ThemeResource ControlFillColorDefaultBrush}">
+                                        <TextBlock Text="{Binding Executor.Value}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Inbox count + last run -->
+                            <Grid Grid.Row="2" Margin="0,0,0,12">
+                                <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}">
+                                    <Run Text="{Binding InboxCount, Mode=OneWay}" /><Run Text=" inbox" />
+                                </TextBlock>
+                                <TextBlock HorizontalAlignment="Right"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorTertiaryBrush}">
+                                    <Run Text="Last run: " /><Run Text="{Binding LastRunAt}" />
+                                </TextBlock>
+                            </Grid>
+
+                            <!-- Action buttons -->
+                            <StackPanel Grid.Row="3" Orientation="Horizontal">
+                                <Button Content="Run"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        Tag="{Binding}"
+                                        Click="RunAgent_Click"
+                                        Margin="0,0,8,0" />
+                                <Button Content="Stop"
+                                        Tag="{Binding}"
+                                        Click="StopAgent_Click"
+                                        Margin="0,0,8,0" />
+                                <Button Content="Details"
+                                        Tag="{Binding}"
+                                        Click="SelectAgent_Click" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
+    </Grid>
+</Page>

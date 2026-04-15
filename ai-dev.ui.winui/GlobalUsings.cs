@@ -1,0 +1,15 @@
+global using AiDev;
+global using AiDev.Extensions;
+global using AiDev.Features.Agent;
+global using AiDev.Features.Board;
+global using AiDev.Features.Decision;
+global using AiDev.Features.Digest;
+global using AiDev.Features.Git;
+global using AiDev.Features.Insights;
+global using AiDev.Features.Journal;
+global using AiDev.Features.KnowledgeBase;
+global using AiDev.Features.Secrets;
+global using AiDev.Features.Workspace;
+global using AiDev.Models;
+global using AiDev.Models.Types;
+global using AiDev.Services;

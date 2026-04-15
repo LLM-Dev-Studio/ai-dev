@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="AiDev.WinUI.Views.Pages.DecisionDetailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="using:AiDev.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:NullToVisibilityConverter x:Key="NullToVisible" />
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <ProgressRing IsActive="{Binding IsLoading}"
+                      Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisible}}"
+                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <ScrollViewer Visibility="{Binding Decision, Converter={StaticResource NullToVisible}}">
+            <StackPanel MaxWidth="700" Spacing="16">
+
+                <!-- Back button -->
+                <Button Content="← Back to Decisions" Command="{Binding GoBackCommand}" />
+
+                <!-- Header -->
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{Binding Decision.Subject}"
+                               Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                            <Run Text="from " /><Run Text="{Binding Decision.From}" />
+                        </TextBlock>
+                        <TextBlock x:Name="StatusBadge" Style="{StaticResource CaptionTextBlockStyle}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Original body -->
+                <Border CornerRadius="8" Padding="14"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Decision request"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{Binding Decision.Body}"
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Chat messages -->
+                <ItemsControl x:Name="ChatList" ItemsSource="{Binding ChatMessages}" />
+
+                <!-- Agent thinking indicator -->
+                <Border CornerRadius="8" Padding="12"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        HorizontalAlignment="Left"
+                        Visibility="{Binding AgentIsRunning, Converter={StaticResource BoolToVisible}}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ProgressRing IsActive="True" Width="14" Height="14" />
+                        <TextBlock Text="Agent is thinking…"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Resolved response -->
+                <Border CornerRadius="8" Padding="14"
+                        Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
+                        Visibility="{Binding Decision.Response, Converter={StaticResource NullToVisible}}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="✓ Resolved" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Text="{Binding Decision.Response}"
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Chat input (pending only) -->
+                <Border x:Name="ChatInputPanel" CornerRadius="8" Padding="14"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel Spacing="10">
+                        <TextBox x:Name="ChatTextBox"
+                                 Text="{Binding ChatInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="Type your message…"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 MinHeight="72" />
+                        <TextBlock Text="{Binding ChatError}"
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                   Visibility="{Binding ChatError, Converter={StaticResource NullToVisible}}" />
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                            <Button Content="Resolve…" Command="{Binding StartResolveCommand}" />
+                            <Button Content="Send" Style="{StaticResource AccentButtonStyle}"
+                                    Command="{Binding SendChatCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Resolve dialog overlay -->
+                <Border x:Name="ResolvePanel" CornerRadius="8" Padding="14"
+                        Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
+                        Visibility="{Binding ShowResolveDialog, Converter={StaticResource BoolToVisible}}">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Resolve decision"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBox Text="{Binding ResolveResponse, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="Your resolution response…"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 MinHeight="72" />
+                        <TextBlock Text="{Binding ResolveError}"
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                   Visibility="{Binding ResolveError, Converter={StaticResource NullToVisible}}" />
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                            <Button Content="Cancel" Command="{Binding CancelResolveCommand}" />
+                            <Button Content="Confirm" Style="{StaticResource AccentButtonStyle}"
+                                    Command="{Binding ConfirmResolveAsyncCommand}"
+                                    IsEnabled="{Binding IsResolving, Converter={StaticResource InverseBoolToVisible}}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="AiDev.WinUI.Views.Pages.DigestPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="using:AiDev.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:NullToVisibilityConverter x:Key="NullToVisible" />
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <ProgressRing IsActive="{Binding IsLoading}"
+                      Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisible}}"
+                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <ScrollViewer Visibility="{Binding IsLoading, Converter={StaticResource InverseBoolToVisible}}">
+            <StackPanel Spacing="16">
+
+                <!-- Header -->
+                <StackPanel>
+                    <TextBlock Text="Digest" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock x:Name="DigestDateText" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+
+                <!-- Stats row -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition />
+                        <ColumnDefinition />
+                        <ColumnDefinition />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Margin="0,0,8,0" CornerRadius="8" Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="Messages today"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="TotalMessagesText"
+                                       Style="{StaticResource HeaderTextBlockStyle}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Margin="4,0" CornerRadius="8" Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="Pending decisions"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="PendingDecisionsText"
+                                       Style="{StaticResource HeaderTextBlockStyle}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Margin="8,0,0,0" CornerRadius="8" Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="Resolved today"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="ResolvedDecisionsText"
+                                       Style="{StaticResource HeaderTextBlockStyle}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Agent activity -->
+                <TextBlock Text="Agent Activity" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                <ItemsControl ItemsSource="{Binding AgentActivity}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,0,0,8" Padding="14" CornerRadius="8"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1">
+                                <Grid>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="{Binding AgentName}"
+                                                   Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                        <TextBlock Text="{Binding AgentSlug}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <StackPanel Orientation="Horizontal" Spacing="6"
+                                                    Visibility="{Binding Executor, Converter={StaticResource NullToVisible}}">
+                                            <TextBlock Text="{Binding Executor}"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       FontFamily="Consolas" />
+                                            <TextBlock Text="{Binding Model}"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="24">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock Text="{Binding MessagesSent}"
+                                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                       HorizontalAlignment="Center" />
+                                            <TextBlock Text="sent"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock Text="{Binding MessagesReceived}"
+                                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                       HorizontalAlignment="Center" />
+                                            <TextBlock Text="received"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>
