@@ -125,11 +125,11 @@
                     <wpfui:Button Content="Run Agent"
                                Appearance="Primary"
                                Icon="{wpfui:SymbolIcon Play24}"
-                               Command="{Binding RunCommand}"
+                               Command="{Binding RunAsyncCommand}"
                                Margin="0,0,8,0" />
                     <wpfui:Button Content="Stop"
                                Icon="{wpfui:SymbolIcon Stop24}"
-                               Command="{Binding StopCommand}"
+                               Command="{Binding StopAsyncCommand}"
                                Margin="0,0,8,0" />
                     <wpfui:Button Content="View Transcript"
                                Icon="{wpfui:SymbolIcon DocumentText24}"

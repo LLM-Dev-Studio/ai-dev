@@ -40,7 +40,7 @@ public partial class JournalsViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var agents = await Task.Run(() => _agentService.ListAgents(CurrentSlug));
+            var agents = _agentService.ListAgents(CurrentSlug);
             Agents.Clear();
             foreach (var a in agents) Agents.Add(a);
 
@@ -62,7 +62,7 @@ public partial class JournalsViewModel : ObservableObject
     private async Task LoadEntriesAsync(AgentInfo agent)
     {
         if (CurrentSlug is null) return;
-        var entries = await Task.Run(() => _journalsService.ListDates(CurrentSlug, agent.Slug));
+        var entries = _journalsService.ListDates(CurrentSlug, agent.Slug);
         Entries.Clear();
         foreach (var e in entries.OrderByDescending(e => e.Date))
             Entries.Add(e);
@@ -72,6 +72,6 @@ public partial class JournalsViewModel : ObservableObject
     {
         if (CurrentSlug is null || SelectedAgent is null) return;
         SelectedEntry = entry;
-        EntryContent = await Task.Run(() => _journalsService.GetEntry(CurrentSlug, SelectedAgent.Slug, entry.Date));
+        EntryContent = _journalsService.GetEntry(CurrentSlug, SelectedAgent.Slug, entry.Date);
     }
 }

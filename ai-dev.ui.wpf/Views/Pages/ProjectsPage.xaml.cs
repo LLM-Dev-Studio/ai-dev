@@ -3,7 +3,7 @@ using System.Windows.Controls;
 
 namespace AiDev.Desktop.Views.Pages;
 
-public partial class ProjectsPage : Page
+public partial class ProjectsPage : Page, IDisposable
 {
     private readonly ProjectsViewModel _viewModel;
 
@@ -21,5 +21,10 @@ public partial class ProjectsPage : Page
     {
         if (System.Windows.Window.GetWindow(this) is MainWindow mainWindow)
             mainWindow.NavigateToProject(project);
+    }
+
+    public void Dispose()
+    {
+        _viewModel.ProjectSelected -= OnProjectSelected;
     }
 }

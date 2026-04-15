@@ -34,7 +34,7 @@ public partial class AgentDetailViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            Agent = await Task.Run(() => _agentService.LoadAgent(CurrentSlug, agentSlug));
+            Agent = _agentService.LoadAgent(CurrentSlug, agentSlug);
         }
         finally
         {
@@ -43,19 +43,19 @@ public partial class AgentDetailViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public void Run()
+    public async Task RunAsync()
     {
         if (CurrentSlug is null || Agent is null) return;
         _agentRunnerService.LaunchAgent(CurrentSlug, Agent.Slug);
-        _ = LoadAsync(Agent.Slug);
+        await LoadAsync(Agent.Slug);
     }
 
     [RelayCommand]
-    public void Stop()
+    public async Task StopAsync()
     {
         if (CurrentSlug is null || Agent is null) return;
         _agentRunnerService.StopAgent(CurrentSlug, Agent.Slug);
-        _ = LoadAsync(Agent.Slug);
+        await LoadAsync(Agent.Slug);
     }
 
     [RelayCommand]

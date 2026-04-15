@@ -32,9 +32,9 @@ public partial class TranscriptViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            Agent = await Task.Run(() => _agentService.LoadAgent(CurrentSlug, agentSlug));
+            Agent = _agentService.LoadAgent(CurrentSlug, agentSlug);
 
-            var dates = await Task.Run(() => _agentService.ListTranscriptDates(CurrentSlug, agentSlug));
+            var dates = _agentService.ListTranscriptDates(CurrentSlug, agentSlug);
             Dates.Clear();
             foreach (var d in dates.OrderByDescending(d => d.Value))
                 Dates.Add(d);
@@ -53,6 +53,6 @@ public partial class TranscriptViewModel : ObservableObject
     {
         if (CurrentSlug is null || Agent is null) return;
         SelectedDate = date;
-        TranscriptContent = await Task.Run(() => _agentService.ReadTranscript(CurrentSlug, Agent.Slug, date));
+        TranscriptContent = _agentService.ReadTranscript(CurrentSlug, Agent.Slug, date);
     }
 }

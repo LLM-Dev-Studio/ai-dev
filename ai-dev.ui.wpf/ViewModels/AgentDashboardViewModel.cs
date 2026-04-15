@@ -44,12 +44,12 @@ public partial class AgentDashboardViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var agents = await Task.Run(() => _agentService.ListAgents(CurrentSlug));
+            var agents = _agentService.ListAgents(CurrentSlug);
             Agents.Clear();
             foreach (var a in agents)
                 Agents.Add(a);
 
-            var templates = await Task.Run(() => _templatesService.ListTemplates());
+            var templates = _templatesService.ListTemplates();
             Templates.Clear();
             foreach (var t in templates)
                 Templates.Add(t);
@@ -61,19 +61,19 @@ public partial class AgentDashboardViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public void RunAgent(AgentInfo agent)
+    public async Task RunAgentAsync(AgentInfo agent)
     {
         if (CurrentSlug is null) return;
         _agentRunnerService.LaunchAgent(CurrentSlug, agent.Slug);
-        _ = LoadAsync();
+        await LoadAsync();
     }
 
     [RelayCommand]
-    public void StopAgent(AgentInfo agent)
+    public async Task StopAgentAsync(AgentInfo agent)
     {
         if (CurrentSlug is null) return;
         _agentRunnerService.StopAgent(CurrentSlug, agent.Slug);
-        _ = LoadAsync();
+        await LoadAsync();
     }
 
     [RelayCommand]
@@ -88,7 +88,7 @@ public partial class AgentDashboardViewModel : ObservableObject
         IsAddingAgent = true;
         try
         {
-            await Task.Run(() => _agentService.CreateAgent(CurrentSlug, agentSlug, NewAgentName.Trim(), null));
+            _agentService.CreateAgent(CurrentSlug, agentSlug, NewAgentName.Trim(), null);
             NewAgentName = "";
             NewAgentRole = "";
             IsAddingAgent = false;

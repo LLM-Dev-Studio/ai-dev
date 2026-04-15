@@ -54,8 +54,8 @@ public partial class BoardViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var board = await Task.Run(() => _boardService.LoadBoard(CurrentSlug));
-            var agents = await Task.Run(() => _agentService.ListAgents(CurrentSlug));
+            var board = _boardService.LoadBoard(CurrentSlug);
+            var agents = _agentService.ListAgents(CurrentSlug);
 
             Agents.Clear();
             foreach (var a in agents) Agents.Add(a);

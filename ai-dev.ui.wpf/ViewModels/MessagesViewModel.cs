@@ -32,7 +32,7 @@ public partial class MessagesViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var messages = await Task.Run(() => _messagesService.ListMessages(CurrentSlug));
+            var messages = _messagesService.ListMessages(CurrentSlug);
             Messages.Clear();
             foreach (var m in messages.Where(m => ShowProcessed || !m.IsProcessed))
                 Messages.Add(m);

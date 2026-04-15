@@ -34,7 +34,7 @@ public partial class MainWindow : FluentWindow
         Loaded += OnLoaded;
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         _snackbarService.SetSnackbarPresenter(SnackbarPresenter);
 
@@ -42,7 +42,15 @@ public partial class MainWindow : FluentWindow
         RootNavigation.SetServiceProvider(_services);
 
         RootNavigation.Navigate(typeof(ProjectsPage));
-        _ = _viewModel.LoadExecutorStatusesAsync();
+        try
+        {
+            await _viewModel.LoadExecutorStatusesAsync();
+        }
+        catch (Exception ex)
+        {
+            // Log or show error for executor health monitoring
+            System.Diagnostics.Debug.WriteLine($"Failed to load executor statuses: {ex.Message}");
+        }
     }
 
     public void NavigateTo(Type pageType, AgentInfo? agentData = null)

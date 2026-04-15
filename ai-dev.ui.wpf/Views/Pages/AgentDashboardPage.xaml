@@ -135,13 +135,13 @@
                                     <wpfui:Button Content="Run"
                                                Appearance="Primary"
                                                Icon="{wpfui:SymbolIcon Play24}"
-                                               Command="{Binding DataContext.RunAgentCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                               Command="{Binding DataContext.RunAgentAsyncCommand, RelativeSource={RelativeSource AncestorType=Page}}"
                                                CommandParameter="{Binding}"
                                                Margin="0,0,8,0" />
                                     <wpfui:Button Content="Stop"
                                                Appearance="Secondary"
                                                Icon="{wpfui:SymbolIcon Stop24}"
-                                               Command="{Binding DataContext.StopAgentCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                               Command="{Binding DataContext.StopAgentAsyncCommand, RelativeSource={RelativeSource AncestorType=Page}}"
                                                CommandParameter="{Binding}"
                                                Margin="0,0,8,0" />
                                     <wpfui:Button Icon="{wpfui:SymbolIcon Open24}"

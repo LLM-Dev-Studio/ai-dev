@@ -3,7 +3,7 @@ using System.Windows.Controls;
 
 namespace AiDev.Desktop.Views.Pages;
 
-public partial class AgentDetailPage : Page
+public partial class AgentDetailPage : Page, IDisposable
 {
     private readonly AgentDetailViewModel _viewModel;
     private readonly MainViewModel _mainViewModel;
@@ -19,11 +19,11 @@ public partial class AgentDetailPage : Page
         Loaded += OnLoaded;
     }
 
-    private void OnLoaded(object sender, System.Windows.RoutedEventArgs e)
+    private async void OnLoaded(object sender, System.Windows.RoutedEventArgs e)
     {
         if (_mainViewModel.PendingAgent is { } agent)
         {
-            _ = _viewModel.LoadAsync(agent.Slug);
+            await _viewModel.LoadAsync(agent.Slug);
             _mainViewModel.PendingAgent = null;
         }
     }
@@ -32,5 +32,11 @@ public partial class AgentDetailPage : Page
     {
         if (System.Windows.Window.GetWindow(this) is MainWindow mainWindow)
             mainWindow.NavigateTo(typeof(TranscriptPage), _viewModel.Agent);
+    }
+
+    public void Dispose()
+    {
+        _viewModel.NavigateToTranscript -= OnNavigateToTranscript;
+        Loaded -= OnLoaded;
     }
 }

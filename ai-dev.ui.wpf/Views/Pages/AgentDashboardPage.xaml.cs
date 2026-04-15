@@ -3,7 +3,7 @@ using System.Windows.Controls;
 
 namespace AiDev.Desktop.Views.Pages;
 
-public partial class AgentDashboardPage : Page
+public partial class AgentDashboardPage : Page, IDisposable
 {
     private readonly AgentDashboardViewModel _viewModel;
 
@@ -21,5 +21,10 @@ public partial class AgentDashboardPage : Page
     {
         if (System.Windows.Window.GetWindow(this) is MainWindow mainWindow)
             mainWindow.NavigateTo(typeof(AgentDetailPage), agent);
+    }
+
+    public void Dispose()
+    {
+        _viewModel.AgentSelected -= OnAgentSelected;
     }
 }

@@ -4,7 +4,7 @@ using System.Windows.Input;
 
 namespace AiDev.Desktop.Views.Pages;
 
-public partial class TranscriptPage : Page
+public partial class TranscriptPage : Page, IDisposable
 {
     private readonly TranscriptViewModel _viewModel;
     private readonly MainViewModel _mainViewModel;
@@ -18,11 +18,11 @@ public partial class TranscriptPage : Page
         Loaded += OnLoaded;
     }
 
-    private void OnLoaded(object sender, System.Windows.RoutedEventArgs e)
+    private async void OnLoaded(object sender, System.Windows.RoutedEventArgs e)
     {
         if (_mainViewModel.PendingAgent is { } agent)
         {
-            _ = _viewModel.LoadAsync(agent.Slug);
+            await _viewModel.LoadAsync(agent.Slug);
             _mainViewModel.PendingAgent = null;
         }
     }
@@ -31,5 +31,10 @@ public partial class TranscriptPage : Page
     {
         if (sender is ListBoxItem { DataContext: TranscriptDate date })
             await _viewModel.SelectDateAsync(date);
+    }
+
+    public void Dispose()
+    {
+        Loaded -= OnLoaded;
     }
 }

@@ -31,7 +31,7 @@ public partial class ProjectsViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var projects = await Task.Run(() => _workspaceService.ListProjects());
+            var projects = _workspaceService.ListProjects();
             Projects.Clear();
             foreach (var p in projects)
                 Projects.Add(p);
@@ -54,11 +54,11 @@ public partial class ProjectsViewModel : ObservableObject
         IsCreatingProject = true;
         try
         {
-            var result = await Task.Run(() => _workspaceService.CreateProject(
+            var result = _workspaceService.CreateProject(
                 slug,
                 NewProjectName.Trim(),
                 NewProjectDescription.Trim() is { Length: > 0 } d ? d : null,
-                string.IsNullOrWhiteSpace(NewProjectCodebasePath) ? null : NewProjectCodebasePath.Trim()));
+                string.IsNullOrWhiteSpace(NewProjectCodebasePath) ? null : NewProjectCodebasePath.Trim());
 
             if (result is Ok<Unit>)
             {

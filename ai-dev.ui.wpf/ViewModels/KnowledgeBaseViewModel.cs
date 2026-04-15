@@ -35,7 +35,7 @@ public partial class KnowledgeBaseViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var articles = await Task.Run(() => _kbService.ListArticles(CurrentSlug));
+            var articles = _kbService.ListArticles(CurrentSlug);
             Articles.Clear();
             foreach (var a in articles) Articles.Add(a);
         }
@@ -49,7 +49,7 @@ public partial class KnowledgeBaseViewModel : ObservableObject
     {
         if (CurrentSlug is null) return;
         SelectedArticle = article;
-        ArticleContent = await Task.Run(() => _kbService.GetContent(CurrentSlug, article.Slug));
+        ArticleContent = _kbService.GetContent(CurrentSlug, article.Slug);
         HasUnsavedChanges = false;
     }
 
@@ -57,7 +57,7 @@ public partial class KnowledgeBaseViewModel : ObservableObject
     public async Task CreateArticleAsync()
     {
         if (CurrentSlug is null || string.IsNullOrWhiteSpace(NewArticleSlug)) return;
-        await Task.Run(() => _kbService.Create(CurrentSlug, NewArticleSlug.Trim()));
+        _kbService.Create(CurrentSlug, NewArticleSlug.Trim());
         NewArticleSlug = "";
         await LoadAsync();
     }
@@ -69,7 +69,7 @@ public partial class KnowledgeBaseViewModel : ObservableObject
         IsSaving = true;
         try
         {
-            await Task.Run(() => _kbService.Save(CurrentSlug, SelectedArticle.Slug, ArticleContent));
+            _kbService.Save(CurrentSlug, SelectedArticle.Slug, ArticleContent);
             HasUnsavedChanges = false;
         }
         finally
@@ -87,7 +87,7 @@ public partial class KnowledgeBaseViewModel : ObservableObject
             SelectedArticle = null;
             ArticleContent = "";
         }
-        await Task.Run(() => _kbService.Delete(CurrentSlug, article.Slug));
+        _kbService.Delete(CurrentSlug, article.Slug);
         await LoadAsync();
     }
 

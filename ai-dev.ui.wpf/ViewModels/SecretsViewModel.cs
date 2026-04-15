@@ -39,7 +39,7 @@ public partial class SecretsViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var secrets = await Task.Run(() => _secretsService.LoadDecryptedSecrets(CurrentSlug));
+            var secrets = _secretsService.LoadDecryptedSecrets(CurrentSlug);
             Secrets.Clear();
             foreach (var kvp in secrets)
                 Secrets.Add(new SecretEntryViewModel { Key = kvp.Key, Value = kvp.Value });
@@ -51,21 +51,22 @@ public partial class SecretsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public void AddSecret()
+    public async Task AddSecretAsync()
     {
         if (string.IsNullOrWhiteSpace(NewKey)) return;
         Secrets.Add(new SecretEntryViewModel { Key = NewKey.Trim(), Value = NewValue });
         NewKey = "";
         NewValue = "";
-        _ = SaveAsync();
+        await SaveAsync();
     }
 
     [RelayCommand]
-    public void RemoveSecret(SecretEntryViewModel secret)
+    public async Task RemoveSecretAsync(SecretEntryViewModel secret)
     {
         if (CurrentSlug is null) return;
         Secrets.Remove(secret);
-        _ = Task.Run(() => _secretsService.DeleteSecret(CurrentSlug, secret.Key));
+        _secretsService.DeleteSecret(CurrentSlug, secret.Key);
+        await SaveAsync();
     }
 
     [RelayCommand]
@@ -75,11 +76,8 @@ public partial class SecretsViewModel : ObservableObject
         IsSaving = true;
         try
         {
-            await Task.Run(() =>
-            {
-                foreach (var s in Secrets)
-                    _secretsService.SetSecret(CurrentSlug, s.Key, s.Value);
-            });
+            foreach (var s in Secrets)
+                _secretsService.SetSecret(CurrentSlug, s.Key, s.Value);
         }
         finally
         {

@@ -40,13 +40,13 @@ public partial class DecisionsViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var pending = await Task.Run(() => _decisionsService.ListDecisions(CurrentSlug, "pending"));
+            var pending = _decisionsService.ListDecisions(CurrentSlug, "pending");
             Decisions.Clear();
             foreach (var d in pending) Decisions.Add(d);
 
             if (ShowResolved)
             {
-                var resolved = await Task.Run(() => _decisionsService.ListDecisions(CurrentSlug, "resolved"));
+                var resolved = _decisionsService.ListDecisions(CurrentSlug, "resolved");
                 foreach (var d in resolved) Decisions.Add(d);
             }
         }
@@ -60,7 +60,7 @@ public partial class DecisionsViewModel : ObservableObject
     {
         if (CurrentSlug is null) return;
         SelectedDecision = decision;
-        var messages = await Task.Run(() => _chatService.GetMessages(CurrentSlug, decision.Id));
+        var messages = _chatService.GetMessages(CurrentSlug, decision.Id);
         ChatMessages.Clear();
         foreach (var m in messages) ChatMessages.Add(m);
     }
@@ -72,7 +72,7 @@ public partial class DecisionsViewModel : ObservableObject
         IsSendingReply = true;
         try
         {
-            await Task.Run(() => _chatService.SendHumanMessage(CurrentSlug, SelectedDecision.Id, "user", ReplyText.Trim()));
+            _chatService.SendHumanMessage(CurrentSlug, SelectedDecision.Id, "user", ReplyText.Trim());
             ReplyText = "";
             await SelectDecisionAsync(SelectedDecision);
         }
