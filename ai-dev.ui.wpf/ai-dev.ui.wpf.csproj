@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssetTargetFallback>net9.0-windows7.0</AssetTargetFallback>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>AiDev.Desktop</RootNamespace>
+    <AssemblyName>ai-dev.ui.wpf</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+<StartupObject>AiDev.Desktop.App</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
+    <PackageReference Include="WPF-UI" Version="4.0.2" />
+    <PackageReference Include="Markdig" Version="1.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ai-dev.core\ai-dev.core.csproj" />
+    <ProjectReference Include="..\ai-dev.executor.claude\ai-dev.executor.claude.csproj" />
+    <ProjectReference Include="..\ai-dev.executor.anthropic\ai-dev.executor.anthropic.csproj" />
+    <ProjectReference Include="..\ai-dev.executor.ollama\ai-dev.executor.ollama.csproj" />
+    <ProjectReference Include="..\ai-dev.executor.github-models\ai-dev.executor.github-models.csproj" />
+    <ProjectReference Include="..\ai-dev.executor.lmstudio\ai-dev.executor.lmstudio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

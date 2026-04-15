@@ -1,0 +1,120 @@
+<Page x:Class="AiDev.Desktop.Views.Pages.KnowledgeBasePage"
+         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:wpfui="http://schemas.lepo.co/wpfui/2022/xaml"
+         xmlns:conv="clr-namespace:AiDev.Desktop.Converters"
+         Title="Knowledge Base">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:NullToVisibilityConverter x:Key="NullToVisible" />
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="240" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0" Grid.ColumnSpan="2"
+                   Text="Knowledge Base" FontSize="28" FontWeight="SemiBold"
+                   Margin="0,0,0,16" />
+
+        <!-- Article list -->
+        <Grid Grid.Row="1" Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Articles" FontSize="12" FontWeight="Medium"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,8" />
+
+            <ListBox Grid.Row="1"
+                     ItemsSource="{Binding Articles}"
+                     SelectedItem="{Binding SelectedArticle}">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                        <EventSetter Event="MouseDown" Handler="Article_MouseDown" />
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <TextBlock Text="{Binding Title}" Padding="4,6" FontSize="13" />
+                            <wpfui:Button HorizontalAlignment="Right"
+                                       Icon="{wpfui:SymbolIcon Delete24}"
+                                       Appearance="Danger"
+                                       Padding="4"
+                                       Command="{Binding DataContext.DeleteArticleCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                       CommandParameter="{Binding}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- New article -->
+            <StackPanel Grid.Row="2" Margin="0,12,0,0">
+                <wpfui:TextBox PlaceholderText="article-slug"
+                            Text="{Binding NewArticleSlug, UpdateSourceTrigger=PropertyChanged}"
+                            Margin="0,0,0,8" />
+                <wpfui:Button Content="Create Article"
+                           Appearance="Primary"
+                           HorizontalAlignment="Stretch"
+                           Command="{Binding CreateArticleCommand}" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Article editor -->
+        <Grid Grid.Row="1" Grid.Column="1" Margin="16,0,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8"
+                        Visibility="{Binding SelectedArticle, Converter={StaticResource NullToVisible}}">
+                <TextBlock Text="{Binding SelectedArticle.Title}"
+                           FontSize="16" FontWeight="SemiBold" />
+                <TextBlock Margin="12,0,0,0"
+                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                           FontSize="12">
+                    <Run Text="@@kb:" />
+                    <Run Text="{Binding SelectedArticle.Slug, Mode=OneWay}" />
+                </TextBlock>
+            </StackPanel>
+
+            <wpfui:TextBox Grid.Row="1"
+                        Text="{Binding ArticleContent, UpdateSourceTrigger=PropertyChanged}"
+                        AcceptsReturn="True"
+                        TextWrapping="Wrap"
+                        FontFamily="Consolas"
+                        FontSize="13"
+                        Visibility="{Binding SelectedArticle, Converter={StaticResource NullToVisible}}" />
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0"
+                        Visibility="{Binding SelectedArticle, Converter={StaticResource NullToVisible}}">
+                <wpfui:Button Content="Save"
+                           Appearance="Primary"
+                           Icon="{wpfui:SymbolIcon Save24}"
+                           Command="{Binding SaveArticleCommand}"
+                           IsEnabled="{Binding IsSaving, Converter={StaticResource InverseBoolToVisible}}"
+                           Margin="0,0,8,0" />
+                <TextBlock Text="● Unsaved changes"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           Foreground="#F59E0B"
+                           Visibility="{Binding HasUnsavedChanges, Converter={StaticResource BoolToVisible}}" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Page>

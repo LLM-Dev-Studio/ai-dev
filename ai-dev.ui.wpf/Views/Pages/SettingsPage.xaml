@@ -1,0 +1,124 @@
+<Page x:Class="AiDev.Desktop.Views.Pages.SettingsPage"
+         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:wpfui="http://schemas.lepo.co/wpfui/2022/xaml"
+         xmlns:conv="clr-namespace:AiDev.Desktop.Converters"
+         Title="Settings">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+    </Page.Resources>
+
+    <ScrollViewer>
+        <StackPanel Margin="24" MaxWidth="600">
+            <!-- Header -->
+            <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock Text="Global AI Dev Net configuration"
+                       FontSize="13"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,24" />
+
+            <!-- API Keys section -->
+            <TextBlock Text="API Keys" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12" />
+            <wpfui:Card Margin="0,0,0,20">
+                <StackPanel>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Anthropic API Key"
+                                   VerticalAlignment="Center" FontSize="13" />
+                        <wpfui:PasswordBox Grid.Column="1"
+                                        Password="{Binding AnthropicApiKey, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="sk-ant-..." />
+                    </Grid>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="GitHub Token"
+                                   VerticalAlignment="Center" FontSize="13" />
+                        <wpfui:PasswordBox Grid.Column="1"
+                                        Password="{Binding GitHubToken, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="ghp_..." />
+                    </Grid>
+                </StackPanel>
+            </wpfui:Card>
+
+            <!-- Local executors section -->
+            <TextBlock Text="Local Executors" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12" />
+            <wpfui:Card Margin="0,0,0,20">
+                <StackPanel>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Ollama URL"
+                                   VerticalAlignment="Center" FontSize="13" />
+                        <wpfui:TextBox Grid.Column="1"
+                                    Text="{Binding OllamaBaseUrl, UpdateSourceTrigger=PropertyChanged}"
+                                    PlaceholderText="http://localhost:11434" />
+                    </Grid>
+                    <Grid Margin="0,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="LM Studio URL"
+                                   VerticalAlignment="Center" FontSize="13" />
+                        <wpfui:TextBox Grid.Column="1"
+                                    Text="{Binding LmStudioBaseUrl, UpdateSourceTrigger=PropertyChanged}"
+                                    PlaceholderText="http://localhost:1234" />
+                    </Grid>
+                </StackPanel>
+            </wpfui:Card>
+
+            <!-- Insights section -->
+            <TextBlock Text="Insights" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12" />
+            <wpfui:Card Margin="0,0,0,24">
+                <StackPanel>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Executor"
+                                   VerticalAlignment="Center" FontSize="13" />
+                        <wpfui:TextBox Grid.Column="1"
+                                    Text="{Binding InsightsExecutor, UpdateSourceTrigger=PropertyChanged}"
+                                    PlaceholderText="e.g. anthropic" />
+                    </Grid>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Model"
+                                   VerticalAlignment="Center" FontSize="13" />
+                        <wpfui:TextBox Grid.Column="1"
+                                    Text="{Binding InsightsModel, UpdateSourceTrigger=PropertyChanged}"
+                                    PlaceholderText="e.g. claude-sonnet-4-6" />
+                    </Grid>
+                </StackPanel>
+            </wpfui:Card>
+
+            <!-- Save note -->
+            <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                    CornerRadius="6"
+                    Padding="12,8">
+                <StackPanel Orientation="Horizontal">
+                    <wpfui:SymbolIcon Symbol="Info24" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource SystemAccentColorPrimaryBrush}" />
+                    <TextBlock Text="{Binding SaveNote}"
+                               TextWrapping="Wrap"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

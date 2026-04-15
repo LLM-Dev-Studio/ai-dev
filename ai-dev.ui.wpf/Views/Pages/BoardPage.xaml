@@ -1,0 +1,160 @@
+<Page x:Class="AiDev.Desktop.Views.Pages.BoardPage"
+         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:wpfui="http://schemas.lepo.co/wpfui/2022/xaml"
+         xmlns:conv="clr-namespace:AiDev.Desktop.Converters"
+         Title="Board">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:PriorityColorConverter x:Key="PriorityColor" />
+        <conv:PriorityTextConverter x:Key="PriorityText" />
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Board" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock Text="Kanban task board"
+                           FontSize="13"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Margin="0,4,0,0" />
+            </StackPanel>
+            <wpfui:Button HorizontalAlignment="Right"
+                       Content="Refresh"
+                       Icon="{wpfui:SymbolIcon ArrowClockwise24}"
+                       Command="{Binding LoadCommand}" />
+        </StackPanel>
+
+        <!-- Loading -->
+        <wpfui:ProgressRing Grid.Row="1" IsIndeterminate="True"
+                         Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisible}}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <!-- Kanban board -->
+        <ScrollViewer Grid.Row="1"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Disabled"
+                      Visibility="{Binding IsLoading, Converter={StaticResource InverseBoolToVisible}}">
+            <ItemsControl ItemsSource="{Binding Columns}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Width="280"
+                                Margin="0,0,16,0"
+                                VerticalAlignment="Stretch">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Column header -->
+                                <Border Grid.Row="0"
+                                        Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                        CornerRadius="8,8,0,0"
+                                        Padding="12,10">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Column.Title}"
+                                                   FontWeight="SemiBold"
+                                                   FontSize="13" />
+                                        <Border Background="{DynamicResource SystemAccentColorPrimaryBrush}"
+                                                CornerRadius="10"
+                                                Padding="6,2"
+                                                Margin="8,0,0,0">
+                                            <TextBlock Text="{Binding Tasks.Count}"
+                                                       FontSize="11"
+                                                       Foreground="White" />
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Tasks list -->
+                                <ScrollViewer Grid.Row="1"
+                                              Background="{DynamicResource LayerFillColorDefaultBrush}"
+                                              MaxHeight="600"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding Tasks}" Margin="8">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <wpfui:Card Margin="0,0,0,8" Padding="12">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
+
+                                                        <!-- Priority + Title -->
+                                                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,4">
+                                                            <Border Width="4"
+                                                                    CornerRadius="2"
+                                                                    Background="{Binding Priority, Converter={StaticResource PriorityColor}}"
+                                                                    Margin="0,0,8,0" />
+                                                            <TextBlock Text="{Binding Title}"
+                                                                       FontSize="13"
+                                                                       FontWeight="Medium"
+                                                                       TextWrapping="Wrap" />
+                                                        </StackPanel>
+
+                                                        <!-- Description preview -->
+                                                        <TextBlock Grid.Row="1"
+                                                                   Text="{Binding Description}"
+                                                                   FontSize="11"
+                                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                   TextWrapping="Wrap"
+                                                                   MaxHeight="40"
+                                                                   Margin="12,0,0,6" />
+
+                                                        <!-- Footer: assignee + priority + actions -->
+                                                        <Grid Grid.Row="2">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <wpfui:Badge Content="{Binding Priority, Converter={StaticResource PriorityText}}"
+                                                                          Appearance="Secondary"
+                                                                          Margin="0,0,6,0" />
+                                                                <TextBlock Text="{Binding Assignee}"
+                                                                           FontSize="11"
+                                                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                           VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                            <wpfui:Button HorizontalAlignment="Right"
+                                                                       Icon="{wpfui:SymbolIcon Delete24}"
+                                                                       Appearance="Danger"
+                                                                       Command="{Binding DataContext.DeleteTaskCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                                                       CommandParameter="{Binding}" />
+                                                        </Grid>
+                                                    </Grid>
+                                                </wpfui:Card>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+
+                                <!-- Add task button -->
+                                <wpfui:Button Grid.Row="2"
+                                           Content="Add task"
+                                           Icon="{wpfui:SymbolIcon Add24}"
+                                           HorizontalAlignment="Stretch"
+                                           Margin="0,8,0,0"
+                                           Command="{Binding DataContext.ShowAddTaskCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                           CommandParameter="{Binding Column.Id.Value}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</Page>

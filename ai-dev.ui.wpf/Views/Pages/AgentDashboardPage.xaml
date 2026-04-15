@@ -1,0 +1,159 @@
+<Page x:Class="AiDev.Desktop.Views.Pages.AgentDashboardPage"
+         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:wpfui="http://schemas.lepo.co/wpfui/2022/xaml"
+         xmlns:conv="clr-namespace:AiDev.Desktop.Converters"
+         Title="Agents">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:AgentStatusColorConverter x:Key="StatusColor" />
+        <conv:AgentStatusTextConverter x:Key="StatusText" />
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,20">
+            <StackPanel>
+                <TextBlock Text="Agents"
+                           FontSize="28"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="Manage and run agents for this project"
+                           FontSize="13"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Margin="0,4,0,0" />
+            </StackPanel>
+            <wpfui:Button HorizontalAlignment="Right"
+                       Content="Add Agent"
+                       Appearance="Primary"
+                       Icon="{wpfui:SymbolIcon PersonAdd24}"
+                       Command="{Binding CreateAgentCommand}" />
+        </StackPanel>
+
+        <!-- Add agent quick form -->
+        <wpfui:Card Grid.Row="1"
+                 Margin="0,0,0,20"
+                 Visibility="{Binding IsAddingAgent, Converter={StaticResource BoolToVisible}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <wpfui:TextBox Grid.Column="0" PlaceholderText="Agent name"
+                            Text="{Binding NewAgentName, UpdateSourceTrigger=PropertyChanged}"
+                            Margin="0,0,8,0" />
+                <wpfui:TextBox Grid.Column="1" PlaceholderText="Role (optional)"
+                            Text="{Binding NewAgentRole, UpdateSourceTrigger=PropertyChanged}"
+                            Margin="0,0,8,0" />
+                <wpfui:Button Grid.Column="2" Content="Create" Appearance="Primary"
+                           Command="{Binding CreateAgentCommand}" Margin="0,0,8,0" />
+                <wpfui:Button Grid.Column="3" Content="Cancel"
+                           Command="{Binding CancelAddAgentCommand}" />
+            </Grid>
+        </wpfui:Card>
+
+        <!-- Loading -->
+        <wpfui:ProgressRing Grid.Row="2" IsIndeterminate="True"
+                         Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisible}}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <!-- Agent cards grid -->
+        <ScrollViewer Grid.Row="2"
+                      Visibility="{Binding IsLoading, Converter={StaticResource InverseBoolToVisible}}">
+            <ItemsControl ItemsSource="{Binding Agents}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <wpfui:Card Margin="0,0,16,16" Width="300" Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Name + status -->
+                                <Grid Grid.Row="0" Margin="0,0,0,8">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="10" Height="10"
+                                                 Fill="{Binding Status, Converter={StaticResource StatusColor}}"
+                                                 VerticalAlignment="Center"
+                                                 Margin="0,0,8,0" />
+                                        <TextBlock Text="{Binding Name}"
+                                                   FontSize="15"
+                                                   FontWeight="SemiBold" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Status, Converter={StaticResource StatusText}}"
+                                               HorizontalAlignment="Right"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                </Grid>
+
+                                <!-- Role + model -->
+                                <StackPanel Grid.Row="1" Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding Role}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                        <wpfui:Badge Content="{Binding Model}"
+                                                  Appearance="Info"
+                                                  Margin="0,0,6,0" />
+                                        <wpfui:Badge Content="{Binding Executor.Value}"
+                                                  Appearance="Secondary" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <!-- Inbox count + last run -->
+                                <Grid Grid.Row="2" Margin="0,0,0,12">
+                                    <TextBlock Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                               FontSize="11">
+                                        <Run Text="{Binding InboxCount, Mode=OneWay}" />
+                                        <Run Text="inbox" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding LastRunAt, StringFormat='Last run: {0:MMM d}'}"
+                                               HorizontalAlignment="Right"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                                </Grid>
+
+                                <!-- Action buttons -->
+                                <StackPanel Grid.Row="3" Orientation="Horizontal">
+                                    <wpfui:Button Content="Run"
+                                               Appearance="Primary"
+                                               Icon="{wpfui:SymbolIcon Play24}"
+                                               Command="{Binding DataContext.RunAgentCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                               CommandParameter="{Binding}"
+                                               Margin="0,0,8,0" />
+                                    <wpfui:Button Content="Stop"
+                                               Appearance="Secondary"
+                                               Icon="{wpfui:SymbolIcon Stop24}"
+                                               Command="{Binding DataContext.StopAgentCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                               CommandParameter="{Binding}"
+                                               Margin="0,0,8,0" />
+                                    <wpfui:Button Icon="{wpfui:SymbolIcon Open24}"
+                                               ToolTip="View agent details"
+                                               Command="{Binding DataContext.SelectAgentCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                               CommandParameter="{Binding}" />
+                                </StackPanel>
+                            </Grid>
+                        </wpfui:Card>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</Page>

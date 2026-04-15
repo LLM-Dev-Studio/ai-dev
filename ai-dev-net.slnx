@@ -48,4 +48,5 @@
   <Project Path="ai-dev.executor.lmstudio/ai-dev.executor.lmstudio.csproj" />
   <Project Path="ai-dev.executor.ollama/ai-dev.executor.ollama.csproj" />
   <Project Path="ai-dev.mcp/ai-dev.mcp.csproj" />
+  <Project Path="ai-dev.ui.wpf/ai-dev.ui.wpf.csproj" />
 </Solution>
