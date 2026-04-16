@@ -199,6 +199,7 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
                     var msg = $"[stall-check] no output for {silentFor.TotalMinutes:F0}m — process PID={process.Id} still running";
                     logger.LogWarning("[claude] {Message}", msg);
                     output.TryWrite($"[{DateTime.UtcNow:o}] {msg}");
+                    context.ReportWarning?.Invoke(msg);
                 }
             }
         }, stallCts.Token);

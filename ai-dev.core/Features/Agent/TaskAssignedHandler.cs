@@ -21,11 +21,15 @@ internal sealed class TaskAssignedHandler(
             taskId: domainEvent.TaskId);
 
         if (error != null)
+        {
             logger.LogError("[board] Failed to dispatch TaskAssigned to {Assignee} for task {TaskId}: {Error}",
                 domainEvent.Assignee, domainEvent.TaskId, error);
-        else
-            logger.LogInformation("[board] Dispatched TaskAssigned to {Assignee} for task {TaskId} ({Title})",
-                domainEvent.Assignee, domainEvent.TaskId, domainEvent.Title);
+            throw new InvalidOperationException(
+                $"Failed to dispatch task to agent '{domainEvent.Assignee}': {error}");
+        }
+
+        logger.LogInformation("[board] Dispatched TaskAssigned to {Assignee} for task {TaskId} ({Title})",
+            domainEvent.Assignee, domainEvent.TaskId, domainEvent.Title);
 
         return Task.CompletedTask;
     }

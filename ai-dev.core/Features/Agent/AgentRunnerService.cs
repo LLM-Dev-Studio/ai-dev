@@ -109,12 +109,30 @@ public class AgentRunnerService(
         activity?.SetTag("agent.slug", agentSlug);
         activity?.SetTag("agent.startedAt", startedAt.ToString("o"));
         ApplyTriggerTags(activity, trigger);
-        _ = RunSessionAsync(key, info, startedAt, activity?.Id);
+        _ = RunSessionAsync(key, info, startedAt, activity?.Id)
+            .ContinueWith(t =>
+            {
+                var ex = t.Exception?.InnerException ?? t.Exception;
+                logger.LogError(ex, "[runner] RunSessionAsync faulted for {Key} before session try-catch", key);
+                _sessions.TryRemove(key, out _);
+
+                // Best-effort status update so the UI shows the error.
+                var agentDir = paths.AgentDir(info.ProjectSlug, info.AgentSlug);
+                _ = UpdateAgentStatusAsync(agentDir, new()
+                {
+                    ["status"] = "error",
+                    ["lastError"] = $"Agent session faulted: {ex?.Message ?? "unknown error"}",
+                    ["lastErrorAt"] = DateTime.UtcNow.ToString("o"),
+                    ["pid"] = (object?)null,
+                    ["sessionStartedAt"] = (object?)null,
+                });
+            }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
         return true;
     }
 
     /// <summary>
-    /// Signals a running agent to stop.
+    /// Signals a running agent to stop. If the session has no live process (orphaned),
+    /// it is forcibly removed so the agent can be re-launched.
     /// </summary>
     public bool StopAgent(ProjectSlug projectSlug, AgentSlug agentSlug)
     {
@@ -122,6 +140,24 @@ public class AgentRunnerService(
         if (!_sessions.TryGetValue(key, out var info)) return false;
         logger.LogInformation("[runner] Stopping agent: {Key}", key);
         info.Cts.Cancel();
+
+        // If the session has no PID it likely faulted before launching a process.
+        // Forcibly remove it so the UI transitions out of "running" state and the
+        // agent can be re-launched.
+        if (info.Pid == 0)
+        {
+            logger.LogWarning("[runner] Session {Key} has no PID — forcibly removing orphaned session", key);
+            _sessions.TryRemove(key, out _);
+
+            var agentDir = paths.AgentDir(projectSlug, agentSlug);
+            _ = UpdateAgentStatusAsync(agentDir, new()
+            {
+                ["status"] = "idle",
+                ["pid"] = (object?)null,
+                ["sessionStartedAt"] = (object?)null,
+            });
+        }
+
         return true;
     }
 
@@ -178,7 +214,7 @@ public class AgentRunnerService(
         if (Directory.Exists(inboxDir))
         {
             try { inboxSnapshot = Directory.GetFiles(inboxDir, "*.md").Select(Path.GetFileName).OfType<string>().OrderBy(f => f).ToArray(); }
-            catch { /* ignore */ }
+            catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to read inbox directory {InboxDir}", inboxDir); }
         }
 
         // Load agent config — fail fast on missing or malformed agent.json rather than
@@ -302,14 +338,21 @@ public class AgentRunnerService(
             ReportPid: pid =>
             {
                 info.Pid = pid;
-                _ = UpdateAgentStatusAsync(agentDir, new() { ["pid"] = pid });
+                _ = UpdateAgentStatusAsync(agentDir, new() { ["pid"] = pid })
+                    .ContinueWith(t => logger.LogWarning(t.Exception, "[runner] Failed to write PID for {Key}", key),
+                        CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
                 logger.LogInformation("[runner] Launched {Key} PID={Pid}", key, pid);
                 activity?.SetTag("agent.pid", pid);
                 activity?.AddEvent(new("process.started"));
             },
             Trigger: info.Trigger,
             ThinkingLevel: agentConfig.ThinkingLevel,
-            Secrets: secrets.Count > 0 ? secrets : null);
+            Secrets: secrets.Count > 0 ? secrets : null,
+            ReportWarning: warning =>
+            {
+                logger.LogWarning("[runner] {Key}: {Warning}", key, warning);
+                _ = UpdateAgentStatusAsync(agentDir, new() { ["lastWarning"] = warning });
+            });
 
         try
         {
@@ -493,7 +536,7 @@ public class AgentRunnerService(
     // Private helpers
     // -------------------------------------------------------------------------
 
-    private static AgentConfig? LoadAgentConfig(string agentDir)
+    private AgentConfig? LoadAgentConfig(string agentDir)
     {
         const string DefaultModel = "claude-sonnet-4-6";
         var path = Path.Combine(agentDir, "agent.json");
@@ -523,7 +566,11 @@ public class AgentRunnerService(
 
             return new(ModelAlias: model, Executor: executor, Skills: skills, ThinkingLevel: thinking);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[runner] Failed to parse agent.json in {AgentDir}", agentDir);
+            return null;
+        }
     }
 
     private string ResolveModelId(string modelOrAlias, AgentExecutorName executor)
@@ -539,7 +586,7 @@ public class AgentRunnerService(
         return LegacyModelAliases.Resolve(modelOrAlias, executor.Value) ?? modelOrAlias;
     }
 
-    private static async Task UpdateAgentStatusAsync(string agentDir, Dictionary<string, object?> updates)
+    private async Task UpdateAgentStatusAsync(string agentDir, Dictionary<string, object?> updates)
     {
         var path = Path.Combine(agentDir, "agent.json");
         try
@@ -564,7 +611,7 @@ public class AgentRunnerService(
 
             await File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(merged, JsonDefaults.Write));
         }
-        catch { /* don't crash session if status write fails */ }
+        catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to update agent status in {AgentDir}", agentDir); }
     }
 
     private void ArchiveInbox(string inboxDir, string[] snapshot)
