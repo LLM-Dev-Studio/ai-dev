@@ -1,31 +1,19 @@
 {
-  "mcpServers": {
-    "ads-workspace": {
-      "type": "stdio",
-      "command": "dotnet",
-      "args": [
-        "run",
-        "--no-build",
-        "--project",
-        "D:\\Code\\ai-dev-net\\ai-dev.mcp",
-        "--",
-        "D:\\Code\\ai-dev-net\\workspaces"
-      ]
-    }
-  },
+  "mcpServers": {},
   "permissions": {
     "allow": [
-      "mcp__ads-workspace__*"
-    ],
-    "deny": [
       "Read",
       "Write",
       "Edit",
       "Glob",
       "Grep",
-      "NotebookRead",
-      "NotebookEdit"
-    ]
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git status)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ],
+    "deny": []
   },
   "defaultMode": "dontAsk"
 }

@@ -14,9 +14,11 @@ namespace AiDev.Executors;
 ///
 /// Permission model:
 ///   Agents connect to the ai-dev.mcp MCP server registered in .claude/settings.json.
-///   The MCP server enforces path boundaries and logs all operations. Raw Read/Write/Edit/Bash
-///   tools are denied by settings.json — agents can only use workspace operations exposed by
-///   the MCP server. Git tools are granted via --allowedTools based on the agent's skill list.
+///   The MCP server provides structured workspace tools (UpdateAgentStatus, UpdateBoard,
+///   WriteJournal, WriteInbox, WriteOutbox) with validation and audit logging.
+///   Built-in file tools (Read/Write/Edit/Glob/Grep) are granted via --allowedTools so
+///   agents can edit codebase source files directly. Git tools are granted via --allowedTools
+///   based on the agent's skill list.
 ///
 /// Rate-limit detection:
 ///   Output lines are scanned as they stream. When a rate-limit signal is detected, the result
@@ -323,10 +325,10 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         var claudeDir = Path.Combine(projectRoot, ".claude");
         Directory.CreateDirectory(claudeDir);
 
-        var denyTools = new JsonArray(ClaudeSkills.DeniedRawTools.Select(t => JsonValue.Create(t)).ToArray<JsonNode?>());
+        var denyTools = new JsonArray();
 
         JsonObject mcpServers;
-        JsonArray allowTools;
+        var allowTools = new JsonArray();
 
         if (skills.Contains(ClaudeSkills.McpWorkspace.Key))
         {
@@ -339,13 +341,16 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
                     ["args"]    = new JsonArray("run", "--no-build", "--project", mcpProject, "--", workspaceRoot),
                 },
             };
-            allowTools = new JsonArray($"mcp__{ClaudeSkills.McpServerName}__*");
+            allowTools.Add($"mcp__{ClaudeSkills.McpServerName}__*");
         }
         else
         {
             mcpServers = new JsonObject();
-            allowTools = new JsonArray();
         }
+
+        // Always allow built-in file tools so agents can read/write workspace and codebase files.
+        foreach (var tool in ClaudeSkills.ToAllowedTools(skills))
+            allowTools.Add(tool);
 
         var settings = new JsonObject
         {
