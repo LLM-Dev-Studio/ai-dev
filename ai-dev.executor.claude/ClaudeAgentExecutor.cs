@@ -96,6 +96,9 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         // Regenerate .claude/settings.json with correct absolute paths before every run.
         // This ensures the MCP server registration always points to the shared workspace root
         // regardless of where the repository is checked out.
+        // The MCP server is launched with --no-build because the host has already compiled it;
+        // without this flag, concurrent agent launches fail when dotnet tries to rebuild an
+        // exe that is locked by another running MCP server instance.
         var projectRoot = Path.Combine(context.WorkspaceRoot, context.ProjectSlug);
         WriteClaudeSettings(projectRoot, context.WorkspaceRoot, skills);
 
@@ -333,7 +336,7 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
                 {
                     ["type"]    = "stdio",
                     ["command"] = "dotnet",
-                    ["args"]    = new JsonArray("run", "--project", mcpProject, "--", workspaceRoot),
+                    ["args"]    = new JsonArray("run", "--no-build", "--project", mcpProject, "--", workspaceRoot),
                 },
             };
             allowTools = new JsonArray($"mcp__{ClaudeSkills.McpServerName}__*");
@@ -356,7 +359,13 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         };
 
         var settingsPath = Path.Combine(claudeDir, "settings.json");
-        File.WriteAllText(settingsPath, settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        var json = settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+
+        // Multiple agents in the same project may launch concurrently and race on this file.
+        // Write to a temp file and atomically move it to avoid sharing violations.
+        var tmpPath = settingsPath + $".{Guid.NewGuid():N}.tmp";
+        File.WriteAllText(tmpPath, json);
+        File.Move(tmpPath, settingsPath, overwrite: true);
     }
 
     private static bool IsRateLimitLine(string line) =>

@@ -20,10 +20,9 @@ public static class ClaudeSkills
     /// (permissions.deny) and passed as --disallowedTools at runtime.
     /// </summary>
     public static readonly IReadOnlyList<string> DeniedRawTools =
-    [        
+    [
+        "Read", "Write", "Edit", "Glob", "Grep", "NotebookRead", "NotebookEdit",
     ];
-
-    // default denyTools: "Read", "Write", "Edit", "Bash", "Glob", "Grep", "NotebookRead", "NotebookEdit",
 
     public static readonly ExecutorSkill GitRead = new(
         Key: "git-read",

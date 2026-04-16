@@ -5,12 +5,27 @@
       "command": "dotnet",
       "args": [
         "run",
+        "--no-build",
         "--project",
-        "..\\..\\..\\ai-dev-net\\ai-dev.mcp",
+        "D:\\Code\\ai-dev-net\\ai-dev.mcp",
         "--",
-        "..\\..\\..\\ai-dev-net\\workspaces"
+        "D:\\Code\\ai-dev-net\\workspaces"
       ]
     }
-  },  
+  },
+  "permissions": {
+    "allow": [
+      "mcp__ads-workspace__*"
+    ],
+    "deny": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "NotebookRead",
+      "NotebookEdit"
+    ]
+  },
   "defaultMode": "dontAsk"
 }

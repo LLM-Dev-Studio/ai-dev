@@ -31,7 +31,7 @@ public class AgentRunnerService(
     private const string ProjectScopedMcpPrompt =
         "Your assigned project slug is '{0}' and your agent slug is '{1}'. " +
         "For every MCP workspace tool call, pass projectSlug='{0}'. " +
-        "Wherever your CLAUDE.md instructions say '{your-slug}', substitute '{1}'.";
+        "Wherever your CLAUDE.md instructions say '{{your-slug}}', substitute '{1}'.";
 
     private sealed class SessionInfo(CancellationTokenSource cts)
     {
