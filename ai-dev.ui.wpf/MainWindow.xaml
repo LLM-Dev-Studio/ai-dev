@@ -32,7 +32,7 @@
                            IsPaneOpen="True"
                            OpenPaneLength="220"
                            IsBackButtonVisible="Collapsed"
-                           IsSettingsVisible="False"
+                           
                            FrameMargin="0">
 
             <wpfui:NavigationView.MenuItems>

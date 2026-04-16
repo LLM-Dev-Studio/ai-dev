@@ -30,9 +30,14 @@
                     <TextBlock Text="{Binding Agent.Name}"
                                FontSize="28" FontWeight="SemiBold" />
                 </StackPanel>
-                <TextBlock Text="{Binding Agent.Role}"
+                <TextBlock Text="{Binding Agent.Description}"
                            FontSize="14"
                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Margin="22,0,0,4"
+                           TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Agent.Role}"
+                           FontSize="13"
+                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                            Margin="22,0,0,24" />
 
                 <!-- Status card -->
@@ -122,15 +127,19 @@
 
                 <!-- Actions -->
                 <StackPanel Orientation="Horizontal">
+                    <!-- Run button: shown when not running -->
                     <wpfui:Button Content="Run Agent"
                                Appearance="Primary"
                                Icon="{wpfui:SymbolIcon Play24}"
                                Command="{Binding RunAsyncCommand}"
-                               Margin="0,0,8,0" />
+                               Margin="0,0,8,0"
+                               Visibility="{Binding IsRunning, Converter={StaticResource InverseBoolToVisible}}" />
+                    <!-- Stop button: shown when running -->
                     <wpfui:Button Content="Stop"
                                Icon="{wpfui:SymbolIcon Stop24}"
                                Command="{Binding StopAsyncCommand}"
-                               Margin="0,0,8,0" />
+                               Margin="0,0,8,0"
+                               Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible}}" />
                     <wpfui:Button Content="View Transcript"
                                Icon="{wpfui:SymbolIcon DocumentText24}"
                                Command="{Binding ViewTranscriptCommand}" />

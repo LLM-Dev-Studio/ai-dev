@@ -1,4 +1,5 @@
 using AiDev.WinUI.ViewModels;
+using AiDev.WinUI.Views.Dialogs;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -32,11 +33,10 @@ public sealed partial class ProjectsPage : Page
             ViewModel.OpenProject(project);
     }
 
-    private async void DeleteProject_Click(object sender, RoutedEventArgs e)
+    private async void NewProjectButton_Click(object sender, RoutedEventArgs e)
     {
-        // Delete not yet supported by WorkspaceService
+        var dialog = new NewProjectDialog(ViewModel) { XamlRoot = XamlRoot };
+        await dialog.ShowAsync();
     }
-
-    private async void CreateProject_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.CreateProjectCommand.ExecuteAsync(null);
 }
+

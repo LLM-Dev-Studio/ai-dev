@@ -87,68 +87,69 @@
                                 </Grid.RowDefinitions>
 
                                 <!-- Name + status -->
-                                <Grid Grid.Row="0" Margin="0,0,0,8">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Ellipse Width="10" Height="10"
-                                                 Fill="{Binding Status, Converter={StaticResource StatusColor}}"
-                                                 VerticalAlignment="Center"
-                                                 Margin="0,0,8,0" />
-                                        <TextBlock Text="{Binding Name}"
-                                                   FontSize="15"
-                                                   FontWeight="SemiBold" />
-                                    </StackPanel>
-                                    <TextBlock Text="{Binding Status, Converter={StaticResource StatusText}}"
-                                               HorizontalAlignment="Right"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                </Grid>
+                                 <Grid Grid.Row="0" Margin="0,0,0,8">
+                                     <StackPanel Orientation="Horizontal">
+                                         <Ellipse Width="10" Height="10"
+                                                  Fill="{Binding Agent.Status, Converter={StaticResource StatusColor}}"
+                                                  VerticalAlignment="Center"
+                                                  Margin="0,0,8,0" />
+                                         <TextBlock Text="{Binding Agent.Name}"
+                                                    FontSize="15"
+                                                    FontWeight="SemiBold" />
+                                     </StackPanel>
+                                     <TextBlock Text="{Binding Agent.Status, Converter={StaticResource StatusText}}"
+                                                HorizontalAlignment="Right"
+                                                FontSize="11"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                 </Grid>
 
-                                <!-- Role + model -->
-                                <StackPanel Grid.Row="1" Margin="0,0,0,8">
-                                    <TextBlock Text="{Binding Role}"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                        <wpfui:Badge Content="{Binding Model}"
-                                                  Appearance="Info"
-                                                  Margin="0,0,6,0" />
-                                        <wpfui:Badge Content="{Binding Executor.Value}"
-                                                  Appearance="Secondary" />
-                                    </StackPanel>
-                                </StackPanel>
+                                 <!-- Role + model -->
+                                 <StackPanel Grid.Row="1" Margin="0,0,0,8">
+                                     <TextBlock Text="{Binding Agent.Role}"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                     <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                         <wpfui:Badge Content="{Binding Agent.Model}"
+                                                   Appearance="Info"
+                                                   Margin="0,0,6,0" />
+                                         <wpfui:Badge Content="{Binding Agent.Executor.Value}"
+                                                   Appearance="Secondary" />
+                                     </StackPanel>
+                                 </StackPanel>
 
-                                <!-- Inbox count + last run -->
-                                <Grid Grid.Row="2" Margin="0,0,0,12">
-                                    <TextBlock Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                               FontSize="11">
-                                        <Run Text="{Binding InboxCount, Mode=OneWay}" />
-                                        <Run Text="inbox" />
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding LastRunAt, StringFormat='Last run: {0:MMM d}'}"
-                                               HorizontalAlignment="Right"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                                </Grid>
+                                 <!-- Inbox count + last run -->
+                                 <Grid Grid.Row="2" Margin="0,0,0,12">
+                                     <TextBlock Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                FontSize="11">
+                                         <Run Text="{Binding Agent.InboxCount, Mode=OneWay}" />
+                                         <Run Text="inbox" />
+                                     </TextBlock>
+                                     <TextBlock Text="{Binding Agent.LastRunAt, StringFormat='Last run: {0:MMM d}'}"
+                                                HorizontalAlignment="Right"
+                                                FontSize="11"
+                                                Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                                 </Grid>
 
-                                <!-- Action buttons -->
-                                <StackPanel Grid.Row="3" Orientation="Horizontal">
-                                    <wpfui:Button Content="Run"
-                                               Appearance="Primary"
-                                               Icon="{wpfui:SymbolIcon Play24}"
-                                               Command="{Binding DataContext.RunAgentAsyncCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                                               CommandParameter="{Binding}"
-                                               Margin="0,0,8,0" />
-                                    <wpfui:Button Content="Stop"
-                                               Appearance="Secondary"
-                                               Icon="{wpfui:SymbolIcon Stop24}"
-                                               Command="{Binding DataContext.StopAgentAsyncCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                                               CommandParameter="{Binding}"
-                                               Margin="0,0,8,0" />
-                                    <wpfui:Button Icon="{wpfui:SymbolIcon Open24}"
-                                               ToolTip="View agent details"
-                                               Command="{Binding DataContext.SelectAgentCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                                               CommandParameter="{Binding}" />
-                                </StackPanel>
+                                 <!-- Action buttons: single Run/Stop toggle + Details -->
+                                 <StackPanel Grid.Row="3" Orientation="Horizontal">
+                                     <wpfui:Button Content="Run"
+                                                Appearance="Primary"
+                                                Icon="{wpfui:SymbolIcon Play24}"
+                                                Command="{Binding DataContext.RunAgentAsyncCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding IsRunning, Converter={StaticResource InverseBoolToVisible}}"
+                                                Margin="0,0,8,0" />
+                                     <wpfui:Button Content="Stop"
+                                                Icon="{wpfui:SymbolIcon Stop24}"
+                                                Command="{Binding DataContext.StopAgentAsyncCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible}}"
+                                                Margin="0,0,8,0" />
+                                     <wpfui:Button Icon="{wpfui:SymbolIcon Open24}"
+                                                ToolTip="View agent details"
+                                                Command="{Binding DataContext.SelectAgentCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                                CommandParameter="{Binding}" />
+                                 </StackPanel>
                             </Grid>
                         </wpfui:Card>
                     </DataTemplate>

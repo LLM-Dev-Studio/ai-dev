@@ -29,20 +29,20 @@ public sealed partial class AgentDashboardPage : Page
 
     private async void RunAgent_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: AgentInfo agent })
-            await ViewModel.RunAgentCommand.ExecuteAsync(agent);
+        if (sender is Button { Tag: AgentCardViewModel card })
+            await ViewModel.RunAgentCommand.ExecuteAsync(card);
     }
 
     private async void StopAgent_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: AgentInfo agent })
-            await ViewModel.StopAgentCommand.ExecuteAsync(agent);
+        if (sender is Button { Tag: AgentCardViewModel card })
+            await ViewModel.StopAgentCommand.ExecuteAsync(card);
     }
 
     private void SelectAgent_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: AgentInfo agent })
-            ViewModel.SelectAgentCommand.Execute(agent);
+        if (sender is Button { Tag: AgentCardViewModel card })
+            ViewModel.SelectAgentCommand.Execute(card);
     }
 
     private void AddAgent_Click(object sender, RoutedEventArgs e)

@@ -102,13 +102,13 @@
                             <Grid Grid.Row="0" Margin="0,0,0,8">
                                 <StackPanel Orientation="Horizontal">
                                     <Ellipse Width="10" Height="10"
-                                             Fill="{Binding Status, Converter={StaticResource StatusColor}}"
+                                             Fill="{Binding Agent.Status, Converter={StaticResource StatusColor}}"
                                              VerticalAlignment="Center"
                                              Margin="0,0,8,0" />
-                                    <TextBlock Text="{Binding Name}"
+                                    <TextBlock Text="{Binding Agent.Name}"
                                                Style="{StaticResource BodyStrongTextBlockStyle}" />
                                 </StackPanel>
-                                <TextBlock Text="{Binding Status, Converter={StaticResource StatusText}}"
+                                <TextBlock Text="{Binding Agent.Status, Converter={StaticResource StatusText}}"
                                            HorizontalAlignment="Right"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -116,17 +116,17 @@
 
                             <!-- Role + model -->
                             <StackPanel Grid.Row="1" Margin="0,0,0,8">
-                                <TextBlock Text="{Binding Role}"
+                                <TextBlock Text="{Binding Agent.Role}"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                     <Border CornerRadius="4" Padding="6,2" Margin="0,0,6,0"
                                             Background="{ThemeResource ControlFillColorSecondaryBrush}">
-                                        <TextBlock Text="{Binding Model}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                        <TextBlock Text="{Binding Agent.Model}" Style="{StaticResource CaptionTextBlockStyle}" />
                                     </Border>
                                     <Border CornerRadius="4" Padding="6,2"
                                             Background="{ThemeResource ControlFillColorDefaultBrush}">
-                                        <TextBlock Text="{Binding Executor.Value}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                        <TextBlock Text="{Binding Agent.Executor.Value}" Style="{StaticResource CaptionTextBlockStyle}" />
                                     </Border>
                                 </StackPanel>
                             </StackPanel>
@@ -135,26 +135,28 @@
                             <Grid Grid.Row="2" Margin="0,0,0,12">
                                 <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}">
-                                    <Run Text="{Binding InboxCount, Mode=OneWay}" /><Run Text=" inbox" />
+                                    <Run Text="{Binding Agent.InboxCount, Mode=OneWay}" /><Run Text=" inbox" />
                                 </TextBlock>
                                 <TextBlock HorizontalAlignment="Right"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}">
-                                    <Run Text="Last run: " /><Run Text="{Binding LastRunAt}" />
+                                    <Run Text="Last run: " /><Run Text="{Binding Agent.LastRunAt}" />
                                 </TextBlock>
                             </Grid>
 
-                            <!-- Action buttons -->
-                            <StackPanel Grid.Row="3" Orientation="Horizontal">
+                            <!-- Action buttons: single Run/Stop toggle + Details -->
+                            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+                                <!-- Run: shown when not running -->
                                 <Button Content="Run"
                                         Style="{StaticResource AccentButtonStyle}"
                                         Tag="{Binding}"
                                         Click="RunAgent_Click"
-                                        Margin="0,0,8,0" />
+                                        Visibility="{Binding IsRunning, Converter={StaticResource InverseBoolToVisible}}" />
+                                <!-- Stop: shown when running -->
                                 <Button Content="Stop"
                                         Tag="{Binding}"
                                         Click="StopAgent_Click"
-                                        Margin="0,0,8,0" />
+                                        Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible}}" />
                                 <Button Content="Details"
                                         Tag="{Binding}"
                                         Click="SelectAgent_Click" />

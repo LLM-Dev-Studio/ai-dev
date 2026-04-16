@@ -13,6 +13,7 @@ public partial class AgentDetailViewModel : ObservableObject
 
     [ObservableProperty] private AgentInfo? _agent;
     [ObservableProperty] private bool _isLoading;
+    [ObservableProperty] private bool _isRunning;
 
     public event Action? NavigateToTranscript;
 
@@ -35,6 +36,7 @@ public partial class AgentDetailViewModel : ObservableObject
         try
         {
             Agent = _agentService.LoadAgent(CurrentSlug, agentSlug);
+            IsRunning = _agentRunnerService.IsRunning(CurrentSlug, agentSlug);
         }
         finally
         {
@@ -47,6 +49,7 @@ public partial class AgentDetailViewModel : ObservableObject
     {
         if (CurrentSlug is null || Agent is null) return;
         _agentRunnerService.LaunchAgent(CurrentSlug, Agent.Slug);
+        IsRunning = true;
         await LoadAsync(Agent.Slug);
     }
 
@@ -55,6 +58,7 @@ public partial class AgentDetailViewModel : ObservableObject
     {
         if (CurrentSlug is null || Agent is null) return;
         _agentRunnerService.StopAgent(CurrentSlug, Agent.Slug);
+        IsRunning = false;
         await LoadAsync(Agent.Slug);
     }
 
