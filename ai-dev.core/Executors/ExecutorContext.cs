@@ -49,4 +49,10 @@ public sealed record ExecutorContext(
     /// <summary>
     /// Project secrets to inject as environment variables. Values are sensitive — never log them.
     /// </summary>
-    IReadOnlyDictionary<string, string>? Secrets = null);
+    IReadOnlyDictionary<string, string>? Secrets = null,
+
+    /// <summary>
+    /// Optional callback invoked when the executor detects a warning condition (e.g. stall).
+    /// The runner wires this to update agent status so warnings are visible in the UI.
+    /// </summary>
+    Action<string>? ReportWarning = null);

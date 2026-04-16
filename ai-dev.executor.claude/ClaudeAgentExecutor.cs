@@ -14,9 +14,11 @@ namespace AiDev.Executors;
 ///
 /// Permission model:
 ///   Agents connect to the ai-dev.mcp MCP server registered in .claude/settings.json.
-///   The MCP server enforces path boundaries and logs all operations. Raw Read/Write/Edit/Bash
-///   tools are denied by settings.json — agents can only use workspace operations exposed by
-///   the MCP server. Git tools are granted via --allowedTools based on the agent's skill list.
+///   The MCP server provides structured workspace tools (UpdateAgentStatus, UpdateBoard,
+///   WriteJournal, WriteInbox, WriteOutbox) with validation and audit logging.
+///   Built-in file tools (Read/Write/Edit/Glob/Grep) are granted via --allowedTools so
+///   agents can edit codebase source files directly. Git tools are granted via --allowedTools
+///   based on the agent's skill list.
 ///
 /// Rate-limit detection:
 ///   Output lines are scanned as they stream. When a rate-limit signal is detected, the result
@@ -96,6 +98,9 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         // Regenerate .claude/settings.json with correct absolute paths before every run.
         // This ensures the MCP server registration always points to the shared workspace root
         // regardless of where the repository is checked out.
+        // The MCP server is launched with --no-build because the host has already compiled it;
+        // without this flag, concurrent agent launches fail when dotnet tries to rebuild an
+        // exe that is locked by another running MCP server instance.
         var projectRoot = Path.Combine(context.WorkspaceRoot, context.ProjectSlug);
         WriteClaudeSettings(projectRoot, context.WorkspaceRoot, skills);
 
@@ -199,6 +204,7 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
                     var msg = $"[stall-check] no output for {silentFor.TotalMinutes:F0}m — process PID={process.Id} still running";
                     logger.LogWarning("[claude] {Message}", msg);
                     output.TryWrite($"[{DateTime.UtcNow:o}] {msg}");
+                    context.ReportWarning?.Invoke(msg);
                 }
             }
         }, stallCts.Token);
@@ -319,10 +325,10 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         var claudeDir = Path.Combine(projectRoot, ".claude");
         Directory.CreateDirectory(claudeDir);
 
-        var denyTools = new JsonArray(ClaudeSkills.DeniedRawTools.Select(t => JsonValue.Create(t)).ToArray<JsonNode?>());
+        var denyTools = new JsonArray();
 
         JsonObject mcpServers;
-        JsonArray allowTools;
+        var allowTools = new JsonArray();
 
         if (skills.Contains(ClaudeSkills.McpWorkspace.Key))
         {
@@ -332,16 +338,19 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
                 {
                     ["type"]    = "stdio",
                     ["command"] = "dotnet",
-                    ["args"]    = new JsonArray("run", "--project", mcpProject, "--", workspaceRoot),
+                    ["args"]    = new JsonArray("run", "--no-build", "--project", mcpProject, "--", workspaceRoot),
                 },
             };
-            allowTools = new JsonArray($"mcp__{ClaudeSkills.McpServerName}__*");
+            allowTools.Add($"mcp__{ClaudeSkills.McpServerName}__*");
         }
         else
         {
             mcpServers = new JsonObject();
-            allowTools = new JsonArray();
         }
+
+        // Always allow built-in file tools so agents can read/write workspace and codebase files.
+        foreach (var tool in ClaudeSkills.ToAllowedTools(skills))
+            allowTools.Add(tool);
 
         var settings = new JsonObject
         {
@@ -355,7 +364,13 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
         };
 
         var settingsPath = Path.Combine(claudeDir, "settings.json");
-        File.WriteAllText(settingsPath, settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        var json = settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+
+        // Multiple agents in the same project may launch concurrently and race on this file.
+        // Write to a temp file and atomically move it to avoid sharing violations.
+        var tmpPath = settingsPath + $".{Guid.NewGuid():N}.tmp";
+        File.WriteAllText(tmpPath, json);
+        File.Move(tmpPath, settingsPath, overwrite: true);
     }
 
     private static bool IsRateLimitLine(string line) =>
