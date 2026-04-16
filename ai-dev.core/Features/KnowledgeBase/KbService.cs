@@ -1,5 +1,3 @@
-using AiDev.Services;
-
 namespace AiDev.Features.KnowledgeBase;
 
 public class KbService(WorkspacePaths paths, AtomicFileWriter fileWriter, ProjectMutationCoordinator coordinator)

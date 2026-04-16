@@ -73,6 +73,54 @@ public class AgentRunnerService(
         }).ToList();
 
     /// <summary>
+    /// Resets any agent.json still showing status="running" that has no live session in
+    /// this process. Called at startup to recover from a previous crash or forced kill
+    /// that prevented the finally block from completing.
+    /// </summary>
+    public async Task RecoverStaleSessionsAsync(IEnumerable<ProjectSlug> projects)
+    {
+        foreach (var project in projects)
+        {
+            var agentsDir = paths.AgentsDir(project);
+            if (!Directory.Exists(agentsDir)) continue;
+
+            foreach (var agentDir in Directory.GetDirectories(agentsDir))
+            {
+                var jsonPath = Path.Combine(agentDir, "agent.json");
+                if (!File.Exists(jsonPath)) continue;
+
+                try
+                {
+                    var json = await File.ReadAllTextAsync(jsonPath);
+                    var doc = System.Text.Json.JsonDocument.Parse(json);
+                    if (!doc.RootElement.TryGetProperty("status", out var statusEl)) continue;
+                    if (!string.Equals(statusEl.GetString(), "running", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    // Check whether this process actually owns a live session for this agent.
+                    var slug = AgentSlug.TryParse(Path.GetFileName(agentDir), out var s) ? s : null;
+                    if (slug is null) continue;
+                    if (_sessions.ContainsKey(Key(project, slug))) continue;
+
+                    logger.LogWarning(
+                        "[runner] Recovering stale running state for {Project}/{Agent} — resetting to idle",
+                        project.Value, slug.Value);
+
+                    await UpdateAgentStatusAsync(agentDir, new()
+                    {
+                        ["status"] = "idle",
+                        ["pid"] = null,
+                        ["sessionStartedAt"] = null,
+                    });
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "[runner] Failed to inspect {Path} during stale-session recovery", jsonPath);
+                }
+            }
+        }
+    }
+
+
     /// Launches an agent. Returns false if already running or rate-limited.
     /// The process runs in the background — this method returns quickly.
     /// </summary>
@@ -364,10 +412,19 @@ public class AgentRunnerService(
         {
             var exitedAt = DateTime.UtcNow;
 
+            // Remove from live sessions immediately — this is the single most important
+            // cleanup step. Do it first, before any I/O that could throw, so IsRunning()
+            // returns false and the UI/poll timer reflect reality even if subsequent
+            // cleanup steps fail.
+            _sessions.TryRemove(key, out _);
+
+            // Flush transcript writer — wrapped so a disk/stream error can't abort the
+            // rest of cleanup (status write, inbox archival, relaunch check).
             outputChannel.Writer.TryWrite(string.Empty);
             outputChannel.Writer.TryWrite($"## Session ended at {exitedAt:o} (exit code: {exitCode})");
             outputChannel.Writer.TryComplete();
-            await consumerTask;
+            try { await consumerTask; }
+            catch (Exception ex) { logger.LogWarning(ex, "[runner] Transcript flush faulted for {Key}", key); }
 
             // Persist token usage alongside the transcript (accumulate across same-day sessions).
             if (sessionUsage != null)
@@ -377,26 +434,33 @@ public class AgentRunnerService(
                     var usagePath = Path.Combine(transcriptDir, $"{transcriptDate.Value}.usage.json");
                     // Serialize concurrent session finishes on the same key to avoid TOCTOU on the usage file.
                     var usageLock = _usageLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
-                    await usageLock.WaitAsync();
-                    try
+                    // Bounded wait — if the semaphore is somehow never released we should not hang forever.
+                    if (await usageLock.WaitAsync(TimeSpan.FromSeconds(30)))
                     {
-                        if (File.Exists(usagePath))
+                        try
                         {
-                            try
+                            if (File.Exists(usagePath))
                             {
-                                var existing = System.Text.Json.JsonSerializer.Deserialize<TokenUsage>(
-                                    await File.ReadAllTextAsync(usagePath), JsonDefaults.Read);
-                                if (existing != null) sessionUsage = existing + sessionUsage;
+                                try
+                                {
+                                    var existing = System.Text.Json.JsonSerializer.Deserialize<TokenUsage>(
+                                        await File.ReadAllTextAsync(usagePath), JsonDefaults.Read);
+                                    if (existing != null) sessionUsage = existing + sessionUsage;
+                                }
+                                catch { /* ignore corrupt existing file; overwrite with current session */ }
                             }
-                            catch { /* ignore corrupt existing file; overwrite with current session */ }
+                            var usageJson = System.Text.Json.JsonSerializer.Serialize(sessionUsage, JsonDefaults.Write);
+                            await File.WriteAllTextAsync(usagePath, usageJson);
+                            logger.LogInformation(
+                                "[runner] Usage — {In} in / {Out} out tokens (daily total)",
+                                sessionUsage.InputTokens, sessionUsage.OutputTokens);
                         }
-                        var usageJson = System.Text.Json.JsonSerializer.Serialize(sessionUsage, JsonDefaults.Write);
-                        await File.WriteAllTextAsync(usagePath, usageJson);
-                        logger.LogInformation(
-                            "[runner] Usage — {In} in / {Out} out tokens (daily total)",
-                            sessionUsage.InputTokens, sessionUsage.OutputTokens);
+                        finally { usageLock.Release(); }
                     }
-                    finally { usageLock.Release(); }
+                    else
+                    {
+                        logger.LogWarning("[runner] Usage-lock timed out for {Key} — usage file not updated", key);
+                    }
                 }
                 catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to write usage file"); }
             }
@@ -404,6 +468,17 @@ public class AgentRunnerService(
             activity?.SetTag("agent.finishedAt", exitedAt.ToString("o"));
             activity?.AddEvent(new("session.finished"));
             logger.LogInformation("[runner] Agent {Key} finished (exit={Code}) at {Time}", key, exitCode, exitedAt);
+
+            // Write final status to agent.json — wrapped so a disk error can't abort
+            // inbox archival or the relaunch check below.
+            await UpdateAgentStatusAsync(agentDir, new()
+            {
+                ["status"] = exitCode is 0 or 130 ? "idle" : "error",
+                ["pid"] = null,
+                ["sessionStartedAt"] = null,
+                ["lastError"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : sessionError,
+                ["lastErrorAt"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : exitedAt.ToString("o"),
+            });
 
             // Generate AI insights for the completed session (fire-and-forget; CancellationToken.None so
             // insights finish writing even after the session CT is cancelled at shutdown).
@@ -415,17 +490,6 @@ public class AgentRunnerService(
                         logger.LogWarning(t.Exception, "[runner] Insights generation faulted for {Project}/{Agent}",
                             projectSlug.Value, agentSlug.Value);
                 }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
-
-            _sessions.TryRemove(key, out _);
-
-            await UpdateAgentStatusAsync(agentDir, new()
-            {
-                ["status"] = exitCode is 0 or 130 ? "idle" : "error",
-                ["pid"] = null,
-                ["sessionStartedAt"] = null,
-                ["lastError"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : sessionError,
-                ["lastErrorAt"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : exitedAt.ToString("o"),
-            });
 
             if (isRateLimited)
             {

@@ -8,7 +8,6 @@ namespace AiDev.WinUI;
 
 public sealed partial class MainWindow : Window
 {
-    private readonly IServiceProvider _services;
     private readonly MainViewModel _viewModel;
 
     private readonly Dictionary<string, Type> _pageMap = new()
@@ -33,9 +32,8 @@ public sealed partial class MainWindow : Window
         ["process"] = typeof(ProcessPage),
     };
 
-    public MainWindow(IServiceProvider services, MainViewModel viewModel)
+    public MainWindow(MainViewModel viewModel)
     {
-        _services = services;
         _viewModel = viewModel;
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;

@@ -1,5 +1,3 @@
-using AiDev.Features.Agent;
-using AiDev.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AiDev.WinUI.ViewModels;

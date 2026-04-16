@@ -1,5 +1,3 @@
-using AiDev.Models;
-
 namespace AiDev.Services;
 
 public class MessagesService(WorkspacePaths paths)

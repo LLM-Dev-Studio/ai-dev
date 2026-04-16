@@ -1,5 +1,3 @@
-using AiDev.Features.Agent;
-using AiDev.Features.Workspace;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 

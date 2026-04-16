@@ -1,4 +1,3 @@
-using AiDev.Features.Agent;
 using AiDev.WinUI.ViewModels;
 
 using Microsoft.UI.Xaml;

@@ -1,7 +1,6 @@
-using AiDev.Features.Workspace;
-using AiDev.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+
 using System.Collections.ObjectModel;
 
 namespace AiDev.Desktop.ViewModels;

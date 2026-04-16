@@ -343,6 +343,7 @@ else
     private List<ExecutorOption> executorOptions = [];
     private bool isRunning;
     private Timer? _pollTimer;
+    private IDisposable? _healthChangedSubscription;
 
     // Editable meta
     private string editName = string.Empty;
@@ -420,7 +421,7 @@ else
             }
         }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
 
-        ExecutorHealthMonitor.Changed += OnHealthChanged;
+        _healthChangedSubscription = ExecutorHealthMonitor.SubscribeChanged(OnHealthChanged);
     }
 
     private void OnHealthChanged()
@@ -490,7 +491,7 @@ else
     public void Dispose()
     {
         _pollTimer?.Dispose();
-        ExecutorHealthMonitor.Changed -= OnHealthChanged;
+        _healthChangedSubscription?.Dispose();
     }
 
     private bool ShowOllamaToolWarning =>

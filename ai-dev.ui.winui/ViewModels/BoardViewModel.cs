@@ -1,11 +1,8 @@
-using AiDev.Features.Agent;
-using AiDev.Features.Board;
-using AiDev.Features.Workspace;
-using AiDev.Models;
-using AiDev.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+
 using Microsoft.UI.Dispatching;
+
 using System.Collections.ObjectModel;
 
 namespace AiDev.WinUI.ViewModels;

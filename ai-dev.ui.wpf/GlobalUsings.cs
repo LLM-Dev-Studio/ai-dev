@@ -1,4 +1,3 @@
-global using AiDev;
 global using AiDev.Extensions;
 global using AiDev.Features.Agent;
 global using AiDev.Features.Board;
