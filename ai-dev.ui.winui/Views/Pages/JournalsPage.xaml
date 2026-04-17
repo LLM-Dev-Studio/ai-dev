@@ -64,17 +64,12 @@
         </Grid>
 
         <!-- Content -->
-        <Border Grid.Column="2" Padding="16" CornerRadius="8"
+        <Border Grid.Column="2" Padding="0" CornerRadius="8"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 Visibility="{Binding SelectedEntry, Converter={StaticResource NullToVisible}}">
-            <ScrollViewer>
-                <TextBlock Text="{Binding EntryContent}"
-                           TextWrapping="Wrap"
-                           FontFamily="Consolas"
-                           Style="{StaticResource BodyTextBlockStyle}" />
-            </ScrollViewer>
+            <WebView2 x:Name="JournalWebView" />
         </Border>
     </Grid>
 </Page>

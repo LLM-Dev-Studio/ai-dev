@@ -10,6 +10,8 @@
 
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolConverter x:Key="InverseBool" />
+        <conv:NullToVisibilityConverter x:Key="NullToVisible" />
     </Page.Resources>
 
     <ScrollViewer Margin="24">
@@ -76,16 +78,40 @@
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Insights Executor" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBox Text="{Binding InsightsExecutor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <ComboBox ItemsSource="{Binding AvailableInsightsExecutors}"
+                                      SelectedItem="{Binding InsightsExecutor, Mode=TwoWay}"
+                                      PlaceholderText="Select executor"
+                                      FontFamily="Consolas" />
                         </StackPanel>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Insights Model" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBox Text="{Binding InsightsModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <ComboBox ItemsSource="{Binding AvailableInsightsModels}"
+                                      SelectedItem="{Binding InsightsModel, Mode=TwoWay}"
+                                      IsEditable="True"
+                                      PlaceholderText="Select model"
+                                      FontFamily="Consolas" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
             </Grid>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <TextBlock Text="{Binding ErrorMessage}"
+                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                           VerticalAlignment="Center"
+                           Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisible}}"
+                           Style="{StaticResource CaptionTextBlockStyle}" />
+                <TextBlock Text="Saved"
+                           Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                           VerticalAlignment="Center"
+                           Visibility="{Binding Saved, Converter={StaticResource BoolToVisible}}"
+                           Style="{StaticResource CaptionTextBlockStyle}" />
+                <Button Content="Save"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Command="{Binding SaveCommand}"
+                        IsEnabled="{Binding IsSaving, Converter={StaticResource InverseBool}}" />
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </Page>

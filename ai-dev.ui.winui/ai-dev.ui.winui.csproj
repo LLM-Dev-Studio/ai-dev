@@ -17,6 +17,7 @@
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
     <LangVersion>preview</LangVersion>
+    <ApplicationIcon>..\logo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -42,6 +43,7 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Markdig" Version="1.1.2" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
   </ItemGroup>
 
@@ -79,6 +81,13 @@
 
   <ItemGroup>
     <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+
+    <None Include="..\logo-sm.png" Link="logo-sm.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\logo.ico" Link="logo.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

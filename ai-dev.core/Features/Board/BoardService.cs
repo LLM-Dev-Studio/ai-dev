@@ -213,6 +213,25 @@ namespace AiDev.Features.Board
                     error => new Err<Unit>(error));
             }, cancellationToken);
 
+        public Task<Result<int>> ClearColumnAsync(ProjectSlug projectSlug, ColumnId columnId, CancellationToken cancellationToken = default)
+            => coordinator.ExecuteAsync(projectSlug, () =>
+            {
+                using var activity = AiDevTelemetry.ActivitySource.StartActivity("Board.ClearColumn", ActivityKind.Internal);
+                activity?.SetTag("project.slug", projectSlug.Value);
+                activity?.SetTag("board.column", columnId.Value);
+                cancellationToken.ThrowIfCancellationRequested();
+                var board = LoadBoard(projectSlug);
+                var result = board.ClearColumn(columnId);
+
+                return result.Match<int, Result<int>>(
+                    clearedCount =>
+                    {
+                        SaveBoard(projectSlug, board);
+                        return new Ok<int>(clearedCount);
+                    },
+                    error => new Err<int>(error));
+            }, cancellationToken);
+
         private async Task<Result<BoardTask>> PersistBoardResultAsync(ProjectSlug projectSlug, Board board, BoardTask task)
         {
             SaveBoard(projectSlug, board);

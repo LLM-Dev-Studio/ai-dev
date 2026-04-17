@@ -125,6 +125,27 @@ public sealed class Board
     }
 
     /// <summary>
+    /// Clears all tasks in the requested column and removes them from the board.
+    /// </summary>
+    public Result<int> ClearColumn(ColumnId columnId)
+    {
+        ArgumentNullException.ThrowIfNull(columnId);
+
+        var column = _columns.FirstOrDefault(c => c.Id == columnId);
+        if (column == null)
+            return new Err<int>(UnknownColumnError);
+
+        var taskIds = column.TaskIds.ToArray();
+        foreach (var taskId in taskIds)
+        {
+            _tasks.Remove(taskId);
+            column.RemoveTask(taskId);
+        }
+
+        return new Ok<int>(taskIds.Length);
+    }
+
+    /// <summary>
     /// Drains pending domain events raised by board operations.
     /// </summary>
     public IReadOnlyList<DomainEvent> DequeueDomainEvents()

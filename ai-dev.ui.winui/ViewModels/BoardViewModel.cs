@@ -11,6 +11,7 @@ public partial class BoardColumnViewModel : ObservableObject
 {
     public BoardColumn Column { get; }
     public ObservableCollection<BoardTask> Tasks { get; } = [];
+    public bool IsDone => Column.Id == ColumnId.Done;
 
     public BoardColumnViewModel(BoardColumn column)
     {
@@ -44,6 +45,12 @@ public partial class BoardViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string TaskError { get; set; } = "";
     [ObservableProperty] public partial bool IsEnhancing { get; set; }
     [ObservableProperty] public partial bool IsSavingTask { get; set; }
+    private bool _isClearingCompleted;
+    public bool IsClearingCompleted
+    {
+        get => _isClearingCompleted;
+        set => SetProperty(ref _isClearingCompleted, value);
+    }
 
     private TaskId? _editingTaskId;
     private CancellationTokenSource? _enhanceCts;
@@ -246,6 +253,30 @@ public partial class BoardViewModel : ObservableObject, IDisposable
         _editingTaskId = null;
         IsEditing = false;
         RefreshBoard();
+    }
+
+    [RelayCommand]
+    public async Task ClearCompletedAsync()
+    {
+        if (CurrentSlug is null || IsClearingCompleted)
+            return;
+
+        IsClearingCompleted = true;
+        try
+        {
+            var result = await _boardService.ClearColumnAsync(CurrentSlug, ColumnId.Done);
+            if (result is Err<int> err)
+            {
+                TaskError = err.Error.Message;
+                return;
+            }
+
+            RefreshBoard();
+        }
+        finally
+        {
+            IsClearingCompleted = false;
+        }
     }
 
     private string GetDefaultAssignee()

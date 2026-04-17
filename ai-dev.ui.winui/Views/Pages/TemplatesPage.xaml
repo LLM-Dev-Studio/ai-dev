@@ -70,83 +70,138 @@
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="Template editor" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <Grid RowSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                    <Grid ColumnSpacing="12" RowSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Row="0" Text="Template editor" Style="{StaticResource SubtitleTextBlockStyle}" />
 
-                        <StackPanel Grid.Column="0" Spacing="4">
-                            <TextBlock Text="Name" Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBox Text="{Binding EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
+                    <Grid Grid.Row="1" RowSpacing="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
 
-                        <StackPanel Grid.Column="1" Spacing="4">
-                            <TextBlock Text="Slug" Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBox Text="{Binding EditSlug, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding IsNewTemplate}"
-                                     FontFamily="Consolas" />
-                        </StackPanel>
+                        <Grid Grid.Row="0" ColumnSpacing="12" RowSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
 
-                        <StackPanel Grid.Column="0" Grid.Row="1" Spacing="4">
-                            <TextBlock Text="Role" Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBox Text="{Binding EditRole, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
+                            <StackPanel Grid.Column="0" Spacing="4">
+                                <TextBlock Text="Name" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBox Text="{Binding EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
 
-                        <StackPanel Grid.Column="1" Grid.Row="1" Spacing="4">
-                            <TextBlock Text="Executor" Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <ComboBox ItemsSource="{Binding AvailableExecutors}"
-                                      SelectedItem="{Binding EditExecutor, Mode=TwoWay}" />
-                        </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                                <TextBlock Text="Slug" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBox Text="{Binding EditSlug, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         IsEnabled="{Binding IsNewTemplate}"
+                                         FontFamily="Consolas" />
+                            </StackPanel>
 
-                        <StackPanel Grid.Column="0" Grid.Row="2" Spacing="4">
-                            <TextBlock Text="Model" Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <ComboBox ItemsSource="{Binding AvailableModels}"
-                                      SelectedItem="{Binding EditModel, Mode=TwoWay}"
-                                      IsEditable="True"
-                                      PlaceholderText="Model id" />
-                        </StackPanel>
+                            <StackPanel Grid.Column="0" Grid.Row="1" Spacing="4">
+                                <TextBlock Text="Role" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBox Text="{Binding EditRole, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
 
-                        <StackPanel Grid.Column="1" Grid.Row="2" Spacing="4">
-                            <TextBlock Text="Description" Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBox Text="{Binding EditDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
+                            <StackPanel Grid.Column="1" Grid.Row="1" Spacing="4">
+                                <TextBlock Text="Executor" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ComboBox ItemsSource="{Binding AvailableExecutors}"
+                                          SelectedItem="{Binding EditExecutor, Mode=TwoWay}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="0" Grid.Row="2" Spacing="4">
+                                <TextBlock Text="Model" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ComboBox ItemsSource="{Binding AvailableModels}"
+                                          SelectedItem="{Binding EditModel, Mode=TwoWay}"
+                                          IsEditable="True"
+                                          PlaceholderText="Model id" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Grid.Row="2" Spacing="4">
+                                <TextBlock Text="Description" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBox Text="{Binding EditDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Pivot Grid.Row="1">
+                            <PivotItem Header="Editor">
+                                <Grid RowSpacing="4">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0"
+                                               Text="Instructions editor (CLAUDE.md)"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBox Grid.Row="1"
+                                             Text="{Binding EditContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             FontFamily="Consolas"
+                                             VerticalAlignment="Stretch"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                                </Grid>
+                            </PivotItem>
+                            <PivotItem Header="Preview">
+                                <Grid RowSpacing="4">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0"
+                                               Text="Formatted markdown preview"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <Border Grid.Row="1"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="6">
+                                        <WebView2 x:Name="PreviewWebView"
+                                                  HorizontalAlignment="Stretch"
+                                                  VerticalAlignment="Stretch" />
+                                    </Border>
+                                </Grid>
+                            </PivotItem>
+                        </Pivot>
                     </Grid>
 
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="Instructions (CLAUDE.md)" Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <TextBox Text="{Binding EditContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap"
-                                 MinHeight="180"
-                                 FontFamily="Consolas" />
-                    </StackPanel>
-
-                    <TextBlock Text="{Binding ErrorMessage}"
-                               Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                               Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisible}}"
-                               Style="{StaticResource CaptionTextBlockStyle}" />
-
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                        <TextBlock Text="Saved"
-                                   Foreground="{ThemeResource SystemFillColorSuccessBrush}"
-                                   VerticalAlignment="Center"
-                                   Visibility="{Binding Saved, Converter={StaticResource BoolToVisible}}"
+                    <StackPanel Grid.Row="2" Spacing="8">
+                        <TextBlock Text="{Binding ErrorMessage}"
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                   Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisible}}"
                                    Style="{StaticResource CaptionTextBlockStyle}" />
-                        <Button Content="Delete" Command="{Binding DeleteTemplateCommand}" />
-                        <Button Content="Save" Style="{StaticResource AccentButtonStyle}" Command="{Binding SaveTemplateCommand}" />
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                            <TextBlock Text="Saved"
+                                       Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding Saved, Converter={StaticResource BoolToVisible}}"
+                                       Style="{StaticResource CaptionTextBlockStyle}" />
+                            <Button Content="Delete" Command="{Binding DeleteTemplateCommand}" />
+                            <Button Content="Save"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    Command="{Binding SaveTemplateCommand}"
+                                    IsEnabled="{Binding IsDirty}" />
+                        </StackPanel>
                     </StackPanel>
-                </StackPanel>
+                </Grid>
             </Border>
         </Grid>
     </Grid>

@@ -88,4 +88,32 @@ public class BoardTests
         board.Tasks.ContainsKey(task.Id).ShouldBeFalse();
         board.Columns.Single(c => c.Id == ColumnId.Backlog).TaskIds.ShouldNotContain(task.Id);
     }
+
+    [Fact]
+    public void ClearColumn_WhenColumnHasTasks_RemovesAllTasksFromBoardAndColumn()
+    {
+        var board = CreateBoard();
+        var completedTask1 = new BoardTask(TaskId.New(), "Ship release");
+        var completedTask2 = new BoardTask(TaskId.New(), "Archive notes");
+        board.AddTask(ColumnId.Done, completedTask1);
+        board.AddTask(ColumnId.Done, completedTask2);
+
+        var result = board.ClearColumn(ColumnId.Done);
+
+        var ok = result.ShouldBeOfType<Ok<int>>();
+        ok.Value.ShouldBe(2);
+        board.Tasks.ContainsKey(completedTask1.Id).ShouldBeFalse();
+        board.Tasks.ContainsKey(completedTask2.Id).ShouldBeFalse();
+        board.Columns.Single(c => c.Id == ColumnId.Done).TaskIds.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void ClearColumn_WhenColumnMissing_ReturnsError()
+    {
+        var board = CreateBoard();
+
+        var result = board.ClearColumn(ColumnId.Review);
+
+        result.ShouldBeOfType<Err<int>>();
+    }
 }

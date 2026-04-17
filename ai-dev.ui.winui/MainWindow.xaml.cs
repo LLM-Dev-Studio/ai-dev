@@ -1,8 +1,11 @@
 using AiDev.WinUI.ViewModels;
 using AiDev.WinUI.Views.Pages;
 
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+
+using WinRT.Interop;
 
 namespace AiDev.WinUI;
 
@@ -24,6 +27,7 @@ public sealed partial class MainWindow : Window
         ["settings"] = typeof(SettingsPage),
         ["templates"] = typeof(TemplatesPage),
         ["transcript"] = typeof(TranscriptPage),
+        ["task-transcript"] = typeof(TaskTranscriptPage),
         ["detail"] = typeof(AgentDetailPage),
         ["digest"] = typeof(DigestPage),
         ["insights"] = typeof(InsightsPage),
@@ -38,6 +42,7 @@ public sealed partial class MainWindow : Window
         _viewModel = viewModel;
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
+        SetWindowIcon();
         Activated += OnActivated;
     }
 
@@ -45,10 +50,9 @@ public sealed partial class MainWindow : Window
     {
         Activated -= OnActivated;
         ExecutorStatusList.ItemsSource = _viewModel.ExecutorStatuses;
+        UpdatePaneStateVisuals();
 
-        // Navigate to projects on launch
-        RootNavigation.SelectedItem = ProjectsNavItem;
-        ContentFrame.Navigate(typeof(ProjectsPage));
+        NavigateHome();
 
         try
         {
@@ -82,6 +86,68 @@ public sealed partial class MainWindow : Window
         ContentFrame.Navigate(typeof(AgentDashboardPage));
     }
 
+    private void HomeHeader_Click(object sender, RoutedEventArgs e)
+        => NavigateHome();
+
+    private void TogglePaneButton_Click(object sender, RoutedEventArgs e)
+    {
+        RootNavigation.IsPaneOpen = !RootNavigation.IsPaneOpen;
+        if (RootNavigation.IsPaneOpen)
+        {
+            RootNavigation.PaneDisplayMode = NavigationViewPaneDisplayMode.Left;
+        }
+
+        UpdatePaneStateVisuals();
+    }
+
+    private void RootNavigation_PaneOpened(NavigationView sender, object args)
+        => UpdatePaneStateVisuals();
+
+    private void RootNavigation_PaneClosed(NavigationView sender, object args)
+        => UpdatePaneStateVisuals();
+
+    private void UpdatePaneStateVisuals()
+    {
+        if (RootNavigation.PaneFooter is FrameworkElement footer)
+        {
+            footer.Visibility = RootNavigation.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void NavigateHome()
+    {
+        _viewModel.SetActiveProject(null);
+        _viewModel.PendingAgent = null;
+        _viewModel.PendingTaskId = null;
+        _viewModel.PendingDecisionId = null;
+
+        Title = "AI Dev Net";
+
+        RootNavigation.MenuItems.Clear();
+        RootNavigation.MenuItems.Add(new NavigationViewItem
+        {
+            Content = "Projects",
+            Tag = "projects",
+            Icon = new SymbolIcon(Symbol.Home)
+        });
+
+        RootNavigation.FooterMenuItems.Clear();
+        RootNavigation.FooterMenuItems.Add(new NavigationViewItem
+        {
+            Content = "Templates",
+            Tag = "templates",
+            Icon = new SymbolIcon(Symbol.Library)
+        });
+        RootNavigation.FooterMenuItems.Add(new NavigationViewItem
+        {
+            Content = "Settings",
+            Tag = "settings",
+            Icon = new SymbolIcon(Symbol.Setting)
+        });
+
+        ContentFrame.Navigate(typeof(ProjectsPage));
+    }
+
     public void NavigateTo(string pageKey, object? parameter = null)
     {
         if (_pageMap.TryGetValue(pageKey, out var pageType))
@@ -89,6 +155,27 @@ public sealed partial class MainWindow : Window
     }
 
     public void SetStatus(string message) => StatusText.Text = message;
+
+    private void SetWindowIcon()
+    {
+        try
+        {
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "logo.ico");
+            if (!File.Exists(iconPath))
+            {
+                return;
+            }
+
+            var hwnd = WindowNative.GetWindowHandle(this);
+            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            var appWindow = AppWindow.GetFromWindowId(windowId);
+            appWindow.SetIcon(iconPath);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to set window icon: {ex.Message}");
+        }
+    }
 
     private void RebuildProjectNav(ProjectDetail project)
     {

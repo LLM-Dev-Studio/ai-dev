@@ -76,6 +76,7 @@ public partial class App : Application
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<AgentDetailViewModel>();
         services.AddTransient<TranscriptViewModel>();
+        services.AddTransient<TaskTranscriptViewModel>();
         services.AddTransient<SecretsViewModel>();
         services.AddTransient<DigestViewModel>();
         services.AddTransient<InsightsViewModel>();

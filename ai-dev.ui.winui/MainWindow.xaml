@@ -24,8 +24,12 @@
                         Grid.Row="0"
                         PaneDisplayMode="Left"
                         IsPaneOpen="True"
-                        OpenPaneLength="220"
+                        OpenPaneLength="248"
+                        IsPaneToggleButtonVisible="False"
                         IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="False"
+                        PaneOpened="RootNavigation_PaneOpened"
+                        PaneClosed="RootNavigation_PaneClosed"
                         SelectionChanged="RootNavigation_SelectionChanged">
 
             <NavigationView.MenuItems>
@@ -36,21 +40,35 @@
             </NavigationView.MenuItems>
 
             <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="Templates"
+                                    Tag="templates"
+                                    Icon="Library" />
                 <NavigationViewItem Content="Settings"
                                     Tag="settings"
                                     Icon="Setting" />
             </NavigationView.FooterMenuItems>
 
             <NavigationView.PaneHeader>
-                <StackPanel Margin="8,4,8,0">
-                    <TextBlock Text="AI Dev Net"
-                               Style="{StaticResource SubtitleTextBlockStyle}"
-                               Margin="4,0,0,8" />
+                <StackPanel Margin="44,4,8,0">
+                    <Button Click="HomeHeader_Click"
+                            HorizontalAlignment="Left"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="0,0,0,8">
+                        <StackPanel>
+                            <TextBlock Text="AI Dev Studio"
+                                       Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="Mission Control"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Opacity="0.7" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </NavigationView.PaneHeader>
 
             <NavigationView.PaneFooter>
-                <Border Margin="8,4" Padding="8,6" CornerRadius="8"
+                <Border x:Name="ExecutorHealthFooter"
+                        Margin="8,4" Padding="8,6" CornerRadius="8"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                     <StackPanel>
                         <TextBlock Text="Executor Health"
@@ -78,6 +96,23 @@
             <!-- Main content frame -->
             <Frame x:Name="ContentFrame" />
         </NavigationView>
+
+        <Button Grid.Row="0"
+                Click="TogglePaneButton_Click"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="12,10,0,0"
+                Width="28"
+                Height="28"
+                Background="Transparent"
+                BorderThickness="0"
+                Padding="0"
+                ToolTipService.ToolTip="Toggle navigation">
+            <Image Source="ms-appx:///logo-sm.png"
+                   Width="24"
+                   Height="24"
+                   Stretch="Uniform" />
+        </Button>
 
         <!-- Status bar -->
         <Border Grid.Row="1"

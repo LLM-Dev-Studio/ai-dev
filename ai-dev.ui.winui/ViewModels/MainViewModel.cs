@@ -16,6 +16,12 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty] public partial ProjectDetail? ActiveProject { get; set; }
     [ObservableProperty] public partial AgentInfo? PendingAgent { get; set; }
+    private TaskId? _pendingTaskId;
+    public TaskId? PendingTaskId
+    {
+        get => _pendingTaskId;
+        set => SetProperty(ref _pendingTaskId, value);
+    }
     [ObservableProperty] public partial string? PendingDecisionId { get; set; }
 
     public ObservableCollection<ExecutorStatusItem> ExecutorStatuses { get; } = [];

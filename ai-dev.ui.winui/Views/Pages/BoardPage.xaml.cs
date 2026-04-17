@@ -48,6 +48,23 @@ public sealed partial class BoardPage : Page
     private void DeleteTask_Click(object sender, RoutedEventArgs e)
         => ViewModel.DeleteTaskCommand.Execute(null);
 
+    private void ClearCompleted_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.ClearCompletedCommand.CanExecute(null))
+            ViewModel.ClearCompletedCommand.Execute(null);
+    }
+
+    private void TaskTranscript_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: BoardTask task })
+            return;
+
+        var mainVm = App.Services.GetRequiredService<MainViewModel>();
+        mainVm.PendingTaskId = task.Id;
+
+        var window = App.Services.GetRequiredService<MainWindow>();
+        window.NavigateTo("task-transcript");
+    }
 
     // Walk up the visual parent chain looking for a FrameworkElement whose Tag is a column id string
     private static string? FindColumnId(DependencyObject? element)

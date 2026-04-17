@@ -37,7 +37,13 @@ public class InverseBoolConverter : IValueConverter
 public class NullToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
-        => value is null or "" ? Visibility.Collapsed : Visibility.Visible;
+    {
+        var isNullOrEmpty = value is null or "";
+        var inverse = parameter is string text && text.Equals("inverse", StringComparison.OrdinalIgnoreCase);
+        return inverse
+            ? (isNullOrEmpty ? Visibility.Visible : Visibility.Collapsed)
+            : (isNullOrEmpty ? Visibility.Collapsed : Visibility.Visible);
+    }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => DependencyProperty.UnsetValue;

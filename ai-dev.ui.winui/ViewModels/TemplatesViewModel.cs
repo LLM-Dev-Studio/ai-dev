@@ -15,6 +15,7 @@ public partial class TemplatesViewModel : ObservableObject
     [ObservableProperty] public partial bool IsLoading { get; set; }
     [ObservableProperty] public partial string ErrorMessage { get; set; } = "";
     [ObservableProperty] public partial bool Saved { get; set; }
+    [ObservableProperty] public partial bool IsDirty { get; set; }
 
     [ObservableProperty] public partial AgentTemplate? SelectedTemplate { get; set; }
     [ObservableProperty] public partial bool IsNewTemplate { get; set; }
@@ -26,6 +27,14 @@ public partial class TemplatesViewModel : ObservableObject
     [ObservableProperty] public partial string EditExecutor { get; set; } = AgentExecutorName.Default.Value;
     [ObservableProperty] public partial string EditDescription { get; set; } = "";
     [ObservableProperty] public partial string EditContent { get; set; } = "";
+
+    private string _baselineSlug = "";
+    private string _baselineName = "";
+    private string _baselineRole = "";
+    private string _baselineModel = "";
+    private string _baselineExecutor = "";
+    private string _baselineDescription = "";
+    private string _baselineContent = "";
 
     public ObservableCollection<AgentTemplate> Templates { get; } = [];
     public ObservableCollection<string> AvailableExecutors { get; } = [];
@@ -84,6 +93,7 @@ public partial class TemplatesViewModel : ObservableObject
         EditDescription = "";
         EditContent = "";
 
+        CaptureBaseline();
         RefreshModels(EditExecutor);
         if (AvailableModels.Count > 0)
             EditModel = AvailableModels[0];
@@ -144,6 +154,8 @@ public partial class TemplatesViewModel : ObservableObject
         SelectedTemplate = Templates.FirstOrDefault(t => t.Slug == slug);
         IsNewTemplate = false;
         Saved = true;
+        CaptureBaseline();
+        UpdateIsDirty();
     }
 
     [RelayCommand]
@@ -182,6 +194,8 @@ public partial class TemplatesViewModel : ObservableObject
 
         RefreshModels(EditExecutor);
         EditModel = value.Model;
+        CaptureBaseline();
+        UpdateIsDirty();
         if (AvailableModels.Count > 0 && !AvailableModels.Contains(EditModel, StringComparer.OrdinalIgnoreCase))
             EditModel = AvailableModels[0];
     }
@@ -193,11 +207,39 @@ public partial class TemplatesViewModel : ObservableObject
 
         RefreshModels(value);
 
-        if (AvailableModels.Count == 0)
-            return;
-
-        if (!AvailableModels.Contains(EditModel, StringComparer.OrdinalIgnoreCase))
+        if (AvailableModels.Count > 0 && !AvailableModels.Contains(EditModel, StringComparer.OrdinalIgnoreCase))
             EditModel = AvailableModels[0];
+
+        UpdateIsDirty();
+    }
+
+    partial void OnEditSlugChanged(string value) => UpdateIsDirty();
+    partial void OnEditNameChanged(string value) => UpdateIsDirty();
+    partial void OnEditRoleChanged(string value) => UpdateIsDirty();
+    partial void OnEditModelChanged(string value) => UpdateIsDirty();
+    partial void OnEditDescriptionChanged(string value) => UpdateIsDirty();
+    partial void OnEditContentChanged(string value) => UpdateIsDirty();
+
+    private void CaptureBaseline()
+    {
+        _baselineSlug = EditSlug;
+        _baselineName = EditName;
+        _baselineRole = EditRole;
+        _baselineModel = EditModel;
+        _baselineExecutor = EditExecutor;
+        _baselineDescription = EditDescription;
+        _baselineContent = EditContent;
+    }
+
+    private void UpdateIsDirty()
+    {
+        IsDirty = !string.Equals(EditSlug, _baselineSlug, StringComparison.Ordinal)
+            || !string.Equals(EditName, _baselineName, StringComparison.Ordinal)
+            || !string.Equals(EditRole, _baselineRole, StringComparison.Ordinal)
+            || !string.Equals(EditModel, _baselineModel, StringComparison.Ordinal)
+            || !string.Equals(EditExecutor, _baselineExecutor, StringComparison.Ordinal)
+            || !string.Equals(EditDescription, _baselineDescription, StringComparison.Ordinal)
+            || !string.Equals(EditContent, _baselineContent, StringComparison.Ordinal);
     }
 
     private void RefreshModels(string executor)

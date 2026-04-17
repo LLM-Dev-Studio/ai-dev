@@ -13,7 +13,15 @@ public sealed partial class JournalsPage : Page
         InitializeComponent();
         ViewModel = App.Services.GetRequiredService<JournalsViewModel>();
         DataContext = ViewModel;
-        Loaded += async (_, _) => await ViewModel.LoadAsync();
+        Loaded += OnLoadedAsync;
+    }
+
+    private async void OnLoadedAsync(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        await ViewModel.LoadAsync();
+        await JournalWebView.EnsureCoreWebView2Async();
+        RenderMarkdown();
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
     }
 
     private async void Agent_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -27,6 +35,23 @@ public sealed partial class JournalsPage : Page
     {
         if (ViewModel is null) return;
         if (ViewModel.SelectedEntry is { } entry)
+        {
             await ViewModel.SelectEntryAsync(entry);
+            RenderMarkdown();
+        }
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(JournalsViewModel.EntryContentHtml))
+            RenderMarkdown();
+    }
+
+    private void RenderMarkdown()
+    {
+        if (JournalWebView.CoreWebView2 is null)
+            return;
+
+        JournalWebView.NavigateToString(ViewModel.EntryContentHtml);
     }
 }
