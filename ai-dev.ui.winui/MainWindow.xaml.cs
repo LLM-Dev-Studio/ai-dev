@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
         ["kb"] = typeof(KnowledgeBasePage),
         ["secrets"] = typeof(SecretsPage),
         ["settings"] = typeof(SettingsPage),
+        ["templates"] = typeof(TemplatesPage),
         ["transcript"] = typeof(TranscriptPage),
         ["detail"] = typeof(AgentDetailPage),
         ["digest"] = typeof(DigestPage),
@@ -128,6 +129,12 @@ public sealed partial class MainWindow : Window
         }
 
         RootNavigation.FooterMenuItems.Clear();
+        RootNavigation.FooterMenuItems.Add(new NavigationViewItem
+        {
+            Content = "Templates",
+            Tag = "templates",
+            Icon = new SymbolIcon(Symbol.Library)
+        });
         RootNavigation.FooterMenuItems.Add(new NavigationViewItem
         {
             Content = "Settings",

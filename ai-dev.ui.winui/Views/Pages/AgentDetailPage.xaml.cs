@@ -15,6 +15,12 @@ public sealed partial class AgentDetailPage : Page
         ViewModel = App.Services.GetRequiredService<AgentDetailViewModel>();
         DataContext = ViewModel;
 
+        ViewModel.NavigateBack += () =>
+        {
+            var window = App.Services.GetRequiredService<MainWindow>();
+            window.NavigateTo("agents");
+        };
+
         ViewModel.NavigateToTranscript += OnNavigateToTranscript;
         ViewModel.Inbox.CollectionChanged += (_, _) =>
             InboxEmptyText.Visibility = ViewModel.Inbox.Count == 0

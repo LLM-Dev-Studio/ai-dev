@@ -17,9 +17,6 @@ public partial class AgentDashboardViewModel : ObservableObject, IDisposable
     private Timer? _pollTimer;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
-    [ObservableProperty] public partial string NewAgentName { get; set; } = "";
-    [ObservableProperty] public partial string NewAgentRole { get; set; } = "";
-    [ObservableProperty] public partial bool IsAddingAgent { get; set; }
 
     public ObservableCollection<AgentCardViewModel> Agents { get; } = [];
     public ObservableCollection<AgentTemplate> Templates { get; } = [];
@@ -97,30 +94,32 @@ public partial class AgentDashboardViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void SelectAgent(AgentCardViewModel card) => AgentSelected?.Invoke(card.Agent);
 
-    [RelayCommand]
-    public async Task CreateAgentAsync()
+    /// <summary>Creates an agent from the provided template and display name. Returns an error message or null on success.</summary>
+    public async Task<string?> CreateAgentAsync(string templateSlug, string name, string? slug = null)
     {
-        if (CurrentSlug is null || string.IsNullOrWhiteSpace(NewAgentName)) return;
+        if (CurrentSlug is null)
+            return "No active project.";
 
-        var agentSlug = NewAgentName.Trim().ToLower().Replace(" ", "-");
-        IsAddingAgent = true;
-        try
-        {
-            _agentService.CreateAgent(CurrentSlug, agentSlug, NewAgentName.Trim(), null);
-            NewAgentName = "";
-            NewAgentRole = "";
-            IsAddingAgent = false;
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            IsAddingAgent = false;
-            System.Diagnostics.Debug.WriteLine($"Failed to create agent '{NewAgentName}': {ex.Message}");
-        }
+        if (string.IsNullOrWhiteSpace(templateSlug))
+            return "Template is required.";
+
+        if (string.IsNullOrWhiteSpace(name))
+            return "Name is required.";
+
+        var resolvedSlug = string.IsNullOrWhiteSpace(slug)
+            ? new string(name.Trim().ToLowerInvariant().Replace(" ", "-").Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray()).Trim('-')
+            : slug.Trim();
+
+        if (string.IsNullOrWhiteSpace(resolvedSlug))
+            return "Agent slug is required.";
+
+        var result = _agentService.CreateAgent(CurrentSlug, resolvedSlug, name.Trim(), templateSlug);
+        if (result is Err<Unit> err)
+            return err.Error.Message;
+
+        await LoadAsync();
+        return null;
     }
-
-    [RelayCommand]
-    public void CancelAddAgent() => IsAddingAgent = false;
 
     public void Dispose()
     {

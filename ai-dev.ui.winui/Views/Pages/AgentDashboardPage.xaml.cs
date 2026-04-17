@@ -1,4 +1,6 @@
 using AiDev.WinUI.ViewModels;
+using AiDev.WinUI.Views.Dialogs;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -45,12 +47,11 @@ public sealed partial class AgentDashboardPage : Page
             ViewModel.SelectAgentCommand.Execute(card);
     }
 
-    private void AddAgent_Click(object sender, RoutedEventArgs e)
-        => ViewModel.IsAddingAgent = true;
-
-    private async void CreateAgent_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.CreateAgentCommand.ExecuteAsync(null);
-
-    private void CancelAddAgent_Click(object sender, RoutedEventArgs e)
-        => ViewModel.CancelAddAgentCommand.Execute(null);
+    private async void AddAgent_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new NewAgentDialog(ViewModel) { XamlRoot = XamlRoot };
+        var result = await dialog.ShowAsync();
+        if (result is ContentDialogResult.Primary)
+            await ViewModel.LoadAsync();
+    }
 }

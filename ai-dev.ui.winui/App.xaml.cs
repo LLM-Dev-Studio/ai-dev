@@ -82,6 +82,7 @@ public partial class App : Application
         services.AddTransient<ConsistencyViewModel>();
         services.AddTransient<CodebaseViewModel>();
         services.AddTransient<ProjectSettingsViewModel>();
+        services.AddTransient<TemplatesViewModel>();
     }
 
     /// <summary>

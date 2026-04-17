@@ -283,5 +283,9 @@ public partial class BoardViewModel : ObservableObject, IDisposable
     {
         _pollTimer?.Dispose();
         _pollTimer = null;
+
+        _enhanceCts?.Cancel();
+        _enhanceCts?.Dispose();
+        _enhanceCts = null;
     }
 }

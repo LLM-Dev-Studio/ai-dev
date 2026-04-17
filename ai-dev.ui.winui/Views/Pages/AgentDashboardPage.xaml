@@ -18,7 +18,6 @@
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -38,42 +37,14 @@
                     Click="AddAgent_Click" />
         </Grid>
 
-        <!-- Add agent quick form -->
-        <Border Grid.Row="1" Margin="0,0,0,20" Padding="16" CornerRadius="8"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                Visibility="{Binding IsAddingAgent, Converter={StaticResource BoolToVisible}}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBox Grid.Column="0" PlaceholderText="Agent name"
-                         Text="{Binding NewAgentName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         Margin="0,0,8,0" />
-                <TextBox Grid.Column="1" PlaceholderText="Role (optional)"
-                         Text="{Binding NewAgentRole, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         Margin="0,0,8,0" />
-                <Button Grid.Column="2" Content="Create"
-                        Style="{StaticResource AccentButtonStyle}"
-                        Click="CreateAgent_Click"
-                        Margin="0,0,8,0" />
-                <Button Grid.Column="3" Content="Cancel"
-                        Click="CancelAddAgent_Click" />
-            </Grid>
-        </Border>
-
         <!-- Loading -->
-        <ProgressRing Grid.Row="2"
+        <ProgressRing Grid.Row="1"
                       IsActive="{Binding IsLoading}"
                       Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisible}}"
                       HorizontalAlignment="Center" VerticalAlignment="Center" />
 
         <!-- Agent cards -->
-        <GridView Grid.Row="2"
+        <GridView Grid.Row="1"
                   ItemsSource="{Binding Agents}"
                   SelectionMode="None"
                   IsItemClickEnabled="False"

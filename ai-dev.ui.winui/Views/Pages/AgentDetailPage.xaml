@@ -24,6 +24,9 @@
         <ScrollViewer Visibility="{Binding Agent, Converter={StaticResource NullToVisible}}">
             <StackPanel Spacing="16">
 
+                <!-- Back button -->
+                <Button Content="← Back to Agents" Command="{Binding GoBackCommand}" />
+
                 <!-- Header row: name + run/stop/transcript -->
                 <Grid>
                     <StackPanel Orientation="Horizontal" Spacing="10">

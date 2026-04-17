@@ -1,3 +1,5 @@
+using AiDev.Executors;
+
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -9,6 +11,8 @@ public partial class ProjectSettingsViewModel : ObservableObject
     private readonly WorkspaceService _workspaceService;
     private readonly AgentService _agentService;
     private readonly AgentTemplatesService _templatesService;
+    private readonly ExecutorHealthMonitor _executorHealthMonitor;
+    private readonly IModelRegistry _modelRegistry;
     private readonly MainViewModel _mainViewModel;
 
     // Project detail form
@@ -26,18 +30,29 @@ public partial class ProjectSettingsViewModel : ObservableObject
     [ObservableProperty] public partial string NewAgentTemplate { get; set; } = "";
     [ObservableProperty] public partial string AgentError { get; set; } = "";
 
+    // Bulk executor switch
+    [ObservableProperty] public partial bool ShowBulkSwitch { get; set; }
+    [ObservableProperty] public partial string BulkTargetExecutor { get; set; } = "";
+    [ObservableProperty] public partial bool ApplyingBulkSwitch { get; set; }
+    [ObservableProperty] public partial string BulkSwitchError { get; set; } = "";
+
     public ObservableCollection<AgentInfo> Agents { get; } = [];
     public ObservableCollection<AgentTemplate> Templates { get; } = [];
+    public ObservableCollection<string> AvailableExecutors { get; } = [];
 
     public ProjectSettingsViewModel(
         WorkspaceService workspaceService,
         AgentService agentService,
         AgentTemplatesService templatesService,
+        ExecutorHealthMonitor executorHealthMonitor,
+        IModelRegistry modelRegistry,
         MainViewModel mainViewModel)
     {
         _workspaceService = workspaceService;
         _agentService = agentService;
         _templatesService = templatesService;
+        _executorHealthMonitor = executorHealthMonitor;
+        _modelRegistry = modelRegistry;
         _mainViewModel = mainViewModel;
     }
 
@@ -55,6 +70,7 @@ public partial class ProjectSettingsViewModel : ObservableObject
             EditCodebasePath = project.CodebasePath ?? "";
         }
         RefreshAgents();
+        RefreshExecutors();
         Templates.Clear();
         foreach (var t in _templatesService.ListTemplates()) Templates.Add(t);
     }
@@ -104,10 +120,94 @@ public partial class ProjectSettingsViewModel : ObservableObject
         AgentError = "";
     }
 
+    [RelayCommand]
+    public void OpenBulkSwitch()
+    {
+        BulkSwitchError = "";
+        ShowBulkSwitch = true;
+    }
+
+    [RelayCommand]
+    public void CancelBulkSwitch()
+    {
+        ShowBulkSwitch = false;
+        BulkSwitchError = "";
+        BulkTargetExecutor = "";
+    }
+
+    [RelayCommand]
+    public async Task ApplyBulkSwitchAsync()
+    {
+        if (CurrentSlug is null) return;
+        if (string.IsNullOrWhiteSpace(BulkTargetExecutor)) return;
+        if (!AgentExecutorName.TryParse(BulkTargetExecutor, out var targetExecutor)) return;
+
+        ApplyingBulkSwitch = true;
+        BulkSwitchError = "";
+        try
+        {
+            foreach (var agent in Agents)
+            {
+                var newModel = agent.Model;
+                var executorModels = _modelRegistry.GetModelsForExecutor(targetExecutor.Value);
+                if (executorModels.Count > 0 && !executorModels.Any(m => string.Equals(m.Id, newModel, StringComparison.OrdinalIgnoreCase)))
+                    newModel = executorModels[0].Id;
+
+                var supportsReasoning = executorModels
+                    .FirstOrDefault(m => string.Equals(m.Id, newModel, StringComparison.OrdinalIgnoreCase))
+                    ?.Capabilities.HasFlag(ModelCapabilities.Reasoning) == true;
+                var newThinkingLevel = supportsReasoning ? agent.ThinkingLevel : ThinkingLevel.Off;
+
+                var result = _agentService.SaveAgentMeta(
+                    CurrentSlug,
+                    agent.Slug,
+                    agent.Name,
+                    agent.Description,
+                    newModel,
+                    targetExecutor,
+                    agent.Skills,
+                    newThinkingLevel);
+
+                if (result is Err<Unit> err)
+                {
+                    BulkSwitchError = $"Failed to update {agent.Name}: {err.Error.Message}";
+                    return;
+                }
+            }
+
+            RefreshAgents();
+            ShowBulkSwitch = false;
+            BulkTargetExecutor = "";
+        }
+        finally
+        {
+            ApplyingBulkSwitch = false;
+        }
+
+        await Task.CompletedTask;
+    }
+
     private void RefreshAgents()
     {
         if (CurrentSlug is null) return;
         Agents.Clear();
         foreach (var a in _agentService.ListAgents(CurrentSlug)) Agents.Add(a);
+    }
+
+    private void RefreshExecutors()
+    {
+        AvailableExecutors.Clear();
+
+        foreach (var entry in _executorHealthMonitor.GetExecutorHealth().Where(e => e.Health.IsHealthy))
+        {
+            if (AgentExecutorName.TryParse(entry.Executor.Name, out var executorName))
+                AvailableExecutors.Add(executorName.Value);
+        }
+
+        if (AvailableExecutors.Count == 0)
+        {
+            foreach (var executor in AgentExecutorName.Supported)
+                AvailableExecutors.Add(executor.Value);
+        }
     }
 }

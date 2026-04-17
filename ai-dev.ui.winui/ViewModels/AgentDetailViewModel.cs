@@ -42,6 +42,7 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
     public ObservableCollection<string> AvailableExecutors { get; } = [];
     public ObservableCollection<string> AvailableModels { get; } = [];
 
+    public event Action? NavigateBack;
     public event Action? NavigateToTranscript;
 
     public AgentDetailViewModel(
@@ -196,6 +197,9 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
         _agentRunnerService.StopAgent(CurrentSlug, Agent.Slug);
         IsRunning = false;
     }
+
+    [RelayCommand]
+    public void GoBack() => NavigateBack?.Invoke();
 
     [RelayCommand]
     public void ViewTranscript() => NavigateToTranscript?.Invoke();
