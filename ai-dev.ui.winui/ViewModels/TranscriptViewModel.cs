@@ -23,11 +23,16 @@ public partial class TranscriptViewModel : ObservableObject
     public partial string TranscriptContent { get; set; } = "";
     public ObservableCollection<TranscriptDate> Dates { get; } = [];
 
+    public event Action? NavigateBack;
+
     public TranscriptViewModel(AgentService agentService, MainViewModel mainViewModel)
     {
         _agentService = agentService;
         _mainViewModel = mainViewModel;
     }
+
+    [RelayCommand]
+    private void GoBack() => NavigateBack?.Invoke();
 
     private ProjectSlug? CurrentSlug => _mainViewModel.ActiveProject?.Slug;
 

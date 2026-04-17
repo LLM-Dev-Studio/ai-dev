@@ -14,6 +14,12 @@ public sealed partial class TranscriptPage : Page
         ViewModel = App.Services.GetRequiredService<TranscriptViewModel>();
         DataContext = ViewModel;
 
+        ViewModel.NavigateBack += () =>
+        {
+            var window = App.Services.GetRequiredService<MainWindow>();
+            window.NavigateTo("agent-detail");
+        };
+
         Loaded += async (_, _) =>
         {
             var mainVm = App.Services.GetRequiredService<MainViewModel>();
