@@ -46,6 +46,7 @@ public partial class BoardViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool IsSavingTask { get; set; }
 
     private TaskId? _editingTaskId;
+    private CancellationTokenSource? _enhanceCts;
 
     public ObservableCollection<BoardColumnViewModel> Columns { get; } = [];
     public ObservableCollection<AgentInfo> Agents { get; } = [];
@@ -164,10 +165,12 @@ public partial class BoardViewModel : ObservableObject, IDisposable
     public async Task EnhanceAsync()
     {
         if (CurrentSlug is null) return;
+        _enhanceCts?.Dispose();
+        _enhanceCts = new CancellationTokenSource();
         IsEnhancing = true;
         try
         {
-            var result = await _enhancerService.EnhanceAsync(CurrentSlug, TaskTitle, TaskDescription);
+            var result = await _enhancerService.EnhanceAsync(CurrentSlug, TaskTitle, TaskDescription, _enhanceCts.Token);
             if (result is not null)
             {
                 TaskTitle = result.Title;
@@ -177,7 +180,15 @@ public partial class BoardViewModel : ObservableObject, IDisposable
         finally
         {
             IsEnhancing = false;
+            _enhanceCts?.Dispose();
+            _enhanceCts = null;
         }
+    }
+
+    [RelayCommand]
+    public void CancelEnhance()
+    {
+        _enhanceCts?.Cancel();
     }
 
     [RelayCommand]

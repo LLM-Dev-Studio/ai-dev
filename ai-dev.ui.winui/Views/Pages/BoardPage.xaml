@@ -165,7 +165,11 @@
                         <Button Grid.Column="1"
                                 Content="✨ Enhance"
                                 Command="{Binding EnhanceCommand}"
-                                IsEnabled="{Binding IsEnhancing, Converter={StaticResource InverseBool}}" />
+                                Visibility="{Binding IsEnhancing, Converter={StaticResource InverseBoolToVisible}}" />
+                        <Button Grid.Column="1"
+                                Content="Cancel"
+                                Command="{Binding CancelEnhanceCommand}"
+                                Visibility="{Binding IsEnhancing, Converter={StaticResource BoolToVisible}}" />
                     </Grid>
                     <ProgressBar IsIndeterminate="True"
                                  Visibility="{Binding IsEnhancing, Converter={StaticResource BoolToVisible}}" />
