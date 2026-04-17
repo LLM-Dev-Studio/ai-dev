@@ -59,6 +59,7 @@ public partial class App : Application
         services.AddOllamaExecutor();
         services.AddGitHubModelsExecutor();
         services.AddLmStudioExecutor();
+        services.AddCopilotCliExecutor();
 
         // Windows and pages
         services.AddSingleton<MainWindow>();

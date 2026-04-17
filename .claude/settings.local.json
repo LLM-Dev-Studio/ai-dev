@@ -19,7 +19,12 @@
       "Bash(grep -E \"\\\\.razor$\")",
       "Bash(grep \"\\\\.razor$\")",
       "Bash(dir \"M:\\\\ai-dev-net\\\\workspaces\\\\ai-dev-studio\\\\codebase\")",
-      "Bash(dir /a \"M:\\\\ai-dev-net\\\\workspaces\\\\ai-dev-studio\\\\codebase\")"
+      "Bash(dir /a \"M:\\\\ai-dev-net\\\\workspaces\\\\ai-dev-studio\\\\codebase\")",
+      "Bash(copilot -p \"Print the single word PONG and nothing else\" --output-format json --allow-all-tools --no-auto-update)",
+      "Bash(./ai-dev-net.tests.unit.exe --help)",
+      "Bash(./ai-dev-net.tests.unit.exe -class \"AiDev.Tests.ExecutorHealthMonitorTests\")",
+      "Bash(./ai-dev-net.tests.unit.exe)",
+      "Bash(copilot -p \"Reply with the single word OK\" --output-format json --allow-all-tools --no-auto-update --no-ask-user --model gpt-5.2)"
     ]
   }
 }

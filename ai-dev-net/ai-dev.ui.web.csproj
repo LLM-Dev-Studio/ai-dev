@@ -15,6 +15,7 @@
     <ProjectReference Include="..\ai-dev.core\ai-dev.core.csproj" />
     <ProjectReference Include="..\ai-dev.executor.anthropic\ai-dev.executor.anthropic.csproj" />
     <ProjectReference Include="..\ai-dev.executor.claude\ai-dev.executor.claude.csproj" />
+    <ProjectReference Include="..\ai-dev.executor.copilot-cli\ai-dev.executor.copilot-cli.csproj" />
     <ProjectReference Include="..\ai-dev.executor.github-models\ai-dev.executor.github-models.csproj" />
     <ProjectReference Include="..\ai-dev.executor.ollama\ai-dev.executor.ollama.csproj" />
     <ProjectReference Include="..\ai-dev.executor.lmstudio\ai-dev.executor.lmstudio.csproj" />
