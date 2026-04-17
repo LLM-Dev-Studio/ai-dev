@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="AiDev.WinUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:AiDev.WinUI"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+    xmlns:conv="using:AiDev.WinUI.Converters"
+    mc:Ignorable="d"
+    Title="AI Dev Net">
+
+    <Grid>
+        <Grid.Resources>
+            <conv:StringHexToBrushConverter x:Key="HexToBrush" />
+        </Grid.Resources>
+        
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <NavigationView x:Name="RootNavigation"
+                        Grid.Row="0"
+                        PaneDisplayMode="Left"
+                        IsPaneOpen="True"
+                        OpenPaneLength="248"
+                        IsPaneToggleButtonVisible="False"
+                        IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="False"
+                        PaneOpened="RootNavigation_PaneOpened"
+                        PaneClosed="RootNavigation_PaneClosed"
+                        SelectionChanged="RootNavigation_SelectionChanged">
+
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="ProjectsNavItem"
+                                    Content="Projects"
+                                    Tag="projects"
+                                    Icon="Home" />
+            </NavigationView.MenuItems>
+
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="Templates"
+                                    Tag="templates"
+                                    Icon="Library" />
+                <NavigationViewItem Content="Settings"
+                                    Tag="settings"
+                                    Icon="Setting" />
+            </NavigationView.FooterMenuItems>
+
+            <NavigationView.PaneHeader>
+                <StackPanel Margin="44,4,8,0">
+                    <Button Click="HomeHeader_Click"
+                            HorizontalAlignment="Left"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="0,0,0,8">
+                        <StackPanel>
+                            <TextBlock Text="AI Dev Studio"
+                                       Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="Mission Control"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Opacity="0.7" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </NavigationView.PaneHeader>
+
+            <NavigationView.PaneFooter>
+                <Border x:Name="ExecutorHealthFooter"
+                        Margin="8,4" Padding="8,6" CornerRadius="8"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel>
+                        <TextBlock Text="Executor Health"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Opacity="0.6"
+                                   Margin="0,0,0,4" />
+                        <ItemsControl x:Name="ExecutorStatusList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="0,2">
+                                        <Ellipse Width="8" Height="8"
+                                                 VerticalAlignment="Center"
+                                                 Margin="0,0,6,0"
+                                                 Fill="{Binding HealthColor, Converter={StaticResource HexToBrush}}" />
+                                        <TextBlock Text="{Binding Name}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </NavigationView.PaneFooter>
+
+            <!-- Main content frame -->
+            <Frame x:Name="ContentFrame" />
+        </NavigationView>
+
+        <Button Grid.Row="0"
+                Click="TogglePaneButton_Click"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="12,10,0,0"
+                Width="28"
+                Height="28"
+                Background="Transparent"
+                BorderThickness="0"
+                Padding="0"
+                ToolTipService.ToolTip="Toggle navigation">
+            <Image Source="ms-appx:///logo-sm.png"
+                   Width="24"
+                   Height="24"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- Status bar -->
+        <Border Grid.Row="1"
+                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="12,4">
+            <TextBlock x:Name="StatusText"
+                       Text="Ready"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Border>
+    </Grid>
+</Window>

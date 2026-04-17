@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="AiDev.WinUI.Views.Pages.ProjectSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="using:AiDev.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:NullToVisibilityConverter x:Key="NullToVisible" />
+    </Page.Resources>
+
+    <ScrollViewer Margin="24">
+        <StackPanel Spacing="20">
+
+            <TextBlock Text="Project Settings" Style="{StaticResource TitleTextBlockStyle}" />
+
+            <!-- Two-column layout: details left, agents right -->
+            <Grid ColumnSpacing="24">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="380" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Left: Project details -->
+                <StackPanel Grid.Column="0" Spacing="12">
+                    <TextBlock Text="Project details" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Spacing="8">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Name" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBox Text="{Binding EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Description (optional)" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBox Text="{Binding EditDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="What is this project about?" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Codebase path (optional)" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBox Text="{Binding EditCodebasePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="C:\path\to\codebase"
+                                     FontFamily="Consolas" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding DetailsError}"
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                   Visibility="{Binding DetailsError, Converter={StaticResource NullToVisible}}" />
+                        <TextBlock Text="Saved." Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                   Visibility="{Binding DetailsSaved, Converter={StaticResource BoolToVisible}}" />
+                        <Button Content="Save changes" Style="{StaticResource AccentButtonStyle}"
+                                Command="{Binding SaveDetailsCommand}"
+                                IsEnabled="{Binding SavingDetails, Converter={StaticResource InverseBoolToVisible}}"
+                                HorizontalAlignment="Right" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Right: Agents -->
+                <StackPanel Grid.Column="1" Spacing="12">
+                    <Grid>
+                        <TextBlock Text="Agents" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                            <Button Content="Switch executor"
+                                    Command="{Binding OpenBulkSwitchCommand}" />
+                            <Button Content="+ Add agent"
+                                    Command="{Binding OpenAddAgentCommand}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding Agents}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,6" Padding="12" CornerRadius="8"
+                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1">
+                                    <Grid>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}"
+                                                       Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                       FontFamily="Consolas">
+                                                <Run Text="{Binding Slug}" /><Run Text=" · " /><Run Text="{Binding Model}" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <Button x:Name="OpenAgentBtn" Content="Open →"
+                                                Tag="{Binding}"
+                                                Click="OpenAgent_Click"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Border CornerRadius="8" Padding="14"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Visibility="{Binding ShowBulkSwitch, Converter={StaticResource BoolToVisible}}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Switch all agents to executor" Style="{StaticResource BodyStrongTextBlockStyle}" />
+
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Target executor" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ComboBox ItemsSource="{Binding AvailableExecutors}"
+                                          SelectedItem="{Binding BulkTargetExecutor, Mode=TwoWay}" />
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding BulkSwitchError}"
+                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                       Visibility="{Binding BulkSwitchError, Converter={StaticResource NullToVisible}}" />
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                                <Button Content="Cancel" Command="{Binding CancelBulkSwitchCommand}" />
+                                <Button Content="Switch all" Style="{StaticResource AccentButtonStyle}"
+                                        Command="{Binding ApplyBulkSwitchCommand}"
+                                        IsEnabled="{Binding ApplyingBulkSwitch, Converter={StaticResource InverseBoolToVisible}}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Add-agent form -->
+                    <Border CornerRadius="8" Padding="14"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Visibility="{Binding ShowAddAgent, Converter={StaticResource BoolToVisible}}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Add agent" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <StackPanel Spacing="4"
+                                        Visibility="{Binding Templates.Count, Converter={StaticResource NullToVisible}}">
+                                <TextBlock Text="From template" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ComboBox x:Name="TemplateCombo" HorizontalAlignment="Stretch"
+                                          DisplayMemberPath="Name"
+                                          SelectionChanged="TemplateCombo_SelectionChanged" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Agent slug" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBox Text="{Binding NewAgentSlug, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         PlaceholderText="e.g. dev-alex" FontFamily="Consolas" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Display name" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBox Text="{Binding NewAgentName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         PlaceholderText="e.g. Alex" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding AgentError}"
+                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                       Visibility="{Binding AgentError, Converter={StaticResource NullToVisible}}" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                                <Button Content="Cancel" Command="{Binding CancelAddAgentCommand}" />
+                                <Button Content="Create agent" Style="{StaticResource AccentButtonStyle}"
+                                        Command="{Binding AddAgentCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

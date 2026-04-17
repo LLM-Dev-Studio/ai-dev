@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="AiDev.WinUI.Views.Pages.MessagesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="using:AiDev.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:NullToVisibilityConverter x:Key="NullToVisible" />
+        <conv:PriorityColorConverter x:Key="PriorityColor" />
+        <conv:PriorityTextConverter x:Key="PriorityText" />
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="340" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Left: message list -->
+        <Grid Grid.Column="0" Margin="0,0,16,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Messages"
+                       Style="{StaticResource TitleTextBlockStyle}"
+                       Margin="0,0,0,12" />
+
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="16" Margin="0,0,0,8">
+                <ToggleSwitch Header="Show processed"
+                              IsOn="{Binding ShowProcessed, Mode=TwoWay}"
+                              Toggled="ShowProcessed_Toggled" />
+            </StackPanel>
+
+            <TextBox Grid.Row="2"
+                     PlaceholderText="Filter by task ID…"
+                     Text="{Binding FilterTaskId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     Margin="0,0,0,8"
+                     TextChanged="FilterTaskId_TextChanged" />
+
+            <ProgressRing Grid.Row="3"
+                          IsActive="{Binding IsLoading}"
+                          Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisible}}"
+                          HorizontalAlignment="Center" />
+
+            <ListView Grid.Row="3"
+                      ItemsSource="{Binding Messages}"
+                      SelectedItem="{Binding SelectedMessage, Mode=TwoWay}"
+                      Visibility="{Binding IsLoading, Converter={StaticResource InverseBoolToVisible}}"
+                      SelectionChanged="Messages_SelectionChanged">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Padding="4" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Spacing="2">
+                                <TextBlock Text="{Binding Re}"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{Binding From}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Text="{Binding Type}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                               Visibility="{Binding Type, Converter={StaticResource NullToVisible}}" />
+                                </StackPanel>
+                            </StackPanel>
+                            <Border Grid.Column="1" CornerRadius="4" Padding="6,2"
+                                    Background="{Binding Priority, Converter={StaticResource PriorityColor}}"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Priority, Converter={StaticResource PriorityText}}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="White" />
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+
+        <!-- Right: message detail -->
+        <Border Grid.Column="1" Padding="20" CornerRadius="8"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                Visibility="{Binding SelectedMessage, Converter={StaticResource NullToVisible}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0"
+                           Text="{Binding SelectedMessage.Re}"
+                           Style="{StaticResource SubtitleTextBlockStyle}"
+                           Margin="0,0,0,4" />
+
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="16" Margin="0,0,0,16">
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                        <Run Text="From: " />
+                        <Run Text="{Binding SelectedMessage.From}" />
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Visibility="{Binding SelectedMessage.Type, Converter={StaticResource NullToVisible}}">
+                        <Run Text="Type: " />
+                        <Run Text="{Binding SelectedMessage.Type}" />
+                    </TextBlock>
+                    <Border CornerRadius="4" Padding="6,2"
+                            Background="{Binding SelectedMessage.Priority, Converter={StaticResource PriorityColor}}">
+                        <TextBlock Text="{Binding SelectedMessage.Priority, Converter={StaticResource PriorityText}}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="White" />
+                    </Border>
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                               Visibility="{Binding SelectedMessage.TaskId, Converter={StaticResource NullToVisible}}">
+                        <Run Text="Task: " />
+                        <Run Text="{Binding SelectedMessage.TaskId}" />
+                    </TextBlock>
+                </StackPanel>
+
+                <ScrollViewer Grid.Row="2">
+                    <TextBlock Text="{Binding SelectedMessage.Body}"
+                               TextWrapping="Wrap"
+                               Style="{StaticResource BodyTextBlockStyle}" />
+                </ScrollViewer>
+
+                <Button Grid.Row="3"
+                        Content="Mark Processed"
+                        Margin="0,16,0,0"
+                        Click="MarkProcessed_Click" />
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

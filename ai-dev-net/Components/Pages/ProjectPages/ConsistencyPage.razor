@@ -4,7 +4,15 @@
 @using AiDev.Services
 @inject ConsistencyCheckService ConsistencyCheckService
 
-<h1 class="text-xl font-semibold text-primary mb-1">Consistency</h1>
+<div class="flex items-center justify-between mb-1">
+    <h1 class="text-xl font-semibold text-primary">Consistency</h1>
+    <button @onclick="RunScanAsync"
+            disabled="@_loading"
+            class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+        <SvgIcon Name="refresh-cw" Class="@(_loading ? "w-3 h-3 animate-spin" : "w-3 h-3")" />
+        @(_loading ? "Scanning…" : "Run scan")
+    </button>
+</div>
 <p class="text-sm text-muted-foreground mb-4">Review startup findings and run an on-demand consistency scan for this project.</p>
 
 @if (_loading)
@@ -21,23 +29,15 @@ else if (_report == null)
 }
 else
 {
-    <div class="flex items-center justify-between mb-4">
-        <div class="text-sm text-muted-foreground">
-            <span class="mr-3">Warnings: @_report.Findings.Count(f => f.Severity == ConsistencySeverity.Warning)</span>
-            <span>Errors: @_report.Findings.Count(f => f.Severity == ConsistencySeverity.Error)</span>
-        </div>
-        <button @onclick="RunScanAsync"
-                disabled="@_loading"
-                class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-            <SvgIcon Name="refresh-cw" Class="w-3 h-3" />
-            @(_loading ? "Scanning…" : "Run scan")
-        </button>
+    <div class="flex items-center gap-4 mb-4 text-sm text-muted-foreground">
+        <span>Warnings: @_report.Findings.Count(f => f.Severity == ConsistencySeverity.Warning)</span>
+        <span>Errors: @_report.Findings.Count(f => f.Severity == ConsistencySeverity.Error)</span>
     </div>
 
     @if (_report.Findings.Count == 0)
     {
         <div class="rounded-md border border-border bg-card px-4 py-3 text-sm text-foreground">
-            No issues found for this project.
+            ✓ No issues found for this project.
         </div>
     }
     else
@@ -83,5 +83,6 @@ else
         StateHasChanged();
         _report = await ConsistencyCheckService.CheckProjectAsync(Slug);
         _loading = false;
+        await InvokeAsync(StateHasChanged);
     }
 }

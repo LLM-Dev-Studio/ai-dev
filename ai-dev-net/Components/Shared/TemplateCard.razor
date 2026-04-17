@@ -206,15 +206,16 @@
     private bool saving;
     private SaveStatus saveStatus = SaveStatus.Idle;
     private string textareaId = string.Empty;
+    private IDisposable? _healthChangedSubscription;
 
     protected override void OnInitialized()
     {
         InitializeDraft();
         textareaId = $"ta-{Template.Slug}";
-        ExecutorHealthMonitor.Changed += OnHealthChanged;
+        _healthChangedSubscription = ExecutorHealthMonitor.SubscribeChanged(OnHealthChanged);
     }
 
-    public void Dispose() => ExecutorHealthMonitor.Changed -= OnHealthChanged;
+    public void Dispose() => _healthChangedSubscription?.Dispose();
 
     private void OnHealthChanged()
     {

@@ -48,56 +48,63 @@ public sealed class LmStudioAgentExecutor(
     public async Task<ExecutorHealthResult> CheckHealthAsync(CancellationToken ct = default)
     {
         var baseUrl = settingsService.GetSettings().LmStudioBaseUrl.TrimEnd('/');
-        var url     = $"{baseUrl}/api/v1/models";
+        var candidateUrls = new[]
+        {
+            $"{baseUrl}/api/v1/models", // LM Studio native
+            $"{baseUrl}/v1/models",     // OpenAI-compatible
+        };
 
         try
         {
-            var http     = httpClientFactory.CreateClient("lmstudio-health");
-            var response = await http.GetAsync(url, ct).ConfigureAwait(false);
+            var http = httpClientFactory.CreateClient("lmstudio-health");
 
-            if (!response.IsSuccessStatusCode)
-                return new ExecutorHealthResult(false, $"LM Studio returned HTTP {(int)response.StatusCode}");
-
-            List<ModelDescriptor> discovered = [];
-            try
+            foreach (var url in candidateUrls)
             {
-                var doc = await response.Content.ReadFromJsonAsync<JsonDocument>(ct).ConfigureAwait(false);
+                using var response = await http.GetAsync(url, ct).ConfigureAwait(false);
 
-                // LM Studio /api/v1/models returns { "models": [ { "key": "...", "display_name": "...", "type": "llm", "capabilities": {...} } ] }
-                if (doc?.RootElement.TryGetProperty("models", out var models) == true
-                    && models.ValueKind == JsonValueKind.Array)
+                if (!response.IsSuccessStatusCode)
                 {
-                    discovered = models.EnumerateArray()
-                        // Only include LLMs, not embedding models.
-                        .Where(m => !m.TryGetProperty("type", out var t) || t.GetString() != "embedding")
-                        .Select(m =>
-                        {
-                            var id   = m.TryGetProperty("key",          out var kp) ? kp.GetString() ?? string.Empty : string.Empty;
-                            var name = m.TryGetProperty("display_name", out var dp) ? dp.GetString() ?? id           : id;
+                    // Try alternate shape if this endpoint does not exist.
+                    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                        continue;
 
-                            var caps = ModelCapabilities.Streaming;
-                            if (m.TryGetProperty("capabilities", out var capObj) && capObj.ValueKind == JsonValueKind.Object)
-                            {
-                                if (capObj.TryGetProperty("trained_for_tool_use", out var tu) && tu.GetBoolean())
-                                    caps |= ModelCapabilities.ToolCalling;
-                                if (capObj.TryGetProperty("vision", out var vis) && vis.GetBoolean())
-                                    caps |= ModelCapabilities.Vision;
-                            }
-
-                            return (id, name, caps);
-                        })
-                        .Where(t => t.id.Length > 0)
-                        .Select(t => new ModelDescriptor(t.id, t.name, "lmstudio", t.caps))
-                        .ToList();
+                    return new ExecutorHealthResult(false, $"LM Studio returned HTTP {(int)response.StatusCode}");
                 }
+
+                List<ModelDescriptor> discovered = [];
+                try
+                {
+                    using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>(ct).ConfigureAwait(false);
+                    if (doc is not null)
+                    {
+                        var root = doc.RootElement;
+
+                        // Native shape: { "models": [...] }
+                        // OpenAI-compatible shape: { "data": [...] }
+                        JsonElement modelsArray;
+                        if (root.TryGetProperty("models", out modelsArray) && modelsArray.ValueKind == JsonValueKind.Array)
+                        {
+                            discovered = ParseModelDescriptors(modelsArray);
+                        }
+                        else if (root.TryGetProperty("data", out modelsArray) && modelsArray.ValueKind == JsonValueKind.Array)
+                        {
+                            discovered = ParseModelDescriptors(modelsArray);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogDebug(ex, "[lmstudio-health] Failed to parse model list from {Url}", url);
+                }
+
+                var message = discovered.Count > 0
+                    ? $"{discovered.Count} model(s) available"
+                    : "Connected (no models loaded)";
+
+                return new ExecutorHealthResult(true, message, discovered);
             }
-            catch { /* model list is best-effort */ }
 
-            var message = discovered.Count > 0
-                ? $"{discovered.Count} model(s) available"
-                : "Connected (no models loaded)";
-
-            return new ExecutorHealthResult(true, message, discovered);
+            return new ExecutorHealthResult(false, "LM Studio model endpoint not found (/api/v1/models or /v1/models)");
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -105,6 +112,72 @@ public sealed class LmStudioAgentExecutor(
             logger.LogDebug(ex, "[lmstudio-health] Probe failed: {Message}", ex.Message);
             return new ExecutorHealthResult(false, $"Connection refused: {ex.Message}");
         }
+    }
+
+    private static List<ModelDescriptor> ParseModelDescriptors(JsonElement models)
+    {
+        var result = new List<ModelDescriptor>();
+
+        foreach (var m in models.EnumerateArray())
+        {
+            // Only include LLMs, not embedding models.
+            if (m.TryGetProperty("type", out var typeElement)
+                && string.Equals(typeElement.GetString(), "embedding", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var id = GetString(m, "key") ?? GetString(m, "id") ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(id))
+                continue;
+
+            var name = GetString(m, "display_name") ?? GetString(m, "name") ?? id;
+
+            var caps = ModelCapabilities.Streaming;
+            if (m.TryGetProperty("capabilities", out var capObj) && capObj.ValueKind == JsonValueKind.Object)
+            {
+                if (TryGetBoolean(capObj, "trained_for_tool_use", out var canTools) && canTools)
+                    caps |= ModelCapabilities.ToolCalling;
+                if (TryGetBoolean(capObj, "vision", out var canVision) && canVision)
+                    caps |= ModelCapabilities.Vision;
+            }
+
+            result.Add(new ModelDescriptor(id, name, "lmstudio", caps));
+        }
+
+        return result;
+    }
+
+    private static string? GetString(JsonElement element, string propertyName)
+        => element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static bool TryGetBoolean(JsonElement element, string propertyName, out bool value)
+    {
+        value = false;
+        if (!element.TryGetProperty(propertyName, out var property))
+            return false;
+
+        if (property.ValueKind == JsonValueKind.True)
+        {
+            value = true;
+            return true;
+        }
+
+        if (property.ValueKind == JsonValueKind.False)
+        {
+            value = false;
+            return true;
+        }
+
+        if (property.ValueKind == JsonValueKind.String && bool.TryParse(property.GetString(), out var parsed))
+        {
+            value = parsed;
+            return true;
+        }
+
+        return false;
     }
 
     // -------------------------------------------------------------------------

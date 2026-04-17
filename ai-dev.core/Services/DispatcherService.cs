@@ -36,7 +36,7 @@ public class DispatcherService(
     // IHostedService
     // -------------------------------------------------------------------------
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation("[dispatcher] Starting");
@@ -49,13 +49,15 @@ public class DispatcherService(
         if (Directory.Exists(workspaceRoot))
             WatchForNewProjects(workspaceRoot);
 
+        // Reset any agent.json files left in status=running from a previous crash/kill.
+        await runner.RecoverStaleSessionsAsync(projects.Select(p => p.Slug));
+
         // Periodic poll — safety net for any FSW-missed events.
         // LaunchAgent is a no-op if the agent is already running, so this is safe.
         _pollTimer = new Timer(_ => PollAllProjects(CancellationToken.None), null,
             TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
 
         logger.LogInformation("[dispatcher] Watching {Count} project(s) with FSW + 10 s poll", projects.Count);
-        return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)

@@ -5,6 +5,7 @@
 @using AiDev.Services
 @using System.Diagnostics
 @rendermode InteractiveServer
+@implements IDisposable
 @inject AgentService AgentService
 @inject AgentRunnerService RunnerService
 
@@ -43,7 +44,7 @@ else
         @foreach (var agent in agents)
         {
             var agentSlug = agent.Slug;
-            var running = RunnerService.IsRunning(Slug, agentSlug);
+            var running = RunnerService.IsRunning(Slug, agentSlug) && !_stopping.Contains(agentSlug.Value);
             <div class="group rounded-lg border border-border bg-card hover:border-border/80 hover:bg-card/80 transition-colors">
                 <a href="@($"/projects/{Slug}/agents/{agentSlug}")" class="block p-5">
                     <div class="flex items-start justify-between mb-4">
@@ -104,8 +105,26 @@ else
 
     private List<AgentInfo>? agents;
     private bool showAdd;
+    // Agents for which Stop has been requested but the session hasn't exited yet.
+    private readonly HashSet<string> _stopping = [];
+    private Timer? _pollTimer;
 
-    protected override void OnInitialized() => Load();
+    protected override void OnInitialized()
+    {
+        Load();
+        // Poll every 2 s to pick up session exits (mirrors AgentDetailPage behaviour).
+        _pollTimer = new Timer(_ => InvokeAsync(() =>
+        {
+            // Remove any slugs that have now fully stopped.
+            var nowRunning = agents?.Where(a => RunnerService.IsRunning(Slug, a.Slug)).Select(a => a.Slug.Value).ToHashSet()
+                             ?? [];
+            if (_stopping.RemoveWhere(s => !nowRunning.Contains(s)) > 0 || agents?.Any(a => RunnerService.IsRunning(Slug, a.Slug) != _stopping.Contains(a.Slug.Value)) == true)
+            {
+                Load();
+                StateHasChanged();
+            }
+        }), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
 
     private void Load() => agents = AgentService.ListAgents(Slug);
 
@@ -133,8 +152,13 @@ else
     private void StopAgent(AgentSlug agentSlug)
     {
         RunnerService.StopAgent(Slug, agentSlug);
+        // Mark as stopping optimistically so the button disappears immediately
+        // even though the session is still winding down asynchronously.
+        _stopping.Add(agentSlug.Value);
         StateHasChanged();
     }
+
+    public void Dispose() => _pollTimer?.Dispose();
 
     private static string FormatDate(DateTime? dt) =>
         dt.HasValue ? dt.Value.ToLocalTime().ToString("MMM d") : "—";

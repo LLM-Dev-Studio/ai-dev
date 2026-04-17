@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="AiDev.WinUI.Views.Pages.DecisionsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="using:AiDev.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:NullToVisibilityConverter x:Key="NullToVisible" />
+    </Page.Resources>
+
+    <Grid Margin="24">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="320" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Left: decisions list -->
+        <Grid Grid.Column="0" Margin="0,0,16,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Decisions"
+                       Style="{StaticResource TitleTextBlockStyle}"
+                       Margin="0,0,0,12" />
+
+            <ToggleSwitch Grid.Row="1"
+                          Header="Show resolved"
+                          IsOn="{Binding ShowResolved, Mode=TwoWay}"
+                          Margin="0,0,0,12"
+                          Toggled="ShowResolved_Toggled" />
+
+            <ProgressRing Grid.Row="2"
+                          IsActive="{Binding IsLoading}"
+                          Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisible}}"
+                          HorizontalAlignment="Center" />
+
+            <ListView Grid.Row="2"
+                      ItemsSource="{Binding Decisions}"
+                      SelectedItem="{Binding SelectedDecision, Mode=TwoWay}"
+                      Visibility="{Binding IsLoading, Converter={StaticResource InverseBoolToVisible}}"
+                      SelectionChanged="Decisions_SelectionChanged">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Padding="4" Spacing="2">
+                            <TextBlock Text="{Binding Subject}"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Status.Value}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+
+        <!-- Right: decision chat -->
+        <Grid Grid.Column="1"
+              Visibility="{Binding SelectedDecision, Converter={StaticResource NullToVisible}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Decision header -->
+            <Border Grid.Row="0" Padding="16" CornerRadius="8" Margin="0,0,0,12"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                <Grid>
+                    <StackPanel>
+                        <TextBlock Text="{Binding SelectedDecision.Subject}"
+                                   Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock Text="{Binding SelectedDecision.Body}"
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0" />
+                    </StackPanel>
+                    <Button Content="Resolve"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Command="{Binding ResolveDecisionCommand}" />
+                </Grid>
+            </Border>
+
+            <!-- Chat messages -->
+            <ScrollViewer Grid.Row="1" Margin="0,0,0,12">
+                <ItemsControl ItemsSource="{Binding ChatMessages}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,0,0,8" Padding="12" CornerRadius="6"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="{Binding From}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <TextBlock Text="{Binding Content}"
+                                               TextWrapping="Wrap"
+                                               Style="{StaticResource BodyTextBlockStyle}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <!-- Reply box -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         PlaceholderText="Type your reply..."
+                         Text="{Binding ReplyText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True"
+                         Height="80"
+                         Margin="0,0,8,0" />
+                <Button Grid.Column="1"
+                        Content="Send"
+                        Style="{StaticResource AccentButtonStyle}"
+                        VerticalAlignment="Bottom"
+                        Command="{Binding SendReplyCommand}"
+                        IsEnabled="{Binding IsSendingReply, Converter={StaticResource InverseBoolToVisible}}" />
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>

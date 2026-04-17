@@ -1,5 +1,3 @@
-using AiDev.Extensions;
-
 namespace AiDev.Ui.Web.Extensions;
 
 public static class ProgramExtensions

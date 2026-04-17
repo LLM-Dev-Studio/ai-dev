@@ -14,17 +14,18 @@ public sealed class ModelRegistry : IModelRegistry, IDisposable
 {
     private readonly IReadOnlyList<IAgentExecutor> _executors;
     private readonly ExecutorHealthMonitor _healthMonitor;
+    private readonly IDisposable _healthChangedSubscription;
 
     // Snapshot rebuilt on every Changed event.
     private volatile IReadOnlyDictionary<string, IReadOnlyList<ModelDescriptor>> _byExecutor;
 
     public ModelRegistry(IEnumerable<IAgentExecutor> executors, ExecutorHealthMonitor healthMonitor)
     {
-        _executors     = [.. executors];
+        _executors = [.. executors];
         _healthMonitor = healthMonitor;
-        _byExecutor    = Build();
+        _byExecutor = Build();
 
-        _healthMonitor.Changed += Refresh;
+        _healthChangedSubscription = _healthMonitor.SubscribeChanged(Refresh);
     }
 
     public IReadOnlyList<ModelDescriptor> GetModelsForExecutor(string executorName)
@@ -37,7 +38,7 @@ public sealed class ModelRegistry : IModelRegistry, IDisposable
     public IReadOnlyList<ModelDescriptor> GetAll()
         => [.. _byExecutor.Values.SelectMany(v => v)];
 
-    public void Dispose() => _healthMonitor.Changed -= Refresh;
+    public void Dispose() => _healthChangedSubscription.Dispose();
 
     // -------------------------------------------------------------------------
 

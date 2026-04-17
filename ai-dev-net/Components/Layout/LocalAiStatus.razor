@@ -19,9 +19,11 @@
 }
 
 @code {
+    private IDisposable? _healthChangedSubscription;
+
     protected override void OnInitialized()
     {
-        ExecutorHealthMonitor.Changed += OnChanged;
+        _healthChangedSubscription = ExecutorHealthMonitor.SubscribeChanged(OnChanged);
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
@@ -48,6 +50,6 @@
 
     public void Dispose()
     {
-        ExecutorHealthMonitor.Changed -= OnChanged;
+        _healthChangedSubscription?.Dispose();
     }
 }

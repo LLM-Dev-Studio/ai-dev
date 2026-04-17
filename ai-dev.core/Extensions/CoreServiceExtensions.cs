@@ -9,7 +9,6 @@ using AiDev.Features.KnowledgeBase;
 using AiDev.Features.Playbook;
 using AiDev.Features.Secrets;
 using AiDev.Features.Workspace;
-using AiDev.Services;
 
 using GitService = AiDev.Features.Git.GitService;
 

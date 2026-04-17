@@ -1,4 +1,3 @@
-@using AiDev.Executors
 @using AiDev.Services
 @inject ExecutorHealthMonitor ExecutorHealthMonitor
 @implements IDisposable
@@ -33,11 +32,16 @@
     private sealed record ExecutorEntry(string DisplayName, bool IsHealthy, string StatusMessage);
 
     private List<ExecutorEntry> _entries = [];
+    private IDisposable? _healthChangedSubscription;
 
     protected override void OnInitialized()
     {
         LoadEntries();
-        ExecutorHealthMonitor.Changed += OnChanged;
+        _healthChangedSubscription = ExecutorHealthMonitor.SubscribeChanged(() => 
+        {
+            LoadEntries();
+            StateHasChanged();
+        });
     }
 
     private void LoadEntries()
@@ -50,14 +54,5 @@
             .ToList();
     }
 
-    private void OnChanged()
-    {
-        InvokeAsync(() =>
-        {
-            LoadEntries();
-            StateHasChanged();
-        });
-    }
-
-    public void Dispose() => ExecutorHealthMonitor.Changed -= OnChanged;
+    public void Dispose() => _healthChangedSubscription?.Dispose();
 }

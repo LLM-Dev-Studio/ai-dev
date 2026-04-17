@@ -1,10 +1,11 @@
-using AiDev.Models;
 using Microsoft.Extensions.Configuration;
 
 namespace AiDev.Services;
 
 public class StudioSettingsService(IConfiguration configuration)
 {
+    private readonly string _settingsFilePath = Path.Combine(AppContext.BaseDirectory, FilePathConstants.StudioSettingsFileName);
+
     private const string StudioSettingsSectionName = "StudioSettings";
     private const string DefaultOllamaBaseUrl = "http://localhost:11434";
     private const string DefaultLmStudioBaseUrl = "http://localhost:1234";
@@ -46,7 +47,30 @@ public class StudioSettingsService(IConfiguration configuration)
     }
 
     public void SaveSettings(StudioSettings settings)
-        => throw new InvalidOperationException("Studio settings are loaded from application configuration and cannot be saved at runtime.");
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        var persisted = new StudioSettings
+        {
+            OllamaBaseUrl = string.IsNullOrWhiteSpace(settings.OllamaBaseUrl) ? DefaultOllamaBaseUrl : settings.OllamaBaseUrl.Trim(),
+            LmStudioBaseUrl = string.IsNullOrWhiteSpace(settings.LmStudioBaseUrl) ? DefaultLmStudioBaseUrl : settings.LmStudioBaseUrl.Trim(),
+            AnthropicApiKey = string.IsNullOrWhiteSpace(settings.AnthropicApiKey) ? null : settings.AnthropicApiKey.Trim(),
+            GitHubToken = string.IsNullOrWhiteSpace(settings.GitHubToken) ? null : settings.GitHubToken.Trim(),
+            InsightsExecutor = string.IsNullOrWhiteSpace(settings.InsightsExecutor) ? null : settings.InsightsExecutor.Trim(),
+            InsightsModel = string.IsNullOrWhiteSpace(settings.InsightsModel) ? null : settings.InsightsModel.Trim(),
+            Models = settings.Models is { Count: > 0 }
+                ? new Dictionary<string, string>(settings.Models, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(),
+        };
+
+        var root = new Dictionary<string, object?>
+        {
+            [StudioSettingsSectionName] = persisted,
+        };
+
+        Directory.CreateDirectory(Path.GetDirectoryName(_settingsFilePath)!);
+        File.WriteAllText(_settingsFilePath, JsonSerializer.Serialize(root, JsonDefaults.WriteIgnoreNull));
+    }
 
     private Dictionary<string, string> GetConfiguredModels()
     {

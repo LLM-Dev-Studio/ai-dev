@@ -1,5 +1,3 @@
-using AiDev.Services;
-
 namespace AiDev.Features.Playbook;
 
 public class PlaybookService(WorkspacePaths paths, AtomicFileWriter fileWriter, ProjectMutationCoordinator coordinator)

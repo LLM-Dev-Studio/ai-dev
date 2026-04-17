@@ -1,5 +1,3 @@
-using AiDev.Models;
-
 namespace AiDev.Features.Workspace;
 
 file class ProjectJson

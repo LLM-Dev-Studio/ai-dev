@@ -14,4 +14,10 @@ public sealed record ExecutorHealthResult(
     /// GitHub Models catalog). Null when the executor uses a static known-models list
     /// and performs no runtime discovery (e.g. Claude CLI, Anthropic API).
     /// </summary>
-    IReadOnlyList<ModelDescriptor>? Models = null);
+    IReadOnlyList<ModelDescriptor>? Models = null,
+
+    /// <summary>The UTC timestamp when this health check completed.</summary>
+    DateTimeOffset? CheckedAt = null,
+
+    /// <summary>The elapsed duration for the health probe.</summary>
+    TimeSpan? Duration = null);
