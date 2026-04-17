@@ -69,7 +69,14 @@
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Project Info" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <Grid>
+                            <TextBlock Text="Project Info" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <Button Content="Change Path"
+                                    HorizontalAlignment="Right"
+                                    Visibility="{Binding CodebaseInitialized, Converter={StaticResource BoolToVisible}}"
+                                    Click="ChangePath_Click" />
+                        </Grid>
+
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="160" />
@@ -109,6 +116,43 @@
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Visibility="{Binding CodebaseInitialized, Converter={StaticResource BoolToVisible}}" />
                         </Grid>
+
+                        <!-- Change path panel (shown when user clicks Change Path) -->
+                        <Border CornerRadius="6" Padding="12"
+                                Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                                BorderBrush="{ThemeResource SystemFillColorCautionBrush}"
+                                BorderThickness="1"
+                                Visibility="{Binding IsChangingPath, Converter={StaticResource BoolToVisible}}">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Change codebase path"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock TextWrapping="Wrap"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="Enter the absolute path to the source code root. Agents will be granted read/write access to this directory." />
+                                <TextBox PlaceholderText="Absolute path to source root (e.g. C:\repos\my-project)"
+                                         Text="{Binding NewCodebasePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         FontFamily="Consolas" />
+                                <TextBlock Text="{Binding ChangePathError}"
+                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                           Visibility="{Binding ChangePathError, Converter={StaticResource NullToVisible}}" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Save"
+                                            Style="{StaticResource AccentButtonStyle}"
+                                            Command="{Binding ChangePathCommand}" />
+                                    <Button Content="Cancel"
+                                            Click="CancelChangePath_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Change path success banner -->
+                        <Border CornerRadius="6" Padding="12"
+                                Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
+                                Visibility="{Binding ChangePathDone, Converter={StaticResource BoolToVisible}}">
+                            <TextBlock Text="Codebase path updated. Agents will use the new path on their next run."
+                                       Style="{StaticResource CaptionTextBlockStyle}" />
+                        </Border>
                     </StackPanel>
                 </Border>
 

@@ -13,9 +13,14 @@ public partial class ExecutorStatusItem : ObservableObject
 public partial class MainViewModel : ObservableObject
 {
     private readonly ExecutorHealthMonitor _healthMonitor;
+    private readonly MessagesService _messagesService;
+    private readonly DecisionsService _decisionsService;
 
     [ObservableProperty] public partial ProjectDetail? ActiveProject { get; set; }
     [ObservableProperty] public partial AgentInfo? PendingAgent { get; set; }
+    [ObservableProperty] public partial int UnreadMessageCount { get; set; }
+    [ObservableProperty] public partial int PendingDecisionCount { get; set; }
+
     private TaskId? _pendingTaskId;
     public TaskId? PendingTaskId
     {
@@ -26,14 +31,44 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<ExecutorStatusItem> ExecutorStatuses { get; } = [];
 
-    public MainViewModel(ExecutorHealthMonitor healthMonitor)
+    public MainViewModel(ExecutorHealthMonitor healthMonitor, MessagesService messagesService, DecisionsService decisionsService)
     {
         _healthMonitor = healthMonitor;
+        _messagesService = messagesService;
+        _decisionsService = decisionsService;
     }
 
     public void SetActiveProject(ProjectDetail? project)
     {
         ActiveProject = project;
+    }
+
+    public void RefreshNavBadges()
+    {
+        if (ActiveProject is null)
+        {
+            UnreadMessageCount = 0;
+            PendingDecisionCount = 0;
+            return;
+        }
+        try
+        {
+            var messages = _messagesService.ListMessages(ActiveProject.Slug);
+            UnreadMessageCount = messages.Count(m => !m.IsProcessed);
+        }
+        catch
+        {
+            UnreadMessageCount = 0;
+        }
+        try
+        {
+            var decisions = _decisionsService.ListDecisions(ActiveProject.Slug, "pending");
+            PendingDecisionCount = decisions.Count;
+        }
+        catch
+        {
+            PendingDecisionCount = 0;
+        }
     }
 
     public async Task LoadExecutorStatusesAsync()

@@ -25,6 +25,11 @@ public sealed partial class MessagesPage : Page
 
     private void Messages_SelectionChanged(object sender, SelectionChangedEventArgs e) { }
 
+    private async void FilterTaskId_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        await ViewModel.LoadAsync();
+    }
+
     private async void MarkProcessed_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel.SelectedMessage is { } msg)

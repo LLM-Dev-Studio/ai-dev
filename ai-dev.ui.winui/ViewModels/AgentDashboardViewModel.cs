@@ -17,9 +17,11 @@ public partial class AgentDashboardViewModel : ObservableObject, IDisposable
     private Timer? _pollTimer;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial bool HasFailoverAlerts { get; set; }
 
     public ObservableCollection<AgentCardViewModel> Agents { get; } = [];
     public ObservableCollection<AgentTemplate> Templates { get; } = [];
+    public ObservableCollection<string> FailoverAlerts { get; } = [];
 
     public event Action<AgentInfo>? AgentSelected;
 
@@ -49,6 +51,15 @@ public partial class AgentDashboardViewModel : ObservableObject, IDisposable
             Agents.Clear();
             foreach (var a in agents)
                 Agents.Add(new AgentCardViewModel(a, _agentRunnerService.IsRunning(CurrentSlug, a.Slug)));
+
+            // Detect agents that have automatically failed over to a backup executor
+            FailoverAlerts.Clear();
+            foreach (var a in agents.Where(a => a.FailoverExecutor != null))
+            {
+                var when = a.FailedOverAt.HasValue ? a.FailedOverAt.Value.ToString("HH:mm") : "recently";
+                FailoverAlerts.Add($"{a.Name} failed over to {a.FailoverExecutor!.Value} at {when}");
+            }
+            HasFailoverAlerts = FailoverAlerts.Count > 0;
 
             var templates = _templatesService.ListTemplates();
             Templates.Clear();

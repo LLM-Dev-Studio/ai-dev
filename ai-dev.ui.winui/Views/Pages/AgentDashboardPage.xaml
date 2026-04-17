@@ -18,6 +18,7 @@
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -37,14 +38,34 @@
                     Click="AddAgent_Click" />
         </Grid>
 
+        <!-- Failover alert bar -->
+        <InfoBar Grid.Row="1"
+                 IsOpen="{Binding HasFailoverAlerts}"
+                 Severity="Warning"
+                 Title="Executor Failover Detected"
+                 Margin="0,0,0,12"
+                 IsClosable="False">
+            <InfoBar.Content>
+                <ItemsControl ItemsSource="{Binding FailoverAlerts}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Margin="0,2,0,0" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </InfoBar.Content>
+        </InfoBar>
+
         <!-- Loading -->
-        <ProgressRing Grid.Row="1"
+        <ProgressRing Grid.Row="2"
                       IsActive="{Binding IsLoading}"
                       Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisible}}"
                       HorizontalAlignment="Center" VerticalAlignment="Center" />
 
         <!-- Agent cards -->
-        <GridView Grid.Row="1"
+        <GridView Grid.Row="2"
                   ItemsSource="{Binding Agents}"
                   SelectionMode="None"
                   IsItemClickEnabled="False"

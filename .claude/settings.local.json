@@ -14,7 +14,12 @@
       "Bash(dotnet test:*)",
       "Bash(find *)",
       "Bash(npx tsc:*)",
-      "Bash(find ~/.nuget/packages/microsoft.extensions.http.resilience/10.1.0/ -name *.dll)"
+      "Bash(find ~/.nuget/packages/microsoft.extensions.http.resilience/10.1.0/ -name *.dll)",
+      "Bash(ls -la /m/ai-dev-net/ai-dev.ui.winui/Views/Pages/*.xaml)",
+      "Bash(grep -E \"\\\\.razor$\")",
+      "Bash(grep \"\\\\.razor$\")",
+      "Bash(dir \"M:\\\\ai-dev-net\\\\workspaces\\\\ai-dev-studio\\\\codebase\")",
+      "Bash(dir /a \"M:\\\\ai-dev-net\\\\workspaces\\\\ai-dev-studio\\\\codebase\")"
     ]
   }
 }

@@ -81,7 +81,7 @@ public partial class DecisionsViewModel : ObservableObject
         IsSendingReply = true;
         try
         {
-            _chatService.SendHumanMessage(CurrentSlug, SelectedDecision.Id, "user", ReplyText.Trim());
+            _chatService.SendHumanMessage(CurrentSlug, SelectedDecision.Id, SelectedDecision.From, ReplyText.Trim());
             ReplyText = "";
             await SelectDecisionAsync(SelectedDecision);
         }
@@ -100,5 +100,6 @@ public partial class DecisionsViewModel : ObservableObject
         SelectedDecision = null;
         ChatMessages.Clear();
         await LoadAsync();
+        _mainViewModel.RefreshNavBadges();
     }
 }

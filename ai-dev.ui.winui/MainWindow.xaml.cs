@@ -13,6 +13,10 @@ public sealed partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
 
+    // Kept so we can update InfoBadge values reactively
+    private NavigationViewItem? _messagesNavItem;
+    private NavigationViewItem? _decisionsNavItem;
+
     private readonly Dictionary<string, Type> _pageMap = new()
     {
         ["projects"] = typeof(ProjectsPage),
@@ -44,6 +48,12 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetWindowIcon();
         Activated += OnActivated;
+
+        _viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(MainViewModel.UnreadMessageCount) or nameof(MainViewModel.PendingDecisionCount))
+                UpdateNavBadges();
+        };
     }
 
     private async void OnActivated(object sender, WindowActivatedEventArgs args)
@@ -83,7 +93,24 @@ public sealed partial class MainWindow : Window
         _viewModel.SetActiveProject(project);
         Title = $"AI Dev Net — {project.Name}";
         RebuildProjectNav(project);
+        _viewModel.RefreshNavBadges();
         ContentFrame.Navigate(typeof(AgentDashboardPage));
+    }
+
+    private void UpdateNavBadges()
+    {
+        if (_messagesNavItem != null)
+        {
+            _messagesNavItem.InfoBadge = _viewModel.UnreadMessageCount > 0
+                ? new InfoBadge { Value = _viewModel.UnreadMessageCount }
+                : null;
+        }
+        if (_decisionsNavItem != null)
+        {
+            _decisionsNavItem.InfoBadge = _viewModel.PendingDecisionCount > 0
+                ? new InfoBadge { Value = _viewModel.PendingDecisionCount }
+                : null;
+        }
     }
 
     private void HomeHeader_Click(object sender, RoutedEventArgs e)
@@ -179,6 +206,9 @@ public sealed partial class MainWindow : Window
 
     private void RebuildProjectNav(ProjectDetail project)
     {
+        _messagesNavItem = null;
+        _decisionsNavItem = null;
+
         RootNavigation.MenuItems.Clear();
 
         RootNavigation.MenuItems.Add(new NavigationViewItem
@@ -207,12 +237,16 @@ public sealed partial class MainWindow : Window
 
         foreach (var (label, icon, key) in items)
         {
-            RootNavigation.MenuItems.Add(new NavigationViewItem
+            var item = new NavigationViewItem
             {
                 Content = label,
                 Tag = key,
                 Icon = new SymbolIcon(icon)
-            });
+            };
+            RootNavigation.MenuItems.Add(item);
+
+            if (key == "messages")   _messagesNavItem  = item;
+            if (key == "decisions")  _decisionsNavItem = item;
         }
 
         RootNavigation.FooterMenuItems.Clear();

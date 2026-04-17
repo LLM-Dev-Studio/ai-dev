@@ -48,4 +48,19 @@ public sealed partial class CodebasePage : Page
         if (ViewModel is null) return;
         ViewModel.InitMode = "link";
     }
+
+    private void ChangePath_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.IsChangingPath = true;
+        ViewModel.ChangePathError = "";
+        ViewModel.ChangePathDone = false;
+        ViewModel.NewCodebasePath = ViewModel.CodebasePath;
+    }
+
+    private void CancelChangePath_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.IsChangingPath = false;
+        ViewModel.ChangePathError = "";
+        ViewModel.NewCodebasePath = "";
+    }
 }

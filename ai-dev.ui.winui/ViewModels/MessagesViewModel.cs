@@ -18,6 +18,10 @@ public partial class MessagesViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool ShowProcessed { get; set; }
+
+    [ObservableProperty]
+    public partial string FilterTaskId { get; set; } = "";
+
     public ObservableCollection<MessageItem> Messages { get; } = [];
 
     public MessagesViewModel(MessagesService messagesService, MainViewModel mainViewModel)
@@ -37,7 +41,10 @@ public partial class MessagesViewModel : ObservableObject
         {
             var messages = _messagesService.ListMessages(CurrentSlug);
             Messages.Clear();
-            foreach (var m in messages.Where(m => ShowProcessed || !m.IsProcessed))
+            var filter = FilterTaskId.Trim();
+            foreach (var m in messages.Where(m =>
+                (ShowProcessed || !m.IsProcessed) &&
+                (string.IsNullOrEmpty(filter) || string.Equals(m.TaskId?.Value, filter, StringComparison.OrdinalIgnoreCase))))
                 Messages.Add(m);
             return Task.CompletedTask;
         }
@@ -56,6 +63,7 @@ public partial class MessagesViewModel : ObservableObject
             _messagesService.MarkProcessed(CurrentSlug, message.AgentSlug, message.Filename);
             SelectedMessage = null;
             await LoadAsync();
+            _mainViewModel.RefreshNavBadges();
         }
         catch (Exception ex)
         {

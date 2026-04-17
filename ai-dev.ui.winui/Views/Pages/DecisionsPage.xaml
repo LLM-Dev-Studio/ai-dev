@@ -51,10 +51,10 @@
                 <ListView.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Padding="4" Spacing="2">
-                            <TextBlock Text="{Binding Title}"
+                            <TextBlock Text="{Binding Subject}"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{Binding Status}"
+                            <TextBlock Text="{Binding Status.Value}"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
@@ -79,9 +79,9 @@
                     BorderThickness="1">
                 <Grid>
                     <StackPanel>
-                        <TextBlock Text="{Binding SelectedDecision.Title}"
+                        <TextBlock Text="{Binding SelectedDecision.Subject}"
                                    Style="{StaticResource SubtitleTextBlockStyle}" />
-                        <TextBlock Text="{Binding SelectedDecision.Description}"
+                        <TextBlock Text="{Binding SelectedDecision.Body}"
                                    Style="{StaticResource BodyTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap"
@@ -104,10 +104,10 @@
                                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                     BorderThickness="1">
                                 <StackPanel Spacing="4">
-                                    <TextBlock Text="{Binding Role}"
+                                    <TextBlock Text="{Binding From}"
                                                Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                    <TextBlock Text="{Binding Content}"
+                                            <TextBlock Text="{Binding Content}"
                                                TextWrapping="Wrap"
                                                Style="{StaticResource BodyTextBlockStyle}" />
                                 </StackPanel>

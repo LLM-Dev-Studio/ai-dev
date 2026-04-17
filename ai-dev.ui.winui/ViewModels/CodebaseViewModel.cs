@@ -23,6 +23,12 @@ public partial class CodebaseViewModel : ObservableObject
     [ObservableProperty] public partial bool InitDone { get; set; }
     [ObservableProperty] public partial GitCommitDetail? SelectedCommit { get; set; }
 
+    // Change-path state (visible when already initialized)
+    [ObservableProperty] public partial bool IsChangingPath { get; set; }
+    [ObservableProperty] public partial string NewCodebasePath { get; set; } = "";
+    [ObservableProperty] public partial string ChangePathError { get; set; } = "";
+    [ObservableProperty] public partial bool ChangePathDone { get; set; }
+
     public bool IsLinkMode => InitMode == "link";
 
     partial void OnInitModeChanged(string value) => OnPropertyChanged(nameof(IsLinkMode));
@@ -107,6 +113,47 @@ public partial class CodebaseViewModel : ObservableObject
 
     [RelayCommand]
     public void CloseDetail() => SelectedCommit = null;
+
+    /// <summary>
+    /// Updates the registered codebase path for an already-initialized project.
+    /// Used to fix a misconfigured path without reinitializing.
+    /// </summary>
+    [RelayCommand]
+    public void ChangePath()
+    {
+        if (CurrentSlug is null) return;
+        ChangePathError = "";
+        ChangePathDone = false;
+
+        var path = NewCodebasePath.Trim();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            ChangePathError = "Path is required.";
+            return;
+        }
+        if (!Directory.Exists(path))
+        {
+            ChangePathError = $"Directory not found: {path}";
+            return;
+        }
+
+        try
+        {
+            UpdateProjectJson(path);
+            CodebasePath = path;
+            IsGitRepo = _gitService.IsGitRepo(path);
+            Commits.Clear();
+            if (IsGitRepo)
+                foreach (var c in _gitService.GetLog(path)) Commits.Add(c);
+            NewCodebasePath = "";
+            IsChangingPath = false;
+            ChangePathDone = true;
+        }
+        catch (Exception ex)
+        {
+            ChangePathError = ex.Message;
+        }
+    }
 
     private void UpdateProjectJson(string cbPath)
     {
