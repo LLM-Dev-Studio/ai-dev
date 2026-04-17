@@ -51,5 +51,7 @@
   <Project Path="ai-dev.ui.winui/ai-dev.ui.winui.csproj">
     <Platform Solution="Debug|Any CPU" Project="x64" />
   </Project>
-  <Project Path="ai-dev.ui.wpf/ai-dev.ui.wpf.csproj" />
+  <Project Path="ai-dev.ui.wpf/ai-dev.ui.wpf.csproj">
+    <Build Solution="Debug|*" Project="false" />
+  </Project>
 </Solution>

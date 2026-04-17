@@ -14,17 +14,6 @@ public static class ClaudeSkills
     /// </summary>
     public const string McpServerName = "ads-workspace";
 
-    /// <summary>
-    /// Built-in Claude CLI tools that agents must not use directly when the
-    /// MCP workspace skill is active. The same list is written to settings.json
-    /// (permissions.deny) and passed as --disallowedTools at runtime.
-    /// </summary>
-    public static readonly IReadOnlyList<string> DeniedRawTools =
-    [        
-    ];
-
-    // default denyTools: "Read", "Write", "Edit", "Bash", "Glob", "Grep", "NotebookRead", "NotebookEdit",
-
     public static readonly ExecutorSkill GitRead = new(
         Key: "git-read",
         DisplayName: "Git read-only",
@@ -41,7 +30,7 @@ public static class ClaudeSkills
         Key: "mcp-workspace",
         DisplayName: "Workspace tools (MCP)",
         Description: "Grants access to workspace file, board, message, and decision tools via the MCP server.",
-        DefaultEnabled: true);
+        DefaultEnabled: false);
 
     public static readonly IReadOnlyList<ExecutorSkill> All = [GitRead, GitWrite, McpWorkspace];
 
@@ -59,11 +48,20 @@ public static class ClaudeSkills
 
     /// <summary>
     /// Translates resolved skill keys into --allowedTools argument values for the Claude CLI.
-    /// mcp-workspace has no entry here — it is granted by the MCP server registration in
-    /// .claude/settings.json and needs no --allowedTools flag.
+    /// Built-in file tools are always granted so agents can read/write workspace and codebase files.
+    /// When the MCP workspace skill is enabled, its tools are granted via the server registration
+    /// in .claude/settings.json (no entry needed here).
     /// </summary>
     internal static IEnumerable<string> ToAllowedTools(HashSet<string> skills)
     {
+        // Built-in file tools are a core capability — agents need them to read/write
+        // workspace files (agent.json, board, inbox, journal) and codebase source files.
+        yield return "Read";
+        yield return "Write";
+        yield return "Edit";
+        yield return "Glob";
+        yield return "Grep";
+
         if (skills.Contains("git-read"))
         {
             yield return "Bash(git log *)";
@@ -80,14 +78,11 @@ public static class ClaudeSkills
 
     /// <summary>
     /// Translates resolved skill keys into --disallowedTools argument values for the Claude CLI.
-    /// Used to enforce the use of MCP tools by removing built-in alternatives.
+    /// Currently returns nothing — agents may use built-in file tools directly as a
+    /// fallback when the MCP workspace server is unavailable.
     /// </summary>
     internal static IEnumerable<string> ToDisallowedTools(HashSet<string> skills)
     {
-        if (skills.Contains(McpWorkspace.Key))
-        {
-            foreach (var tool in DeniedRawTools)
-                yield return tool;
-        }
+        yield break;
     }
 }

@@ -18,6 +18,8 @@ public partial class BoardColumnViewModel : ObservableObject
     }
 }
 
+public sealed record AssigneeOption(string DisplayName, string Value);
+
 public partial class BoardViewModel : ObservableObject, IDisposable
 {
     private readonly BoardService _boardService;
@@ -38,6 +40,7 @@ public partial class BoardViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string TaskPriority { get; set; } = "normal";
     [ObservableProperty] public partial string TaskColumnId { get; set; } = "";
     [ObservableProperty] public partial string TaskAssignee { get; set; } = "";
+    [ObservableProperty] public partial AssigneeOption? SelectedAssigneeOption { get; set; }
     [ObservableProperty] public partial string TaskError { get; set; } = "";
     [ObservableProperty] public partial bool IsEnhancing { get; set; }
     [ObservableProperty] public partial bool IsSavingTask { get; set; }
@@ -46,6 +49,7 @@ public partial class BoardViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<BoardColumnViewModel> Columns { get; } = [];
     public ObservableCollection<AgentInfo> Agents { get; } = [];
+    public ObservableCollection<AssigneeOption> AssigneeOptions { get; } = [];
 
     public BoardViewModel(
         BoardService boardService,
@@ -70,9 +74,10 @@ public partial class BoardViewModel : ObservableObject, IDisposable
         IsLoading = true;
         try
         {
+            RefreshAgents();
             RefreshBoard();
 
-            // Poll every 3 s for changes from running agents
+            // Poll every 3 s for board changes from running agents
             _pollTimer ??= new Timer(_ =>
                 _dispatcher.TryEnqueue(RefreshBoard),
                 null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
@@ -87,10 +92,6 @@ public partial class BoardViewModel : ObservableObject, IDisposable
     {
         if (CurrentSlug is null) return;
         var board = _boardService.LoadBoard(CurrentSlug);
-        var agents = _agentService.ListAgents(CurrentSlug);
-
-        Agents.Clear();
-        foreach (var a in agents) Agents.Add(a);
 
         Columns.Clear();
         foreach (var col in board.Columns)
@@ -103,6 +104,22 @@ public partial class BoardViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void RefreshAgents()
+    {
+        if (CurrentSlug is null) return;
+
+        var agents = _agentService.ListAgents(CurrentSlug);
+        Agents.Clear();
+        foreach (var a in agents) Agents.Add(a);
+
+        AssigneeOptions.Clear();
+        AssigneeOptions.Add(new AssigneeOption("Unassigned", string.Empty));
+        foreach (var a in Agents)
+            AssigneeOptions.Add(new AssigneeOption($"{a.Name} ({a.Role})", a.Slug.Value));
+
+        SyncSelectedAssigneeOption();
+    }
+
     /// <summary>Opens the dialog for a new task in the specified column.</summary>
     public void OpenNewTask(string columnId)
     {
@@ -113,7 +130,8 @@ public partial class BoardViewModel : ObservableObject, IDisposable
         TaskDescription = "";
         TaskPriority = "normal";
         TaskColumnId = columnId;
-        TaskAssignee = "";
+        TaskAssignee = GetDefaultAssignee();
+        SyncSelectedAssigneeOption();
         TaskError = "";
         ShowTaskDialog = true;
     }
@@ -129,6 +147,7 @@ public partial class BoardViewModel : ObservableObject, IDisposable
         TaskPriority = task.Priority.Value;
         TaskColumnId = columnId;
         TaskAssignee = task.Assignee ?? "";
+        SyncSelectedAssigneeOption();
         TaskError = "";
         ShowTaskDialog = true;
     }
@@ -216,6 +235,37 @@ public partial class BoardViewModel : ObservableObject, IDisposable
         _editingTaskId = null;
         IsEditing = false;
         RefreshBoard();
+    }
+
+    private string GetDefaultAssignee()
+    {
+        var pm = Agents.FirstOrDefault(a => string.Equals(a.Role, "PM", StringComparison.OrdinalIgnoreCase))
+                 ?? Agents.FirstOrDefault(a => a.Role.Contains("pm", StringComparison.OrdinalIgnoreCase));
+
+        return pm is null ? string.Empty : pm.Slug.Value;
+    }
+
+    partial void OnSelectedAssigneeOptionChanged(AssigneeOption? value)
+    {
+        var selected = value?.Value ?? string.Empty;
+        if (!string.Equals(TaskAssignee, selected, StringComparison.Ordinal))
+            TaskAssignee = selected;
+    }
+
+    partial void OnTaskAssigneeChanged(string value)
+    {
+        var selected = SelectedAssigneeOption?.Value ?? string.Empty;
+        if (!string.Equals(selected, value, StringComparison.Ordinal))
+            SyncSelectedAssigneeOption();
+    }
+
+    private void SyncSelectedAssigneeOption()
+    {
+        var match = AssigneeOptions.FirstOrDefault(a => string.Equals(a.Value, TaskAssignee, StringComparison.Ordinal))
+                    ?? AssigneeOptions.FirstOrDefault(a => string.IsNullOrEmpty(a.Value));
+
+        if (!ReferenceEquals(SelectedAssigneeOption, match))
+            SelectedAssigneeOption = match;
     }
 
     public void Dispose()

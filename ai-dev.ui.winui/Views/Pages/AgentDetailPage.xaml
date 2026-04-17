@@ -97,15 +97,19 @@
                             <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
                                 <TextBlock Text="Model" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <TextBox Text="{Binding EditModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         PlaceholderText="e.g. claude-sonnet-4-5" FontFamily="Consolas" />
+                                <ComboBox ItemsSource="{Binding AvailableModels}"
+                                          SelectedItem="{Binding EditModel, Mode=TwoWay}"
+                                          PlaceholderText="Select model"
+                                          FontFamily="Consolas" />
                             </StackPanel>
 
                             <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
                                 <TextBlock Text="Executor" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <TextBox Text="{Binding EditExecutor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         PlaceholderText="e.g. claude" FontFamily="Consolas" />
+                                <ComboBox ItemsSource="{Binding AvailableExecutors}"
+                                          SelectedItem="{Binding EditExecutor, Mode=TwoWay}"
+                                          PlaceholderText="Select executor"
+                                          FontFamily="Consolas" />
                             </StackPanel>
                         </Grid>
 

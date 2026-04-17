@@ -234,46 +234,54 @@ public class DispatcherService(
 
     private void OnInboxMessage(ProjectSlug projectSlug, AgentSlug agentSlug, string fullPath, string source)
     {
-        if (fullPath.Contains(Path.DirectorySeparatorChar + "processed" + Path.DirectorySeparatorChar,
-                StringComparison.OrdinalIgnoreCase))
-            return;
-
-        if (!fullPath.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
-            return;
-
-        var fileName = Path.GetFileName(fullPath);
-
-        using var activity = ActivitySource.StartActivity("Dispatcher.InboxMessage", ActivityKind.Internal);
-        activity?.SetTag("agent.project", projectSlug);
-        activity?.SetTag("agent.slug", agentSlug);
-        activity?.SetTag("message.file", fileName);
-        activity?.SetTag("dispatch.source", source);
-
-        logger.LogInformation("[dispatcher] [{Source}] Inbox message for {Project}/{Agent}: {File}",
-            source, projectSlug, agentSlug, fileName);
-
-        if (runner.IsRunning(projectSlug, agentSlug))
+        try
         {
-            logger.LogInformation(
-                "[dispatcher] Agent {Project}/{Agent} already running — session will re-launch on exit if inbox is non-empty",
-                projectSlug, agentSlug);
-            activity?.SetTag("dispatch.outcome", "deferred-already-running");
-            return;
+            if (fullPath.Contains(Path.DirectorySeparatorChar + "processed" + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase))
+                return;
+
+            if (!fullPath.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var fileName = Path.GetFileName(fullPath);
+
+            using var activity = ActivitySource.StartActivity("Dispatcher.InboxMessage", ActivityKind.Internal);
+            activity?.SetTag("agent.project", projectSlug);
+            activity?.SetTag("agent.slug", agentSlug);
+            activity?.SetTag("message.file", fileName);
+            activity?.SetTag("dispatch.source", source);
+
+            logger.LogInformation("[dispatcher] [{Source}] Inbox message for {Project}/{Agent}: {File}",
+                source, projectSlug, agentSlug, fileName);
+
+            if (runner.IsRunning(projectSlug, agentSlug))
+            {
+                logger.LogInformation(
+                    "[dispatcher] Agent {Project}/{Agent} already running — session will re-launch on exit if inbox is non-empty",
+                    projectSlug, agentSlug);
+                activity?.SetTag("dispatch.outcome", "deferred-already-running");
+                return;
+            }
+
+            messageNotifier.Notify(projectSlug);
+
+            var launched = runner.LaunchAgent(projectSlug, agentSlug, new AgentLaunchTrigger(
+                Source: "dispatcher",
+                Reason: source,
+                ProjectSlug: projectSlug.Value,
+                MessageFile: fileName,
+                ParentSpanId: activity?.Id));
+            activity?.SetTag("dispatch.outcome", launched ? "launched" : "already-launched");
+            logger.LogInformation("[dispatcher] {Outcome} {Project}/{Agent}",
+                launched ? "Launched" : "Already running —", projectSlug, agentSlug);
+
+            decisionNotifier.Notify(projectSlug);
         }
-
-        messageNotifier.Notify(projectSlug);
-
-        var launched = runner.LaunchAgent(projectSlug, agentSlug, new AgentLaunchTrigger(
-            Source: "dispatcher",
-            Reason: source,
-            ProjectSlug: projectSlug.Value,
-            MessageFile: fileName,
-            ParentSpanId: activity?.Id));
-        activity?.SetTag("dispatch.outcome", launched ? "launched" : "already-launched");
-        logger.LogInformation("[dispatcher] {Outcome} {Project}/{Agent}",
-            launched ? "Launched" : "Already running —", projectSlug, agentSlug);
-
-        decisionNotifier.Notify(projectSlug);
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[dispatcher] OnInboxMessage failed for {Project}/{Agent} ({Source}): {File}",
+                projectSlug, agentSlug, source, fullPath);
+        }
     }
 
     // -------------------------------------------------------------------------

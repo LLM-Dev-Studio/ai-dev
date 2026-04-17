@@ -15,15 +15,22 @@ public sealed partial class BoardPage : Page
         InitializeComponent();
         ViewModel = App.Services.GetRequiredService<BoardViewModel>();
         DataContext = ViewModel;
-        Loaded += async (_, _) => await ViewModel.LoadAsync();
+        Loaded += OnLoadedAsync;
         Unloaded += (_, _) => ViewModel.Dispose();
     }
 
-    // "＋ Add" button on a column header — Tag is the ColumnId string
+    private async void OnLoadedAsync(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.LoadAsync();
+    }
+
+    // "＋ Add" button on a column header — Tag is the ColumnId
     private void AddTask_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: string columnId })
-            ViewModel.OpenNewTask(columnId);
+        if (sender is Button { Tag: ColumnId columnId })
+            ViewModel.OpenNewTask(columnId.Value);
+        else if (sender is Button { Tag: string columnIdText } && !string.IsNullOrWhiteSpace(columnIdText))
+            ViewModel.OpenNewTask(columnIdText);
     }
 
     // "Edit" button on a task card — Tag is the BoardTask, parent column Tag is the ColumnId string
@@ -41,19 +48,6 @@ public sealed partial class BoardPage : Page
     private void DeleteTask_Click(object sender, RoutedEventArgs e)
         => ViewModel.DeleteTaskCommand.Execute(null);
 
-    private void PriorityCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (ViewModel is null) return;
-        if (sender is ComboBox { SelectedItem: ComboBoxItem { Tag: string priority } })
-            ViewModel.TaskPriority = priority;
-    }
-
-    private void AssigneeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (ViewModel is null) return;
-        if (sender is ComboBox { SelectedItem: ComboBoxItem { Tag: string tag } })
-            ViewModel.TaskAssignee = tag;
-    }
 
     // Walk up the visual parent chain looking for a FrameworkElement whose Tag is a column id string
     private static string? FindColumnId(DependencyObject? element)

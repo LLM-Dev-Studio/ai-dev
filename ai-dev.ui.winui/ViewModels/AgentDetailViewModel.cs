@@ -1,3 +1,5 @@
+using AiDev.Executors;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -13,6 +15,7 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
     private readonly AgentRunnerService _agentRunnerService;
     private readonly MessagesService _messagesService;
     private readonly ExecutorHealthMonitor _healthMonitor;
+    private readonly IModelRegistry _modelRegistry;
     private readonly MainViewModel _mainViewModel;
     private readonly DispatcherQueue _dispatcher;
     private Timer? _pollTimer;
@@ -37,6 +40,7 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<MessageItem> Inbox { get; } = [];
     public ObservableCollection<string> AvailableExecutors { get; } = [];
+    public ObservableCollection<string> AvailableModels { get; } = [];
 
     public event Action? NavigateToTranscript;
 
@@ -45,12 +49,14 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
         AgentRunnerService agentRunnerService,
         MessagesService messagesService,
         ExecutorHealthMonitor healthMonitor,
+        IModelRegistry modelRegistry,
         MainViewModel mainViewModel)
     {
         _agentService = agentService;
         _agentRunnerService = agentRunnerService;
         _messagesService = messagesService;
         _healthMonitor = healthMonitor;
+        _modelRegistry = modelRegistry;
         _mainViewModel = mainViewModel;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
     }
@@ -74,6 +80,7 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
             IsRunning = _agentRunnerService.IsRunning(CurrentSlug, agentSlug);
 
             PopulateExecutorList();
+            PopulateModelList();
             RefreshInbox(agentSlug);
 
             // Poll every 2 s for live run-state changes
@@ -112,6 +119,25 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
         AvailableExecutors.Clear();
         foreach (var executor in AgentExecutorName.Supported)
             AvailableExecutors.Add(executor.Value);
+    }
+
+    private void PopulateModelList()
+    {
+        AvailableModels.Clear();
+
+        if (string.IsNullOrWhiteSpace(EditExecutor))
+            return;
+
+        foreach (var model in _modelRegistry.GetModelsForExecutor(EditExecutor))
+            AvailableModels.Add(model.Id);
+
+        if (AvailableModels.Count > 0 && !AvailableModels.Contains(EditModel, StringComparer.OrdinalIgnoreCase))
+            EditModel = AvailableModels[0];
+    }
+
+    partial void OnEditExecutorChanged(string value)
+    {
+        PopulateModelList();
     }
 
     [RelayCommand]

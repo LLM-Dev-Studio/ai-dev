@@ -11,6 +11,7 @@
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
+        <conv:InverseBoolConverter x:Key="InverseBool" />
         <conv:PriorityColorConverter x:Key="PriorityColor" />
         <conv:PriorityTextConverter x:Key="PriorityText" />
         <conv:NullToVisibilityConverter x:Key="NullToVisible" />
@@ -163,8 +164,8 @@
                                  PlaceholderText="Task title" />
                         <Button Grid.Column="1"
                                 Content="✨ Enhance"
-                                Command="{Binding EnhanceAsyncCommand}"
-                                IsEnabled="{Binding IsEnhancing, Converter={StaticResource InverseBoolToVisible}}" />
+                                Command="{Binding EnhanceCommand}"
+                                IsEnabled="{Binding IsEnhancing, Converter={StaticResource InverseBool}}" />
                     </Grid>
                     <ProgressBar IsIndeterminate="True"
                                  Visibility="{Binding IsEnhancing, Converter={StaticResource BoolToVisible}}" />
@@ -190,10 +191,12 @@
                     <StackPanel Grid.Column="0" Spacing="4">
                         <TextBlock Text="Priority" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <ComboBox x:Name="PriorityCombo" HorizontalAlignment="Stretch"
-                                  SelectionChanged="PriorityCombo_SelectionChanged">
+                        <ComboBox x:Name="PriorityCombo"
+                                  HorizontalAlignment="Stretch"
+                                  SelectedValuePath="Tag"
+                                  SelectedValue="{Binding TaskPriority, Mode=TwoWay}">
                             <ComboBoxItem Content="Low" Tag="low" />
-                            <ComboBoxItem Content="Normal" Tag="normal" IsSelected="True" />
+                            <ComboBoxItem Content="Normal" Tag="normal" />
                             <ComboBoxItem Content="High" Tag="high" />
                             <ComboBoxItem Content="Critical" Tag="critical" />
                         </ComboBox>
@@ -201,10 +204,11 @@
                     <StackPanel Grid.Column="1" Spacing="4">
                         <TextBlock Text="Assignee" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <ComboBox x:Name="AssigneeCombo" HorizontalAlignment="Stretch"
-                                  SelectionChanged="AssigneeCombo_SelectionChanged">
-                            <ComboBoxItem Content="Unassigned" Tag="" IsSelected="True" />
-                        </ComboBox>
+                        <ComboBox x:Name="AssigneeCombo"
+                                  HorizontalAlignment="Stretch"
+                                  ItemsSource="{Binding AssigneeOptions}"
+                                  DisplayMemberPath="DisplayName"
+                                  SelectedItem="{Binding SelectedAssigneeOption, Mode=TwoWay}" />
                     </StackPanel>
                 </Grid>
 
@@ -226,8 +230,8 @@
                                 Command="{Binding CloseTaskDialogCommand}" />
                         <Button Content="{Binding DialogTitle}"
                                 Style="{StaticResource AccentButtonStyle}"
-                                Command="{Binding SaveTaskAsyncCommand}"
-                                IsEnabled="{Binding IsSavingTask, Converter={StaticResource InverseBoolToVisible}}" />
+                                Command="{Binding SaveTaskCommand}"
+                                IsEnabled="{Binding IsSavingTask, Converter={StaticResource InverseBool}}" />
                     </StackPanel>
                 </Grid>
             </StackPanel>
