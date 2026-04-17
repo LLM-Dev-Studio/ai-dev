@@ -1,3 +1,5 @@
+using AiDev.Executors;
+
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
@@ -147,6 +149,60 @@ public class AgentStatusTextConverter : IValueConverter
             };
         return "Idle";
     }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => DependencyProperty.UnsetValue;
+}
+
+public class DateTimeToDisplayStringConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is DateTime dt)
+        {
+            var format = parameter as string ?? "MMM d";
+            return dt.ToLocalTime().ToString(format);
+        }
+        return parameter as string == "HH:mm" ? string.Empty : "—";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => DependencyProperty.UnsetValue;
+}
+
+public class NullableDateTimeToDisplayStringConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is DateTime dt)
+        {
+            var format = parameter as string ?? "MMM d";
+            return dt.ToLocalTime().ToString(format);
+        }
+        return parameter as string == "HH:mm" ? string.Empty : "—";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => DependencyProperty.UnsetValue;
+}
+
+public class LongToFormattedStringConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is long number)
+            return number.ToString("N0");
+        return "0";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => DependencyProperty.UnsetValue;
+}
+
+public class ThinkingLevelToDisplayNameConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+        => value is ThinkingLevel level ? level.ToDisplayName() : "";
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => DependencyProperty.UnsetValue;

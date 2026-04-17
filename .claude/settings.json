@@ -38,7 +38,8 @@
       "Read(//m/pi-mono/packages/ai/src/**)",
       "Read(//m/pi-mono/packages/agent/src/**)",
       "Read(//m/pi-mono/**)",
-      "Read(//c/Users/Allan/Downloads/**)"
+      "Read(//c/Users/Allan/Downloads/**)",
+      "Read(//c/Users/Allan/.copilot/plans/**)"
     ]
   }
 }

@@ -14,6 +14,9 @@
         <conv:NullToVisibilityConverter x:Key="NullToVisible" />
         <conv:AgentStatusColorConverter x:Key="StatusColor" />
         <conv:AgentStatusTextConverter x:Key="StatusText" />
+        <conv:NullableDateTimeToDisplayStringConverter x:Key="DateFormatter" />
+        <conv:LongToFormattedStringConverter x:Key="LongFormatter" />
+        <conv:ThinkingLevelToDisplayNameConverter x:Key="ThinkingLevelName" />
     </Page.Resources>
 
     <Grid Margin="24">
@@ -61,10 +64,95 @@
                         BorderBrush="{ThemeResource SystemFillColorCautionBrush}"
                         BorderThickness="1"
                         Visibility="{Binding Agent.LastError, Converter={StaticResource NullToVisible}}">
-                    <TextBlock TextWrapping="Wrap">
-                        <Run Text="Last run error: " FontWeight="SemiBold" />
-                        <Run Text="{Binding Agent.LastError}" />
-                    </TextBlock>
+                    <StackPanel Spacing="8">
+                        <StackPanel Spacing="4">
+                            <TextBlock>
+                                <Run Text="Last run needs attention" FontWeight="SemiBold" />
+                            </TextBlock>
+                            <TextBlock Text="{Binding Agent.LastError}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                       Text="{Binding Agent.LastErrorAt, Converter={StaticResource DateFormatter}, ConverterParameter='MMM d HH:mm'}" />
+                            <HyperlinkButton Content="Open transcript" Command="{Binding ViewTranscriptCommand}" 
+                                            Padding="0" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Info cards grid: Role, Last run, Inbox -->
+                <Grid ColumnSpacing="12" RowSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Padding="12" CornerRadius="6"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Role" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="{Binding Agent.Role}" Style="{StaticResource BodyTextBlockStyle}"
+                                       FontFamily="Consolas"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Padding="12" CornerRadius="6"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Last run" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="{Binding Agent.LastRunAt, Converter={StaticResource DateFormatter}, ConverterParameter='MMM d'}"
+                                       Style="{StaticResource BodyTextBlockStyle}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Padding="12" CornerRadius="6"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Inbox" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Style="{StaticResource BodyTextBlockStyle}">
+                                <Run Text="{Binding Agent.InboxCount}" />
+                                <Run Text="message" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <Run Text="s" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Last session tokens -->
+                <Border Padding="12" CornerRadius="6"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        Visibility="{Binding LastSessionUsage, Converter={StaticResource NullToVisible}}">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Last session tokens" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <StackPanel Orientation="Horizontal" Spacing="20" Margin="0,4,0,0">
+                            <StackPanel>
+                                <TextBlock Text="In" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="{Binding LastSessionUsage.InputTokens, Converter={StaticResource LongFormatter}}"
+                                           Style="{StaticResource BodyTextBlockStyle}" FontFamily="Consolas" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="Out" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="{Binding LastSessionUsage.OutputTokens, Converter={StaticResource LongFormatter}}"
+                                           Style="{StaticResource BodyTextBlockStyle}" FontFamily="Consolas" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
                 </Border>
 
                 <!-- Edit meta card -->
@@ -115,6 +203,37 @@
                                           FontFamily="Consolas" />
                             </StackPanel>
                         </Grid>
+
+                        <!-- Thinking level (models that support reasoning only) -->
+                        <StackPanel Spacing="4"
+                                    Visibility="{Binding ModelSupportsThinking, Converter={StaticResource BoolToVisible}}">
+                            <TextBlock Text="Thinking level" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <ComboBox ItemsSource="{Binding AvailableThinkingLevels}"
+                                      SelectedItem="{Binding EditThinkingLevel, Mode=TwoWay}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource ThinkingLevelName}}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <!-- Skills -->
+                        <StackPanel Spacing="8"
+                                    Visibility="{Binding HasSkills, Converter={StaticResource BoolToVisible}}">
+                            <TextBlock Text="Skills" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <ItemsControl ItemsSource="{Binding SkillSelections}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                                  Content="{Binding DisplayName}"
+                                                  ToolTipService.ToolTip="{Binding Description}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
 
                         <!-- Error / saved feedback -->
                         <TextBlock Text="{Binding SaveError}"

@@ -1,4 +1,5 @@
 using AiDev.Executors;
+using AiDev.Features.Agent;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -27,12 +28,20 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string SaveError { get; set; } = "";
     [ObservableProperty] public partial bool MetaSaved { get; set; }
     [ObservableProperty] public partial bool ClaudeSaved { get; set; }
+    [ObservableProperty] public partial TokenUsage? LastSessionUsage { get; set; }
 
     // ── Editable meta ───────────────────────────────────────────────────────
     [ObservableProperty] public partial string EditName { get; set; } = "";
     [ObservableProperty] public partial string EditDescription { get; set; } = "";
     [ObservableProperty] public partial string EditModel { get; set; } = "";
     [ObservableProperty] public partial string EditExecutor { get; set; } = "";
+    [ObservableProperty] public partial ThinkingLevel EditThinkingLevel { get; set; } = ThinkingLevel.Off;
+    [ObservableProperty] public partial bool ModelSupportsThinking { get; set; }
+    [ObservableProperty] public partial bool HasSkills { get; set; }
+
+    public ObservableCollection<SkillSelectionItem> SkillSelections { get; } = [];
+    public IReadOnlyList<ThinkingLevel> AvailableThinkingLevels { get; } =
+        [ThinkingLevel.Off, ThinkingLevel.Low, ThinkingLevel.Medium, ThinkingLevel.High];
 
     // ── CLAUDE.md ───────────────────────────────────────────────────────────
     [ObservableProperty] public partial string ClaudeContent { get; set; } = "";
@@ -77,11 +86,15 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
             EditDescription = Agent.Description;
             EditModel = Agent.Model ?? "";
             EditExecutor = Agent.Executor.Value;
+            EditThinkingLevel = Agent.ThinkingLevel;
             ClaudeContent = _agentService.GetClaudeMd(CurrentSlug, agentSlug);
+            LastSessionUsage = _agentRunnerService.GetLastSessionUsage(CurrentSlug, agentSlug);
             IsRunning = _agentRunnerService.IsRunning(CurrentSlug, agentSlug);
 
             PopulateExecutorList();
             PopulateModelList();
+            PopulateSkillsList();
+            UpdateModelCapabilities();
             RefreshInbox(agentSlug);
 
             // Poll every 2 s for live run-state changes
@@ -136,9 +149,52 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
             EditModel = AvailableModels[0];
     }
 
+    private void PopulateSkillsList()
+    {
+        SkillSelections.Clear();
+
+        if (Agent is null || string.IsNullOrWhiteSpace(EditExecutor))
+        {
+            HasSkills = false;
+            return;
+        }
+
+        var health = _healthMonitor.GetExecutorHealth()
+            .FirstOrDefault(e => e.Executor.Name == EditExecutor);
+
+        if (health.Executor != null)
+        {
+            foreach (var skill in health.Executor.AvailableSkills)
+            {
+                SkillSelections.Add(new SkillSelectionItem
+                {
+                    Key = skill.Key,
+                    DisplayName = skill.DisplayName,
+                    Description = skill.Description,
+                    IsEnabled = Agent.Skills.Contains(skill.Key)
+                });
+            }
+        }
+
+        HasSkills = SkillSelections.Count > 0;
+    }
+
+    private void UpdateModelCapabilities()
+    {
+        var descriptor = _modelRegistry.Find(EditExecutor, EditModel);
+        ModelSupportsThinking = descriptor?.Capabilities.HasFlag(ModelCapabilities.Reasoning) == true;
+    }
+
     partial void OnEditExecutorChanged(string value)
     {
         PopulateModelList();
+        PopulateSkillsList();
+        UpdateModelCapabilities();
+    }
+
+    partial void OnEditModelChanged(string value)
+    {
+        UpdateModelCapabilities();
     }
 
     [RelayCommand]
@@ -153,7 +209,9 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
 
         var result = _agentService.SaveAgentMeta(
             CurrentSlug, Agent.Slug,
-            EditName, EditDescription, EditModel, executorName);
+            EditName, EditDescription, EditModel, executorName,
+            [.. SkillSelections.Where(s => s.IsEnabled).Select(s => s.Key)],
+            EditThinkingLevel);
 
         if (result is Err<Unit> err)
         {
