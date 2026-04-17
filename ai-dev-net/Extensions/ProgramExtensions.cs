@@ -16,6 +16,7 @@ public static class ProgramExtensions
         services.AddOllamaExecutor();
         services.AddGitHubModelsExecutor();
         services.AddLmStudioExecutor();
+        services.AddCopilotCliExecutor();
 
         return services;
     }
