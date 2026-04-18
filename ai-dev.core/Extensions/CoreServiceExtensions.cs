@@ -26,6 +26,8 @@ public static class CoreServiceExtensions
         services.AddSingleton<IDomainEventDispatcher, InProcessDomainEventDispatcher>();
         services.AddSingleton<IDomainEventHandler<TaskAssigned>, TaskAssignedHandler>();
         services.AddSingleton<IDomainEventHandler<DecisionResolved>, DecisionResolvedHandler>();
+        services.AddSingleton<ProjectStateChangedNotifier>();
+        services.AddSingleton<ProjectStateSnapshotService>();
         services.AddSingleton<AtomicFileWriter>();
         services.AddSingleton<ProjectMutationCoordinator>();
         services.AddSingleton<ConsistencyCheckService>();

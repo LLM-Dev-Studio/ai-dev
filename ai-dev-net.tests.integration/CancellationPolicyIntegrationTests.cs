@@ -31,7 +31,7 @@ public class CancellationPolicyIntegrationTests : IDisposable
     [Fact]
     public async Task CreateTaskAsync_WhenCancellationRequested_ThrowsOperationCanceledException()
     {
-        var service = new BoardService(_paths, new PassingDispatcher(), _fileWriter, _coordinator, NullLogger<BoardService>.Instance);
+        var service = new BoardService(_paths, new PassingDispatcher(), _fileWriter, _coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var projectSlug = new ProjectSlug("demo-project");
         service.SaveBoard(projectSlug, new Board(projectSlug));
 
@@ -39,7 +39,7 @@ public class CancellationPolicyIntegrationTests : IDisposable
         cts.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(() =>
-            service.CreateTaskAsync(projectSlug, ColumnId.Backlog.Value, "Investigate failure", null, Priority.Normal.Value, null, cts.Token));
+            service.CreateTaskAsync(projectSlug, ColumnId.Backlog.Value, "Investigate failure", null, Priority.Normal.Value, null, null, cts.Token));
     }
 
     private sealed class PassingDispatcher : IDomainEventDispatcher

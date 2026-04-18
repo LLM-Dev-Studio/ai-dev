@@ -11,6 +11,7 @@ public sealed class BoardTask
         Priority? priority = null,
         string? description = null,
         string? assignee = null,
+        List<string>? tags = null,
         DateTime? createdAt = null,
         DateTime? completedAt = null,
         DateTime? movedAt = null,
@@ -26,17 +27,21 @@ public sealed class BoardTask
         Priority = NormalizePriority(priority);
         Description = NormalizeOptional(description);
         Assignee = NormalizeOptional(assignee);
+        _tags = NormalizeTags(tags);
         CreatedAt = createdAt;
         CompletedAt = completedAt;
         MovedAt = movedAt;
         NudgedAt = nudgedAt;
     }
 
+    private List<string> _tags;
+
     public TaskId Id { get; }
     public string Title { get; private set; }
     public Priority Priority { get; private set; }
     public string? Description { get; private set; }
     public string? Assignee { get; private set; }
+    public IReadOnlyList<string> Tags => _tags;
     public DateTime? CreatedAt { get; private set; }
     public DateTime? CompletedAt { get; private set; }
     /// <summary>Timestamp when the task last moved to its current column. Used by overwatch for stall detection.</summary>
@@ -47,7 +52,7 @@ public sealed class BoardTask
     /// <summary>
     /// Updates editable task details while keeping optional values normalized.
     /// </summary>
-    public void UpdateDetails(string title, Priority? priority, string? description, string? assignee)
+    public void UpdateDetails(string title, Priority? priority, string? description, string? assignee, List<string>? tags = null)
     {
         if (string.IsNullOrWhiteSpace(title))
             throw new ArgumentException("Task title is required.", nameof(title));
@@ -56,6 +61,20 @@ public sealed class BoardTask
         Priority = NormalizePriority(priority);
         Description = NormalizeOptional(description);
         Assignee = NormalizeOptional(assignee);
+        _tags = NormalizeTags(tags);
+    }
+
+    /// <summary>
+    /// Merges additional tags onto the task, ignoring duplicates.
+    /// </summary>
+    public void MergeTags(IEnumerable<string> newTags)
+    {
+        foreach (var tag in newTags)
+        {
+            var normalized = tag?.Trim();
+            if (!string.IsNullOrEmpty(normalized) && !_tags.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+                _tags.Add(normalized);
+        }
     }
 
     /// <summary>
@@ -80,4 +99,13 @@ public sealed class BoardTask
 
     private static string? NormalizeOptional(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static List<string> NormalizeTags(List<string>? tags)
+    {
+        if (tags == null || tags.Count == 0) return [];
+        return tags.Select(t => t?.Trim() ?? string.Empty)
+                   .Where(t => t.Length > 0)
+                   .Distinct(StringComparer.OrdinalIgnoreCase)
+                   .ToList();
+    }
 }

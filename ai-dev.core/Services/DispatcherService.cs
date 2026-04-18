@@ -254,6 +254,10 @@ public class DispatcherService(
             logger.LogInformation("[dispatcher] [{Source}] Inbox message for {Project}/{Agent}: {File}",
                 source, projectSlug, agentSlug, fileName);
 
+            // Notify immediately so UIs refresh badges and agent inbox counts even when
+            // this message is deferred because the agent is currently running.
+            messageNotifier.Notify(projectSlug);
+
             if (runner.IsRunning(projectSlug, agentSlug))
             {
                 logger.LogInformation(
@@ -262,8 +266,6 @@ public class DispatcherService(
                 activity?.SetTag("dispatch.outcome", "deferred-already-running");
                 return;
             }
-
-            messageNotifier.Notify(projectSlug);
 
             var launched = runner.LaunchAgent(projectSlug, agentSlug, new AgentLaunchTrigger(
                 Source: "dispatcher",

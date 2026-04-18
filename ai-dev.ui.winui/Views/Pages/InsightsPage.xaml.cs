@@ -14,14 +14,21 @@ public sealed partial class InsightsPage : Page
         InitializeComponent();
         ViewModel = App.Services.GetRequiredService<InsightsViewModel>();
         DataContext = ViewModel;
-        Loaded += (_, _) => ViewModel.Load();
+        Loaded += (_, _) =>
+        {
+            ViewModel.Load();
+            UpdateNoInsightsVisibility();
+        };
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(InsightsViewModel.SelectedInsight))
+            {
                 RenderInsight();
+                UpdateNoInsightsVisibility();
+            }
+
             if (e.PropertyName is nameof(InsightsViewModel.SelectedDate))
-                NoInsightsText.Visibility = ViewModel.SelectedDate is not null && ViewModel.SelectedInsight is null
-                    ? Visibility.Visible : Visibility.Collapsed;
+                UpdateNoInsightsVisibility();
         };
     }
 
@@ -50,27 +57,38 @@ public sealed partial class InsightsPage : Page
         IssuesPanel.Visibility = insight.Issues.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         foreach (var issue in insight.Issues)
         {
-            IssuesList.Items.Add(new StackPanel
+            var row = new Grid
             {
-                Orientation = Orientation.Horizontal,
-                Spacing = 8,
-                Children =
+                ColumnSpacing = 8,
+            };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var impactBadge = new Border
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+                Background = ImpactBrush(issue.Impact),
+                VerticalAlignment = VerticalAlignment.Top,
+                Child = new TextBlock
                 {
-                    new Border
-                    {
-                        CornerRadius = new CornerRadius(4),
-                        Padding = new Thickness(6, 2, 6, 2),
-                        Background = ImpactBrush(issue.Impact),
-                        Child = new TextBlock { Text = issue.Impact, Style = (Style)Resources["CaptionTextBlockStyle"] }
-                    },
-                    new TextBlock
-                    {
-                        Text = issue.Description,
-                        TextWrapping = TextWrapping.Wrap,
-                        Style = (Style)Resources["CaptionTextBlockStyle"]
-                    }
+                    Text = issue.Impact,
+                    Style = (Style)Resources["CaptionTextBlockStyle"]
                 }
-            });
+            };
+
+            var descriptionText = new TextBlock
+            {
+                Text = issue.Description,
+                TextWrapping = TextWrapping.Wrap,
+                Style = (Style)Resources["CaptionTextBlockStyle"]
+            };
+
+            Grid.SetColumn(impactBadge, 0);
+            Grid.SetColumn(descriptionText, 1);
+            row.Children.Add(impactBadge);
+            row.Children.Add(descriptionText);
+            IssuesList.Items.Add(row);
         }
 
         // Knowledge gaps
@@ -89,6 +107,13 @@ public sealed partial class InsightsPage : Page
         PromptPanel.Visibility = !string.IsNullOrWhiteSpace(insight.ImprovedPromptSuggestion)
             ? Visibility.Visible : Visibility.Collapsed;
         PromptText.Text = insight.ImprovedPromptSuggestion;
+    }
+
+    private void UpdateNoInsightsVisibility()
+    {
+        NoInsightsText.Visibility = ViewModel.SelectedDate is not null && ViewModel.SelectedInsight is null
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private static Microsoft.UI.Xaml.Media.Brush ImpactBrush(string impact) => impact switch

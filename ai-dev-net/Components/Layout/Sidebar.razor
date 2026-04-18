@@ -6,6 +6,8 @@
 @inject WorkspaceService WorkspaceService
 @inject AiDev.Features.Decision.DecisionsService DecisionsService
 @inject AiDev.Services.DecisionChangedNotifier DecisionChangedNotifier
+@inject AiDev.Services.MessageChangedNotifier MessageChangedNotifier
+@inject AiDev.Services.MessagesService MessagesService
 
 @{
     var segments = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').Split('/');
@@ -57,7 +59,7 @@
                 <nav class="px-2 py-3 space-y-0.5">
                     <NavItem Href="@basePath" ActivePrefix="@($"{basePath}/agents")" Icon="bot" Label="Agents" />
                     <NavItem Href="@($"{basePath}/board")" Icon="layout-grid" Label="Board" />
-                    <NavItem Href="@($"{basePath}/messages")" Icon="message-square" Label="Messages" />
+                    <NavItem Href="@($"{basePath}/messages")" Icon="message-square" Label="Messages" Badge="@unreadMessages" />
                     <NavItem Href="@($"{basePath}/decisions")" Icon="circle-alert" Label="Decisions" Badge="@unreadDecisions" />
                     <NavItem Href="@($"{basePath}/journals")" Icon="book-open" Label="Journals" />
                     <NavItem Href="@($"{basePath}/insights")" Icon="sparkles" Label="Insights" />
@@ -85,6 +87,7 @@
 @code {
     private List<WorkspaceProject> projects = [];
     private int? unreadDecisions;
+    private int? unreadMessages;
     private string? _slug;
     protected override void OnInitialized()
     {
@@ -92,7 +95,9 @@
         UpdateSlug();
         NavigationManager.LocationChanged += OnLocationChanged;
         DecisionChangedNotifier.Changed += OnDecisionsChanged;
+        MessageChangedNotifier.Changed += OnMessagesChanged;
         UpdateUnreadDecisions();
+        UpdateUnreadMessages();
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
@@ -100,6 +105,7 @@
         projects = WorkspaceService.ListProjects();
         UpdateSlug();
         UpdateUnreadDecisions();
+        UpdateUnreadMessages();
         StateHasChanged();
     }
 
@@ -120,6 +126,24 @@
         unreadDecisions = DecisionsService.ListDecisions(_slug, "pending").Count;
     }
 
+    private void OnMessagesChanged(ProjectSlug changedProject)
+    {
+        if (_slug == null || changedProject.Value != _slug) return;
+        InvokeAsync(() =>
+        {
+            UpdateUnreadMessages();
+            StateHasChanged();
+            return Task.CompletedTask;
+        });
+    }
+
+    private void UpdateUnreadMessages()
+    {
+        if (_slug == null) { unreadMessages = null; return; }
+        var count = MessagesService.ListMessages(_slug).Count(m => !m.IsProcessed);
+        unreadMessages = count > 0 ? count : null;
+    }
+
     private void UpdateSlug()
     {
         var segments = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').Split('/');
@@ -129,5 +153,7 @@
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
+        DecisionChangedNotifier.Changed -= OnDecisionsChanged;
+        MessageChangedNotifier.Changed -= OnMessagesChanged;
     }
 }

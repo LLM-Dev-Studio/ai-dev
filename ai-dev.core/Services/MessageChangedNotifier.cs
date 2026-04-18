@@ -7,7 +7,18 @@ namespace AiDev.Services;
 /// </summary>
 public class MessageChangedNotifier
 {
+    private readonly ProjectStateChangedNotifier _projectStateNotifier;
+
+    public MessageChangedNotifier(ProjectStateChangedNotifier projectStateNotifier)
+    {
+        _projectStateNotifier = projectStateNotifier;
+    }
+
     public event Action<ProjectSlug>? Changed;
 
-    public void Notify(ProjectSlug projectSlug) => Changed?.Invoke(projectSlug);
+    public void Notify(ProjectSlug projectSlug)
+    {
+        Changed?.Invoke(projectSlug);
+        _projectStateNotifier.Notify(projectSlug, ProjectStateChangeKind.Messages);
+    }
 }

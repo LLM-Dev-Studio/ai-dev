@@ -142,9 +142,12 @@ Body";
         var result = service.ListMessages(projectSlug);
 
         result.Count.ShouldBe(3);
-        result[0].Date.Value.Day.ShouldBe(15);
-        result[1].Date.Value.Day.ShouldBe(12);
-        result[2].Date.Value.Day.ShouldBe(10);
+        result[0].Date.ShouldNotBeNull();
+        result[1].Date.ShouldNotBeNull();
+        result[2].Date.ShouldNotBeNull();
+        result[0].Date!.Value.Day.ShouldBe(15);
+        result[1].Date!.Value.Day.ShouldBe(12);
+        result[2].Date!.Value.Day.ShouldBe(10);
     }
 
     [Fact]
@@ -329,7 +332,7 @@ Body";
         var result = service.ListMessages(projectSlug);
 
         result[0].TaskId.ShouldNotBeNull();
-        result[0].TaskId.Value.ToString().ShouldBe("task-1234567890123-abcde");
+        result[0].TaskId!.Value.ToString().ShouldBe("task-1234567890123-abcde");
     }
 
     [Fact]

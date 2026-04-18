@@ -356,7 +356,7 @@ public class StudioSettingsServiceTests
         var config = CreateConfiguration();
         var service = new StudioSettingsService(config);
 
-        var settings = new StudioSettings { Models = null };
+        var settings = new StudioSettings { Models = [] };
 
         service.SaveSettings(settings);
 
@@ -389,7 +389,7 @@ public class StudioSettingsServiceTests
 
         if (entries.Length > 0)
         {
-            var inMemoryCollection = entries.ToDictionary(e => e.Item1, e => e.Item2);
+            var inMemoryCollection = entries.ToDictionary(e => e.Item1, e => (string?)e.Item2);
             builder.AddInMemoryCollection(inMemoryCollection);
         }
 

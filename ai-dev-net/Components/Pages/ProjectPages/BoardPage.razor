@@ -12,6 +12,7 @@
 @using System.Diagnostics
 @inject AgentRunnerService RunnerService
 @implements IDisposable
+@using System.Linq
 
 <div class="flex items-center justify-between mb-1">
     <div>
@@ -22,6 +23,26 @@
         }
     </div>
 </div>
+
+@if (_allTags.Count > 0)
+{
+    <div class="flex flex-wrap items-center gap-1.5 mb-3">
+        <span class="text-xs text-muted-foreground mr-0.5">Filter:</span>
+        @foreach (var tag in _allTags)
+        {
+            var isActive = _activeTagFilters.Contains(tag);
+            <button class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-colors @(isActive ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground")"
+                    @onclick="() => ToggleTagFilter(tag)">
+                @tag
+            </button>
+        }
+        @if (_activeTagFilters.Count > 0)
+        {
+            <button class="text-xs text-muted-foreground hover:text-foreground underline ml-1"
+                    @onclick="ClearTagFilters">clear</button>
+        }
+    </div>
+}
 
 @if (_board == null)
 {
@@ -65,7 +86,7 @@ else
                 <div class="space-y-2 flex-1">
                     @foreach (var taskId in col.TaskIds)
                     {
-                        @if (_board.Tasks.TryGetValue(taskId, out var task))
+                        @if (_board.Tasks.TryGetValue(taskId, out var task) && TaskMatchesFilter(task))
                         {
                             var prevCol = colIdx > 0 ? _board.Columns[colIdx - 1] : null;
                             var nextCol = colIdx < _board.Columns.Count - 1 ? _board.Columns[colIdx + 1] : null;
@@ -77,7 +98,7 @@ else
                                         <span class="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 @PriorityDot(task.Priority.Value)"></span>
                                         <p class="text-sm text-foreground leading-snug">@task.Title</p>
                                     </div>
-                                    @if (!string.IsNullOrEmpty(task.Assignee) || !string.IsNullOrEmpty(task.Description))
+                                    @if (!string.IsNullOrEmpty(task.Assignee) || !string.IsNullOrEmpty(task.Description) || task.Tags.Count > 0)
                                     {
                                         <div class="mt-2 ml-3.5 space-y-1">
                                             @if (!string.IsNullOrEmpty(task.Description))
@@ -89,6 +110,15 @@ else
                                                 <div class="flex items-center gap-1.5">
                                                     <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium @PriorityBadge(task.Priority.Value)">@task.Priority.Value</span>
                                                     <span class="text-xs text-muted-foreground">@task.Assignee</span>
+                                                </div>
+                                            }
+                                            @if (task.Tags.Count > 0)
+                                            {
+                                                <div class="flex flex-wrap gap-1 mt-1">
+                                                    @foreach (var tag in task.Tags)
+                                                    {
+                                                        <span class="inline-flex px-1.5 py-0.5 rounded-full text-[10px] bg-secondary text-muted-foreground">@tag</span>
+                                                    }
                                                 </div>
                                             }
                                         </div>
@@ -264,6 +294,45 @@ else
                         }
                     </select>
                 </div>
+                <div>
+                    <label class="block text-xs font-medium text-muted-foreground mb-1.5">Tags</label>
+                    @if (_taskTags.Count > 0)
+                    {
+                        <div class="flex flex-wrap gap-1 mb-1.5">
+                            @foreach (var tag in _taskTags)
+                            {
+                                var t = tag;
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-secondary text-muted-foreground">
+                                    @t
+                                    <button type="button" class="hover:text-foreground" @onclick="() => RemoveTag(t)">×</button>
+                                </span>
+                            }
+                        </div>
+                    }
+                    @if (_allowedTags != null)
+                    {
+                        <select @onchange="e => AddTagFromSelect(e.Value?.ToString())"
+                                class="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                            <option value="">Add tag…</option>
+                            @foreach (var t in _allowedTags.Where(t => !_taskTags.Contains(t, StringComparer.OrdinalIgnoreCase)))
+                            {
+                                <option value="@t">@t</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <div class="flex gap-2">
+                            <input value="@_tagInput"
+                                   @oninput="e => _tagInput = e.Value?.ToString() ?? string.Empty"
+                                   @onkeydown="HandleTagInputKey"
+                                   placeholder="Type tag and press Enter"
+                                   class="flex-1 rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                            <button type="button" @onclick="AddTagFromInput"
+                                    class="rounded-md px-3 py-2 text-sm bg-secondary text-foreground hover:bg-accent transition-colors">Add</button>
+                        </div>
+                    }
+                </div>
                 @if (!string.IsNullOrEmpty(_taskError))
                 {
                     <p class="text-xs text-destructive">@_taskError</p>
@@ -310,6 +379,11 @@ else
     private TaskId? _openMenuId;
     private Timer? _pollTimer;
 
+    // Tag filter state
+    private HashSet<string> _activeTagFilters = [];
+    private List<string> _allTags = [];
+    private List<string>? _allowedTags;
+
     // Task dialog state
     private bool _showTaskDialog;
     private TaskId? _editingTaskId;
@@ -318,6 +392,8 @@ else
     private string _taskPriority = "normal";
     private string _taskColumnId = string.Empty;
     private string _taskAssignee = string.Empty;
+    private List<string> _taskTags = [];
+    private string _tagInput = string.Empty;
     private string _taskError = string.Empty;
     private bool _saving;
     private bool _enhancing;
@@ -326,17 +402,73 @@ else
 
     protected override void OnInitialized()
     {
+        if (ProjectSlug.TryParse(Slug, out var projectSlug))
+            _allowedTags = BoardService.GetAllowedTags(projectSlug);
+
         _board = BoardService.LoadBoard(Slug);
         _agents = AgentService.ListAgents(Slug);
+        RebuildAllTags();
 
         _pollTimer = new Timer(_ =>
         {
             _board = BoardService.LoadBoard(Slug);
+            RebuildAllTags();
             InvokeAsync(StateHasChanged);
         }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }
 
     public void Dispose() => _pollTimer?.Dispose();
+
+    private void RebuildAllTags()
+    {
+        if (_board == null) return;
+        _allTags = _board.Tasks.Values
+            .SelectMany(t => t.Tags)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void ToggleTagFilter(string tag)
+    {
+        if (!_activeTagFilters.Remove(tag))
+            _activeTagFilters.Add(tag);
+        StateHasChanged();
+    }
+
+    private void ClearTagFilters()
+    {
+        _activeTagFilters.Clear();
+        StateHasChanged();
+    }
+
+    private bool TaskMatchesFilter(BoardTask task)
+    {
+        if (_activeTagFilters.Count == 0) return true;
+        return _activeTagFilters.Any(f => task.Tags.Contains(f, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private void AddTagFromSelect(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag)) return;
+        if (!_taskTags.Contains(tag, StringComparer.OrdinalIgnoreCase))
+            _taskTags.Add(tag);
+    }
+
+    private void AddTagFromInput()
+    {
+        var tag = _tagInput.Trim();
+        if (!string.IsNullOrEmpty(tag) && !_taskTags.Contains(tag, StringComparer.OrdinalIgnoreCase))
+            _taskTags.Add(tag);
+        _tagInput = string.Empty;
+    }
+
+    private void HandleTagInputKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") AddTagFromInput();
+    }
+
+    private void RemoveTag(string tag) => _taskTags.Remove(tag);
 
     private void OpenNewTask(string columnId)
     {
@@ -346,6 +478,8 @@ else
         _taskPriority = "normal";
         _taskColumnId = columnId;
         _taskAssignee = string.Empty;
+        _taskTags = [];
+        _tagInput = string.Empty;
         _taskError = string.Empty;
         _showTaskDialog = true;
     }
@@ -362,7 +496,7 @@ else
         if (_board == null || !_board.Tasks.TryGetValue(taskId, out var task)) return;
         using var activity = StartUiActivity("UI.Board.QuickMove", Slug, taskId: taskId, columnId: targetColumnId, assignee: task.Assignee);
         var error = (await BoardService.UpdateTaskAsync(Slug, taskId, targetColumnId,
-            task.Title, task.Description, task.Priority.Value, task.Assignee)
+            task.Title, task.Description, task.Priority.Value, task.Assignee, task.Tags.Count > 0 ? new List<string>(task.Tags) : (List<string>?)null)
             ).ToErrorMessage();
         activity?.SetTag("ui.outcome", string.IsNullOrEmpty(error) ? "success" : "error");
         activity?.SetTag("ui.trace_id", activity?.TraceId.ToString());
@@ -382,6 +516,8 @@ else
         _taskPriority = task.Priority.Value;
         _taskColumnId = columnId;
         _taskAssignee = task.Assignee ?? string.Empty;
+        _taskTags = [.. task.Tags];
+        _tagInput = string.Empty;
         _taskError = string.Empty;
         _showTaskDialog = true;
     }
@@ -389,6 +525,8 @@ else
     private void CloseTaskDialog()
     {
         _showTaskDialog = false;
+        _taskTags = [];
+        _tagInput = string.Empty;
         _taskError = string.Empty;
         _enhanceError = string.Empty;
     }
@@ -432,16 +570,17 @@ else
             assignee: _taskAssignee);
         activity?.SetTag("task.title", _taskTitle.Trim());
 
+        var tags = _taskTags.Count > 0 ? _taskTags : null;
         if (_editingTaskId == null)
         {
             _taskError = (await BoardService.CreateTaskAsync(Slug, _taskColumnId, _taskTitle.Trim(),
-                _taskDescription, _taskPriority, _taskAssignee)
+                _taskDescription, _taskPriority, _taskAssignee, tags)
                 ).ToErrorMessage() ?? string.Empty;
         }
         else
         {
             _taskError = (await BoardService.UpdateTaskAsync(Slug, _editingTaskId, _taskColumnId, _taskTitle.Trim(),
-                _taskDescription, _taskPriority, _taskAssignee)
+                _taskDescription, _taskPriority, _taskAssignee, tags)
                 ).ToErrorMessage() ?? string.Empty;
         }
 

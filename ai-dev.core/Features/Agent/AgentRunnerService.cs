@@ -1,4 +1,5 @@
 using AiDev.Executors;
+using AiDev.Features.Board;
 using AiDev.Features.Insights;
 using AiDev.Features.KnowledgeBase;
 using AiDev.Features.Playbook;
@@ -21,7 +22,9 @@ public class AgentRunnerService(
     PlaybookService playbookService,
     SecretsService secretsService,
     InsightsService insightsService,
-    ILogger<AgentRunnerService> logger)
+    BoardService boardService,
+    ILogger<AgentRunnerService> logger,
+    ProjectStateChangedNotifier projectStateChangedNotifier)
 {
     private static readonly ActivitySource ActivitySource = new("AiDevNet.AgentRunner");
     private readonly Dictionary<string, IAgentExecutor> _executors =
@@ -111,6 +114,7 @@ public class AgentRunnerService(
                         ["pid"] = null,
                         ["sessionStartedAt"] = null,
                     });
+                    projectStateChangedNotifier.Notify(project, ProjectStateChangeKind.Agents);
                 }
                 catch (Exception ex)
                 {
@@ -152,6 +156,8 @@ public class AgentRunnerService(
         if (!_sessions.TryAdd(key, info))
             return false; // race condition — another caller won
 
+        projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
+
         using var activity = ActivitySource.StartActivity("Agent.Launch", ActivityKind.Server);
         activity?.SetTag("agent.project", projectSlug);
         activity?.SetTag("agent.slug", agentSlug);
@@ -174,6 +180,7 @@ public class AgentRunnerService(
                     ["pid"] = (object?)null,
                     ["sessionStartedAt"] = (object?)null,
                 });
+                projectStateChangedNotifier.Notify(info.ProjectSlug, ProjectStateChangeKind.Agents);
             }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
         return true;
     }
@@ -188,6 +195,7 @@ public class AgentRunnerService(
         if (!_sessions.TryGetValue(key, out var info)) return false;
         logger.LogInformation("[runner] Stopping agent: {Key}", key);
         info.Cts.Cancel();
+        projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
 
         // If the session has no PID it likely faulted before launching a process.
         // Forcibly remove it so the UI transitions out of "running" state and the
@@ -204,6 +212,8 @@ public class AgentRunnerService(
                 ["pid"] = (object?)null,
                 ["sessionStartedAt"] = (object?)null,
             });
+
+            projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
         }
 
         return true;
@@ -277,6 +287,7 @@ public class AgentRunnerService(
                 ["lastErrorAt"] = startedAt.ToString("o"),
                 ["status"] = "error",
             });
+            projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
             _sessions.TryRemove(key, out _);
             return;
         }
@@ -296,6 +307,7 @@ public class AgentRunnerService(
                 ["lastErrorAt"] = startedAt.ToString("o"),
                 ["status"] = "error",
             });
+            projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
             _sessions.TryRemove(key, out _);
             return;
         }
@@ -316,6 +328,7 @@ public class AgentRunnerService(
             ["lastRunAt"] = startedAt.ToString("o"),
             ["sessionStartedAt"] = startedAt.ToString("o"),
         });
+        projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
 
         var transcriptDir = paths.AgentTranscriptsDir(projectSlug, agentSlug);
         Directory.CreateDirectory(transcriptDir);
@@ -508,6 +521,45 @@ public class AgentRunnerService(
                 catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to write usage file"); }
             }
 
+            // Process result.json — read SessionResult from outbox, persist alongside transcript,
+            // and automatically complete the associated board task.
+            try
+            {
+                var outboxDir = paths.AgentOutboxDir(projectSlug, agentSlug).Value;
+                var resultPath = Path.Combine(outboxDir, "result.json");
+                if (File.Exists(resultPath))
+                {
+                    var resultJson = await File.ReadAllTextAsync(resultPath);
+                    var sessionResult = System.Text.Json.JsonSerializer.Deserialize<SessionResult>(resultJson, JsonDefaults.Read);
+                    if (sessionResult != null)
+                    {
+                        // Persist alongside the transcript for later querying.
+                        var persistedResultPath = Path.Combine(transcriptDir, $"{transcriptDate.Value}.result.json");
+                        await File.WriteAllTextAsync(persistedResultPath, resultJson);
+                        logger.LogInformation("[runner] Persisted result.json for {Key} → {Path}", key, persistedResultPath);
+
+                        // Delete from outbox so a crashed next session cannot replay a stale result.
+                        try { File.Delete(resultPath); } catch (Exception delEx) { logger.LogWarning(delEx, "[runner] Failed to delete result.json from outbox for {Key}", key); }
+
+                        // Resolve the task ID — prefer result.taskId, fall back to trigger.TaskId.
+                        var rawTaskId = !string.IsNullOrWhiteSpace(sessionResult.TaskId)
+                            ? sessionResult.TaskId
+                            : info.Trigger?.TaskId;
+
+                        if (rawTaskId != null && TaskId.TryParse(rawTaskId, out var resultTaskId))
+                        {
+                            boardService.CompleteTaskFromResult(projectSlug, resultTaskId, sessionResult);
+                            logger.LogInformation("[runner] Auto-completed board task {TaskId} from result.json for {Key}",
+                                resultTaskId.Value, key);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[runner] Failed to process result.json for {Key}", key);
+            }
+
             activity?.SetTag("agent.finishedAt", exitedAt.ToString("o"));
             activity?.AddEvent(new("session.finished"));
             logger.LogInformation("[runner] Agent {Key} finished (exit={Code}) at {Time}", key, exitCode, exitedAt);
@@ -522,6 +574,7 @@ public class AgentRunnerService(
                 ["lastError"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : sessionError,
                 ["lastErrorAt"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : exitedAt.ToString("o"),
             });
+            projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
 
             // Generate AI insights for the completed session (fire-and-forget; CancellationToken.None so
             // insights finish writing even after the session CT is cancelled at shutdown).
@@ -533,6 +586,8 @@ public class AgentRunnerService(
                         logger.LogWarning(t.Exception, "[runner] Insights generation faulted for {Project}/{Agent}",
                             projectSlug.Value, agentSlug.Value);
                 }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+
+            _sessions.TryRemove(key, out _);
 
             if (isRateLimited)
             {
@@ -768,6 +823,7 @@ public class AgentRunnerService(
             if (decisionId != null) fields["decision-id"] = decisionId;
             var content = FrontmatterParser.Stringify(fields, body);
             File.WriteAllText(filePath, content);
+            projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Messages | ProjectStateChangeKind.Agents);
             activity?.SetTag("message.filename", unique);
             activity?.SetTag("message.success", true);
             logger.LogInformation("[runner] Inbox message written: {Project}/{Agent} ← {From} ({Type}) [{File}]",
@@ -784,3 +840,5 @@ public class AgentRunnerService(
         }
     }
 }
+
+

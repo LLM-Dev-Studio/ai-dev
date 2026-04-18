@@ -1,3 +1,4 @@
+using AiDev.Features.Board;
 using AiDev.Features.Insights;
 using AiDev.Features.KnowledgeBase;
 using AiDev.Features.Playbook;
@@ -99,17 +100,23 @@ public class AgentRunnerServiceTests
                 ? new ModelDescriptor("claude-sonnet-4-6", "Claude Sonnet 4.6", AgentExecutorName.AnthropicValue)
                 : null);
 
+        var dispatcher = Substitute.For<IDomainEventDispatcher>();
+        dispatcher.Dispatch(Arg.Any<IReadOnlyList<DomainEvent>>(), Arg.Any<CancellationToken>())
+            .Returns(new Ok<AiDev.Models.Unit>(AiDev.Models.Unit.Value));
+
         return new AgentRunnerService(
             paths,
             settings,
             [executor],
             modelRegistry,
-            new MessageChangedNotifier(),
+            new MessageChangedNotifier(new ProjectStateChangedNotifier()),
             new KbService(paths, fileWriter, new ProjectMutationCoordinator()),
             new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()),
             new SecretsService(paths, fileWriter),
             new InsightsService([], settings, NullLogger<InsightsService>.Instance),
-            NullLogger<AgentRunnerService>.Instance);
+            new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier()),
+            NullLogger<AgentRunnerService>.Instance,
+            new ProjectStateChangedNotifier());
     }
 
     private static async Task WaitForAgentToFinishAsync(AgentRunnerService runner, ProjectSlug projectSlug, AgentSlug agentSlug)

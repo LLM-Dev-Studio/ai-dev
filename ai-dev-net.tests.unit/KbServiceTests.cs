@@ -284,6 +284,7 @@ public class KbServiceTests
 
         var result = service.BuildInjectionContext(projectSlug, "test");
 
+        result.ShouldNotBeNull();
         result.ShouldContain("Body content");
         result.ShouldNotContain("trigger:");
     }

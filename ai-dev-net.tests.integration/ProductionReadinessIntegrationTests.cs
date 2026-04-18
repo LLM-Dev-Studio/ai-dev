@@ -38,12 +38,12 @@ public class ProductionReadinessIntegrationTests : IDisposable
     public async Task BoardService_CreateTaskAsync_WhenHandlerFails_ReturnsTypedError()
     {
         var dispatcher = new StubDispatcher(new Err<Unit>(new DomainError("DOMAIN_EVENT_HANDLER_FAILED", "task handler failed")));
-        var service = new BoardService(_paths, dispatcher, _fileWriter, _coordinator, NullLogger<BoardService>.Instance);
+        var service = new BoardService(_paths, dispatcher, _fileWriter, _coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var projectSlug = new ProjectSlug("demo-project");
 
         service.SaveBoard(projectSlug, new Board(projectSlug));
 
-        var result = await service.CreateTaskAsync(projectSlug, ColumnId.Backlog.Value, "Investigate failure", null, Priority.Normal.Value, "backend-dev", TestContext.Current.CancellationToken);
+        var result = await service.CreateTaskAsync(projectSlug, ColumnId.Backlog.Value, "Investigate failure", null, Priority.Normal.Value, "backend-dev", null, TestContext.Current.CancellationToken);
 
         result.ShouldBeOfType<Err<BoardTask>>();
         ((Err<BoardTask>)result).Error.Code.ShouldBe("DOMAIN_EVENT_HANDLER_FAILED");
@@ -52,7 +52,7 @@ public class ProductionReadinessIntegrationTests : IDisposable
     [Fact]
     public void BoardService_SaveAndLoadBoard_RoundTripsExistingBoardState()
     {
-        var service = new BoardService(_paths, new StubDispatcher(new Ok<Unit>(Unit.Value)), _fileWriter, _coordinator, NullLogger<BoardService>.Instance);
+        var service = new BoardService(_paths, new StubDispatcher(new Ok<Unit>(Unit.Value)), _fileWriter, _coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var projectSlug = new ProjectSlug("demo-project");
         var taskId = TaskId.New();
         var board = new Board(
@@ -83,7 +83,7 @@ public class ProductionReadinessIntegrationTests : IDisposable
     [Fact]
     public void BoardService_LoadBoard_WhenBoardJsonIsValid_DoesNotCreateCorruptBackup()
     {
-        var service = new BoardService(_paths, new StubDispatcher(new Ok<Unit>(Unit.Value)), _fileWriter, _coordinator, NullLogger<BoardService>.Instance);
+        var service = new BoardService(_paths, new StubDispatcher(new Ok<Unit>(Unit.Value)), _fileWriter, _coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var projectSlug = new ProjectSlug("demo-project");
         var boardPath = _paths.BoardPath(projectSlug);
         Directory.CreateDirectory(Path.GetDirectoryName(boardPath)!);
