@@ -24,7 +24,7 @@ public class AgentRunnerService(
     InsightsService insightsService,
     BoardService boardService,
     ILogger<AgentRunnerService> logger,
-    ProjectStateChangedNotifier? projectStateChangedNotifier = null)
+    ProjectStateChangedNotifier projectStateChangedNotifier)
 {
     private static readonly ActivitySource ActivitySource = new("AiDevNet.AgentRunner");
     private readonly Dictionary<string, IAgentExecutor> _executors =
@@ -114,7 +114,7 @@ public class AgentRunnerService(
                         ["pid"] = null,
                         ["sessionStartedAt"] = null,
                     });
-                    projectStateChangedNotifier?.Notify(project, ProjectStateChangeKind.Agents);
+                    projectStateChangedNotifier.Notify(project, ProjectStateChangeKind.Agents);
                 }
                 catch (Exception ex)
                 {
@@ -156,7 +156,7 @@ public class AgentRunnerService(
         if (!_sessions.TryAdd(key, info))
             return false; // race condition — another caller won
 
-        projectStateChangedNotifier?.Notify(projectSlug, ProjectStateChangeKind.Agents);
+        projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
 
         using var activity = ActivitySource.StartActivity("Agent.Launch", ActivityKind.Server);
         activity?.SetTag("agent.project", projectSlug);
@@ -180,7 +180,7 @@ public class AgentRunnerService(
                     ["pid"] = (object?)null,
                     ["sessionStartedAt"] = (object?)null,
                 });
-                projectStateChangedNotifier?.Notify(info.ProjectSlug, ProjectStateChangeKind.Agents);
+                projectStateChangedNotifier.Notify(info.ProjectSlug, ProjectStateChangeKind.Agents);
             }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
         return true;
     }
@@ -195,7 +195,7 @@ public class AgentRunnerService(
         if (!_sessions.TryGetValue(key, out var info)) return false;
         logger.LogInformation("[runner] Stopping agent: {Key}", key);
         info.Cts.Cancel();
-        projectStateChangedNotifier?.Notify(projectSlug, ProjectStateChangeKind.Agents);
+        projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
 
         // If the session has no PID it likely faulted before launching a process.
         // Forcibly remove it so the UI transitions out of "running" state and the
@@ -213,7 +213,7 @@ public class AgentRunnerService(
                 ["sessionStartedAt"] = (object?)null,
             });
 
-            projectStateChangedNotifier?.Notify(projectSlug, ProjectStateChangeKind.Agents);
+            projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
         }
 
         return true;
@@ -287,7 +287,7 @@ public class AgentRunnerService(
                 ["lastErrorAt"] = startedAt.ToString("o"),
                 ["status"] = "error",
             });
-            projectStateChangedNotifier?.Notify(projectSlug, ProjectStateChangeKind.Agents);
+            projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
             _sessions.TryRemove(key, out _);
             return;
         }
@@ -307,7 +307,7 @@ public class AgentRunnerService(
                 ["lastErrorAt"] = startedAt.ToString("o"),
                 ["status"] = "error",
             });
-            projectStateChangedNotifier?.Notify(projectSlug, ProjectStateChangeKind.Agents);
+            projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
             _sessions.TryRemove(key, out _);
             return;
         }
@@ -328,7 +328,7 @@ public class AgentRunnerService(
             ["lastRunAt"] = startedAt.ToString("o"),
             ["sessionStartedAt"] = startedAt.ToString("o"),
         });
-        projectStateChangedNotifier?.Notify(projectSlug, ProjectStateChangeKind.Agents);
+        projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
 
         var transcriptDir = paths.AgentTranscriptsDir(projectSlug, agentSlug);
         Directory.CreateDirectory(transcriptDir);
@@ -495,23 +495,23 @@ public class AgentRunnerService(
                     {
                         try
                         {
-                        if (File.Exists(usagePath))
-                        {
-                            try
+                            if (File.Exists(usagePath))
                             {
-                                var existing = System.Text.Json.JsonSerializer.Deserialize<TokenUsage>(
-                                    await File.ReadAllTextAsync(usagePath), JsonDefaults.Read);
-                                if (existing != null) sessionUsage = existing + sessionUsage;
+                                try
+                                {
+                                    var existing = System.Text.Json.JsonSerializer.Deserialize<TokenUsage>(
+                                        await File.ReadAllTextAsync(usagePath), JsonDefaults.Read);
+                                    if (existing != null) sessionUsage = existing + sessionUsage;
+                                }
+                                catch { /* ignore corrupt existing file; overwrite with current session */ }
                             }
-                            catch { /* ignore corrupt existing file; overwrite with current session */ }
+                            var usageJson = System.Text.Json.JsonSerializer.Serialize(sessionUsage, JsonDefaults.Write);
+                            await File.WriteAllTextAsync(usagePath, usageJson);
+                            logger.LogInformation(
+                                "[runner] Usage — {In} in / {Out} out tokens (daily total)",
+                                sessionUsage.InputTokens, sessionUsage.OutputTokens);
                         }
-                        var usageJson = System.Text.Json.JsonSerializer.Serialize(sessionUsage, JsonDefaults.Write);
-                        await File.WriteAllTextAsync(usagePath, usageJson);
-                        logger.LogInformation(
-                            "[runner] Usage — {In} in / {Out} out tokens (daily total)",
-                            sessionUsage.InputTokens, sessionUsage.OutputTokens);
-                    }
-                    finally { usageLock.Release(); }
+                        finally { usageLock.Release(); }
                     }
                     else
                     {
@@ -537,6 +537,9 @@ public class AgentRunnerService(
                         var persistedResultPath = Path.Combine(transcriptDir, $"{transcriptDate.Value}.result.json");
                         await File.WriteAllTextAsync(persistedResultPath, resultJson);
                         logger.LogInformation("[runner] Persisted result.json for {Key} → {Path}", key, persistedResultPath);
+
+                        // Delete from outbox so a crashed next session cannot replay a stale result.
+                        try { File.Delete(resultPath); } catch (Exception delEx) { logger.LogWarning(delEx, "[runner] Failed to delete result.json from outbox for {Key}", key); }
 
                         // Resolve the task ID — prefer result.taskId, fall back to trigger.TaskId.
                         var rawTaskId = !string.IsNullOrWhiteSpace(sessionResult.TaskId)
@@ -571,7 +574,7 @@ public class AgentRunnerService(
                 ["lastError"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : sessionError,
                 ["lastErrorAt"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : exitedAt.ToString("o"),
             });
-            projectStateChangedNotifier?.Notify(projectSlug, ProjectStateChangeKind.Agents);
+            projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
 
             // Generate AI insights for the completed session (fire-and-forget; CancellationToken.None so
             // insights finish writing even after the session CT is cancelled at shutdown).
@@ -585,15 +588,6 @@ public class AgentRunnerService(
                 }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 
             _sessions.TryRemove(key, out _);
-
-            await UpdateAgentStatusAsync(agentDir, new()
-            {
-                ["status"] = exitCode is 0 or 130 ? "idle" : "error",
-                ["pid"] = null,
-                ["sessionStartedAt"] = null,
-                ["lastError"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : sessionError,
-                ["lastErrorAt"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : exitedAt.ToString("o"),
-            });
 
             if (isRateLimited)
             {
@@ -829,7 +823,7 @@ public class AgentRunnerService(
             if (decisionId != null) fields["decision-id"] = decisionId;
             var content = FrontmatterParser.Stringify(fields, body);
             File.WriteAllText(filePath, content);
-            projectStateChangedNotifier?.Notify(projectSlug, ProjectStateChangeKind.Messages | ProjectStateChangeKind.Agents);
+            projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Messages | ProjectStateChangeKind.Agents);
             activity?.SetTag("message.filename", unique);
             activity?.SetTag("message.success", true);
             logger.LogInformation("[runner] Inbox message written: {Project}/{Agent} ← {From} ({Type}) [{File}]",
@@ -846,3 +840,5 @@ public class AgentRunnerService(
         }
     }
 }
+
+

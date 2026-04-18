@@ -33,7 +33,7 @@ namespace AiDev.Features.Board
         AtomicFileWriter fileWriter,
         ProjectMutationCoordinator coordinator,
         ILogger<BoardService> logger,
-        ProjectStateChangedNotifier? projectStateChangedNotifier = null)
+        ProjectStateChangedNotifier projectStateChangedNotifier)
     {
         private static readonly DomainError InvalidColumnError = new("BOARD_INVALID_COLUMN", "Column id is invalid.");
         private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10);
@@ -80,7 +80,7 @@ namespace AiDev.Features.Board
                         Priority = kv.Value.Priority.Value,
                         Description = kv.Value.Description,
                         Assignee = kv.Value.Assignee,
-                        Tags = kv.Value.Tags.Count > 0 ? kv.Value.Tags : null,
+                        Tags = kv.Value.Tags.Count > 0 ? [.. kv.Value.Tags] : null,
                         CreatedAt = kv.Value.CreatedAt,
                         CompletedAt = kv.Value.CompletedAt,
                         MovedAt = kv.Value.MovedAt,
@@ -88,7 +88,7 @@ namespace AiDev.Features.Board
                     }),
             };
             fileWriter.WriteAllText(path, JsonSerializer.Serialize(state, JsonDefaults.WriteIgnoreNull));
-            projectStateChangedNotifier?.Notify(projectSlug, ProjectStateChangeKind.Board);
+            projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Board);
         }
 
         private static List<BoardColumn>? DeserializeColumns(List<BoardColumnState>? columns)
@@ -317,7 +317,12 @@ namespace AiDev.Features.Board
             coordinator.Execute(projectSlug, () =>
             {
                 var board = LoadBoard(projectSlug);
-                if (!board.Tasks.TryGetValue(taskId, out var task)) return Unit.Value;
+                if (!board.Tasks.TryGetValue(taskId, out var task))
+                {
+                    logger.LogWarning("[board] CompleteTaskFromResult: task {TaskId} not found in {ProjectSlug} — result.json may reference a stale or mistyped task ID",
+                        taskId.Value, projectSlug.Value);
+                    return Unit.Value;
+                }
 
                 // Skip if already in Done.
                 var currentColumn = board.Columns.FirstOrDefault(c => c.ContainsTask(task.Id));
@@ -336,7 +341,7 @@ namespace AiDev.Features.Board
                     task.Description,
                     task.Assignee,
                     completedAt,
-                    task.Tags.Count > 0 ? task.Tags : null);
+                    task.Tags.Count > 0 ? [.. task.Tags] : null);
 
                 SaveBoard(projectSlug, board);
                 return Unit.Value;

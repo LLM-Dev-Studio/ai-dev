@@ -27,19 +27,21 @@ public sealed class BoardTask
         Priority = NormalizePriority(priority);
         Description = NormalizeOptional(description);
         Assignee = NormalizeOptional(assignee);
-        Tags = NormalizeTags(tags);
+        _tags = NormalizeTags(tags);
         CreatedAt = createdAt;
         CompletedAt = completedAt;
         MovedAt = movedAt;
         NudgedAt = nudgedAt;
     }
 
+    private List<string> _tags;
+
     public TaskId Id { get; }
     public string Title { get; private set; }
     public Priority Priority { get; private set; }
     public string? Description { get; private set; }
     public string? Assignee { get; private set; }
-    public List<string> Tags { get; private set; }
+    public IReadOnlyList<string> Tags => _tags;
     public DateTime? CreatedAt { get; private set; }
     public DateTime? CompletedAt { get; private set; }
     /// <summary>Timestamp when the task last moved to its current column. Used by overwatch for stall detection.</summary>
@@ -59,7 +61,7 @@ public sealed class BoardTask
         Priority = NormalizePriority(priority);
         Description = NormalizeOptional(description);
         Assignee = NormalizeOptional(assignee);
-        Tags = NormalizeTags(tags);
+        _tags = NormalizeTags(tags);
     }
 
     /// <summary>
@@ -70,8 +72,8 @@ public sealed class BoardTask
         foreach (var tag in newTags)
         {
             var normalized = tag?.Trim();
-            if (!string.IsNullOrEmpty(normalized) && !Tags.Contains(normalized, StringComparer.OrdinalIgnoreCase))
-                Tags.Add(normalized);
+            if (!string.IsNullOrEmpty(normalized) && !_tags.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+                _tags.Add(normalized);
         }
     }
 

@@ -109,13 +109,14 @@ public class AgentRunnerServiceTests
             settings,
             [executor],
             modelRegistry,
-            new MessageChangedNotifier(),
+            new MessageChangedNotifier(new ProjectStateChangedNotifier()),
             new KbService(paths, fileWriter, new ProjectMutationCoordinator()),
             new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()),
             new SecretsService(paths, fileWriter),
             new InsightsService([], settings, NullLogger<InsightsService>.Instance),
-            new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance),
-            NullLogger<AgentRunnerService>.Instance);
+            new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier()),
+            NullLogger<AgentRunnerService>.Instance,
+            new ProjectStateChangedNotifier());
     }
 
     private static async Task WaitForAgentToFinishAsync(AgentRunnerService runner, ProjectSlug projectSlug, AgentSlug agentSlug)
