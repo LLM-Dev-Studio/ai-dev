@@ -20,6 +20,7 @@ namespace AiDev.Features.Board
         public string? Priority { get; init; }
         public string? Description { get; init; }
         public string? Assignee { get; init; }
+        public List<string>? Tags { get; init; }
         public DateTime? CreatedAt { get; init; }
         public DateTime? CompletedAt { get; init; }
         public DateTime? MovedAt { get; init; }
@@ -31,7 +32,8 @@ namespace AiDev.Features.Board
         IDomainEventDispatcher dispatcher,
         AtomicFileWriter fileWriter,
         ProjectMutationCoordinator coordinator,
-        ILogger<BoardService> logger)
+        ILogger<BoardService> logger,
+        ProjectStateChangedNotifier? projectStateChangedNotifier = null)
     {
         private static readonly DomainError InvalidColumnError = new("BOARD_INVALID_COLUMN", "Column id is invalid.");
         private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10);
@@ -78,6 +80,7 @@ namespace AiDev.Features.Board
                         Priority = kv.Value.Priority.Value,
                         Description = kv.Value.Description,
                         Assignee = kv.Value.Assignee,
+                        Tags = kv.Value.Tags.Count > 0 ? kv.Value.Tags : null,
                         CreatedAt = kv.Value.CreatedAt,
                         CompletedAt = kv.Value.CompletedAt,
                         MovedAt = kv.Value.MovedAt,
@@ -85,6 +88,7 @@ namespace AiDev.Features.Board
                     }),
             };
             fileWriter.WriteAllText(path, JsonSerializer.Serialize(state, JsonDefaults.WriteIgnoreNull));
+            projectStateChangedNotifier?.Notify(projectSlug, ProjectStateChangeKind.Board);
         }
 
         private static List<BoardColumn>? DeserializeColumns(List<BoardColumnState>? columns)
@@ -126,6 +130,7 @@ namespace AiDev.Features.Board
                     priority: string.IsNullOrWhiteSpace(taskState.Priority) ? null : Priority.From(taskState.Priority),
                     description: taskState.Description,
                     assignee: taskState.Assignee,
+                    tags: taskState.Tags,
                     createdAt: taskState.CreatedAt,
                     completedAt: taskState.CompletedAt,
                     movedAt: taskState.MovedAt,
@@ -136,7 +141,7 @@ namespace AiDev.Features.Board
         }
 
         public async Task<Result<BoardTask>> CreateTaskAsync(ProjectSlug projectSlug, string columnId, string title,
-            string? description, string priority, string? assignee, CancellationToken cancellationToken = default)
+            string? description, string priority, string? assignee, List<string>? tags = null, CancellationToken cancellationToken = default)
             => await coordinator.ExecuteAsync(projectSlug, async () =>
             {
                 using var activity = AiDevTelemetry.ActivitySource.StartActivity("Board.CreateTask", ActivityKind.Internal);
@@ -148,7 +153,7 @@ namespace AiDev.Features.Board
                     return new Err<BoardTask>(InvalidColumnError);
 
                 var board = LoadBoard(projectSlug);
-                var result = CreateBoardTask(title, priority, description, assignee)
+                var result = CreateBoardTask(title, priority, description, assignee, tags)
                     .Then(task => board.AddTask(parsedColumnId, task));
 
                 return await result.Match<BoardTask, Task<Result<BoardTask>>>(
@@ -157,7 +162,7 @@ namespace AiDev.Features.Board
             }, cancellationToken).ConfigureAwait(false);
 
         public async Task<Result<BoardTask>> UpdateTaskAsync(ProjectSlug projectSlug, TaskId taskId, string newColumnId,
-            string title, string? description, string priority, string? assignee, CancellationToken cancellationToken = default)
+            string title, string? description, string priority, string? assignee, List<string>? tags = null, CancellationToken cancellationToken = default)
             => await coordinator.ExecuteAsync(projectSlug, async () =>
             {
                 using var activity = AiDevTelemetry.ActivitySource.StartActivity("Board.UpdateTask", ActivityKind.Internal);
@@ -176,7 +181,8 @@ namespace AiDev.Features.Board
                     Priority.From(priority),
                     description,
                     assignee,
-                    DateTime.UtcNow);
+                    DateTime.UtcNow,
+                    tags);
 
                 return await result.Match<BoardTask, Task<Result<BoardTask>>>(
                     task => PersistBoardResultAsync(projectSlug, board, task),
@@ -242,7 +248,7 @@ namespace AiDev.Features.Board
             return new Ok<BoardTask>(task);
         }
 
-        private Result<BoardTask> CreateBoardTask(string title, string priority, string? description, string? assignee)
+        private Result<BoardTask> CreateBoardTask(string title, string priority, string? description, string? assignee, List<string>? tags = null)
         {
             try
             {
@@ -253,6 +259,7 @@ namespace AiDev.Features.Board
                     priority: Priority.From(priority),
                     description: description,
                     assignee: assignee,
+                    tags: tags,
                     createdAt: now,
                     movedAt: now));
             }
@@ -260,6 +267,80 @@ namespace AiDev.Features.Board
             {
                 return new Err<BoardTask>(new DomainError("BOARD_INVALID_TASK", ex.Message));
             }
+        }
+
+        /// <summary>
+        /// Returns the allowed tag strings for a project from allowed-tags.json, or null if no allowlist is configured.
+        /// </summary>
+        public List<string>? GetAllowedTags(ProjectSlug projectSlug)
+        {
+            var path = Path.Combine(paths.ProjectDir(projectSlug).Value, "allowed-tags.json");
+            if (!File.Exists(path)) return null;
+            try
+            {
+                var json = File.ReadAllText(path);
+                return JsonSerializer.Deserialize<List<string>>(json, JsonDefaults.Read);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[board] Failed to read allowed-tags.json for {ProjectSlug}", projectSlug.Value);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Merges tags from a result payload onto the specified task and persists.
+        /// No-ops silently if the task does not exist or tags is null/empty.
+        /// </summary>
+        public void MergeTaskTagsFromResult(ProjectSlug projectSlug, TaskId taskId, IEnumerable<string>? tags)
+        {
+            if (tags == null) return;
+            var tagList = tags.ToList();
+            if (tagList.Count == 0) return;
+
+            coordinator.Execute(projectSlug, () =>
+            {
+                var board = LoadBoard(projectSlug);
+                if (!board.Tasks.TryGetValue(taskId, out var task)) return Unit.Value;
+                task.MergeTags(tagList);
+                SaveBoard(projectSlug, board);
+                return Unit.Value;
+            });
+        }
+
+        /// <summary>
+        /// Automatically moves a board task to Done and merges any tags from the session result.
+        /// No-ops silently if the task does not exist or is already in Done.
+        /// </summary>
+        public void CompleteTaskFromResult(ProjectSlug projectSlug, TaskId taskId, SessionResult result)
+        {
+            coordinator.Execute(projectSlug, () =>
+            {
+                var board = LoadBoard(projectSlug);
+                if (!board.Tasks.TryGetValue(taskId, out var task)) return Unit.Value;
+
+                // Skip if already in Done.
+                var currentColumn = board.Columns.FirstOrDefault(c => c.ContainsTask(task.Id));
+                if (currentColumn?.Id == ColumnId.Done) return Unit.Value;
+
+                // Merge tags from result before moving.
+                if (result.Tags is { Count: > 0 })
+                    task.MergeTags(result.Tags);
+
+                var completedAt = result.CompletedAt ?? DateTime.UtcNow;
+                board.UpdateTask(
+                    taskId,
+                    ColumnId.Done,
+                    task.Title,
+                    task.Priority,
+                    task.Description,
+                    task.Assignee,
+                    completedAt,
+                    task.Tags.Count > 0 ? task.Tags : null);
+
+                SaveBoard(projectSlug, board);
+                return Unit.Value;
+            });
         }
 
         private async Task<Result<Unit>> DispatchBoardEventsAsync(IReadOnlyList<DomainEvent> domainEvents)

@@ -13,4 +13,6 @@ builder.AddProject<Projects.ai_dev_mcp>("ai-dev-mcp")
 
 builder.AddProject<Projects.ai_dev_ui_web>("ai-dev-net");
 
+builder.AddProject<Projects.ai_dev_ui_winui>("ai-dev-winui");
+
 builder.Build().Run();

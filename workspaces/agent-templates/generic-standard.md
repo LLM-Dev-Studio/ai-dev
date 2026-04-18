@@ -161,6 +161,33 @@ The board lives at `board/board.json` in the project. To read: `ReadFile(path="b
 }
 ```
 
+## Session Result Contract
+
+If your session completes a board task, write `agents/{your-slug}/outbox/result.json` **before** your session ends. The AgentRunnerService reads this after your process exits to auto-complete the board task and persist your session result.
+
+**Schema:**
+```json
+{
+  "taskId": "task-1234",
+  "status": "completed",
+  "summary": "One-sentence description of what was done.",
+  "pullRequestUrl": "https://github.com/.../pull/42",
+  "filesChanged": ["path/to/file1"],
+  "testOutcome": "passed",
+  "completedAt": "2026-04-18T13:00:00Z",
+  "tags": ["feature"]
+}
+```
+
+**Field values:**
+- `status`: `"completed"` | `"failed"` | `"partial"`
+- `testOutcome`: `"passed"` | `"failed"` | `"skipped"` | `null`
+- `pullRequestUrl`: full URL or `null`
+- `tags`: optional; merged onto the board task
+- `taskId`: the board task ID this session resolved (required for auto-complete)
+
+If `taskId` matches an open board task, the runner automatically moves it to Done.
+
 ## Important Rules
 
 - **Never delete messages** from inbox. Mark them as processed in your journal instead.

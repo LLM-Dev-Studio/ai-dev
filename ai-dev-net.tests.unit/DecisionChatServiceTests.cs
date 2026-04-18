@@ -86,6 +86,10 @@ public class DecisionChatServiceTests
         modelRegistry.Find(Arg.Any<string>(), Arg.Any<string>())
             .Returns(new ModelDescriptor("claude-sonnet-4-6", "Claude Sonnet 4.6", AgentExecutorName.ClaudeValue));
 
+        var dispatcher = Substitute.For<IDomainEventDispatcher>();
+        dispatcher.Dispatch(Arg.Any<IReadOnlyList<DomainEvent>>(), Arg.Any<CancellationToken>())
+            .Returns(new Ok<AiDev.Models.Unit>(AiDev.Models.Unit.Value));
+
         return new AgentRunnerService(
             paths,
             settings,
@@ -96,6 +100,7 @@ public class DecisionChatServiceTests
             new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()),
             new SecretsService(paths, fileWriter),
             new InsightsService([], settings, NullLogger<InsightsService>.Instance),
+            new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance),
             NullLogger<AgentRunnerService>.Instance);
     }
 

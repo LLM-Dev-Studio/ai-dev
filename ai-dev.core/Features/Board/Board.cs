@@ -59,7 +59,8 @@ public sealed class Board
         Priority priority,
         string? description,
         string? assignee,
-        DateTime movedAt)
+        DateTime movedAt,
+        List<string>? tags = null)
     {
         ArgumentNullException.ThrowIfNull(taskId);
         ArgumentNullException.ThrowIfNull(newColumnId);
@@ -79,7 +80,7 @@ public sealed class Board
             return new Err<BoardTask>(UnknownColumnError);
 
         var previousAssignee = task.Assignee;
-        task.UpdateDetails(title, priority, description, assignee);
+        task.UpdateDetails(title, priority, description, assignee, tags);
 
         if (currentColumn.Id != newColumnId)
         {

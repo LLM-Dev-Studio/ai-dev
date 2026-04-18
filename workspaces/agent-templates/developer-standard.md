@@ -150,6 +150,33 @@ The board lives at `board/board.json` in the project. To read: `ReadFile(path="b
 }
 ```
 
+## Session Result Contract
+
+When you complete a task, write `outbox/result.json` (i.e. `agents/{your-slug}/outbox/result.json`) **before** your session ends. The AgentRunnerService reads this file after your process exits to auto-complete the board task and persist your session result.
+
+**Schema:**
+```json
+{
+  "taskId": "task-1234",
+  "status": "completed",
+  "summary": "One-sentence description of what was done.",
+  "pullRequestUrl": "https://github.com/.../pull/42",
+  "filesChanged": ["path/to/file1.cs", "path/to/file2.cs"],
+  "testOutcome": "passed",
+  "completedAt": "2026-04-18T13:00:00Z",
+  "tags": ["feature", "backend"]
+}
+```
+
+**Field values:**
+- `status`: `"completed"` | `"failed"` | `"partial"`
+- `testOutcome`: `"passed"` | `"failed"` | `"skipped"` | `null`
+- `pullRequestUrl`: full URL or `null`
+- `tags`: optional array of strings to merge onto the board task
+- `taskId`: the board task ID this session resolved (required for auto-complete)
+
+If `taskId` matches an open board task, the runner will automatically move it to Done. The result is also persisted as `{date}.result.json` alongside the transcript.
+
 ## Important Rules
 
 - **Git Branching:** When making changes to the codebase, ensure git branches are used — changes must not be checked into main. Ensure the correct naming of branches is adhered to, following project conventions.

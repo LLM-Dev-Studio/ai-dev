@@ -43,7 +43,7 @@ public class ProductionReadinessIntegrationTests : IDisposable
 
         service.SaveBoard(projectSlug, new Board(projectSlug));
 
-        var result = await service.CreateTaskAsync(projectSlug, ColumnId.Backlog.Value, "Investigate failure", null, Priority.Normal.Value, "backend-dev", TestContext.Current.CancellationToken);
+        var result = await service.CreateTaskAsync(projectSlug, ColumnId.Backlog.Value, "Investigate failure", null, Priority.Normal.Value, "backend-dev", null, TestContext.Current.CancellationToken);
 
         result.ShouldBeOfType<Err<BoardTask>>();
         ((Err<BoardTask>)result).Error.Code.ShouldBe("DOMAIN_EVENT_HANDLER_FAILED");

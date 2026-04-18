@@ -39,7 +39,7 @@ public class CancellationPolicyIntegrationTests : IDisposable
         cts.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(() =>
-            service.CreateTaskAsync(projectSlug, ColumnId.Backlog.Value, "Investigate failure", null, Priority.Normal.Value, null, cts.Token));
+            service.CreateTaskAsync(projectSlug, ColumnId.Backlog.Value, "Investigate failure", null, Priority.Normal.Value, null, null, cts.Token));
     }
 
     private sealed class PassingDispatcher : IDomainEventDispatcher
