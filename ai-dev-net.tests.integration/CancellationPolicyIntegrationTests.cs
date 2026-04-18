@@ -31,7 +31,7 @@ public class CancellationPolicyIntegrationTests : IDisposable
     [Fact]
     public async Task CreateTaskAsync_WhenCancellationRequested_ThrowsOperationCanceledException()
     {
-        var service = new BoardService(_paths, new PassingDispatcher(), _fileWriter, _coordinator, NullLogger<BoardService>.Instance);
+        var service = new BoardService(_paths, new PassingDispatcher(), _fileWriter, _coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var projectSlug = new ProjectSlug("demo-project");
         service.SaveBoard(projectSlug, new Board(projectSlug));
 

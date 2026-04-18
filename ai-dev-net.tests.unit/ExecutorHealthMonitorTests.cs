@@ -85,18 +85,27 @@ public sealed class ExecutorHealthMonitorTests
     private static ExecutorHealthMonitor CreateMonitor(params IAgentExecutor[] executors)
         => new(executors, NullLogger<ExecutorHealthMonitor>.Instance);
 
-    private sealed class TestExecutor(string name, Func<CancellationToken, Task<ExecutorHealthResult>> checkHealthAsync) : IAgentExecutor
+    private sealed class TestExecutor : IAgentExecutor
     {
-        public string Name { get; } = name;
+        private readonly string _name;
+        private readonly Func<CancellationToken, Task<ExecutorHealthResult>> _checkHealthAsync;
 
-        public string DisplayName => name;
+        public TestExecutor(string name, Func<CancellationToken, Task<ExecutorHealthResult>> checkHealthAsync)
+        {
+            _name = name;
+            _checkHealthAsync = checkHealthAsync;
+        }
+
+        public string Name => _name;
+
+        public string DisplayName => _name;
 
         public IReadOnlyList<ExecutorSkill> AvailableSkills => [];
 
         public IReadOnlyList<ModelDescriptor> KnownModels => [];
 
         public Task<ExecutorHealthResult> CheckHealthAsync(CancellationToken ct = default)
-            => checkHealthAsync(ct);
+            => _checkHealthAsync(ct);
 
         public Task<ExecutorResult> RunAsync(ExecutorContext context, ChannelWriter<string> output)
             => Task.FromResult(new ExecutorResult(1, ErrorMessage: "Not implemented"));

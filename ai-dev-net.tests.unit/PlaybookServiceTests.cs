@@ -158,6 +158,7 @@ public class PlaybookServiceTests
 
         var result = service.GetInjectionContext(projectSlug, "deploy");
 
+        result.ShouldNotBeNull();
         result.ShouldContain("Body content");
         result.ShouldNotContain("macro: deploy-macro");
     }

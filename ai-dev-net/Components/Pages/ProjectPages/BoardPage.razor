@@ -496,7 +496,7 @@ else
         if (_board == null || !_board.Tasks.TryGetValue(taskId, out var task)) return;
         using var activity = StartUiActivity("UI.Board.QuickMove", Slug, taskId: taskId, columnId: targetColumnId, assignee: task.Assignee);
         var error = (await BoardService.UpdateTaskAsync(Slug, taskId, targetColumnId,
-            task.Title, task.Description, task.Priority.Value, task.Assignee, task.Tags.Count > 0 ? task.Tags : null)
+            task.Title, task.Description, task.Priority.Value, task.Assignee, task.Tags.Count > 0 ? new List<string>(task.Tags) : (List<string>?)null)
             ).ToErrorMessage();
         activity?.SetTag("ui.outcome", string.IsNullOrEmpty(error) ? "success" : "error");
         activity?.SetTag("ui.trace_id", activity?.TraceId.ToString());

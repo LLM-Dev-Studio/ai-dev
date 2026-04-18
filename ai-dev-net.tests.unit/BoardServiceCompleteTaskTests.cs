@@ -49,7 +49,7 @@ public class BoardServiceCompleteTaskTests
         var taskId = TaskId.New();
 
         // Seed board with one task in Backlog.
-        var createResult = await svc.CreateTaskAsync(Project, ColumnId.Backlog.Value, "Ship it", null, "normal", null);
+        var createResult = await svc.CreateTaskAsync(Project, ColumnId.Backlog.Value, "Ship it", null, "normal", null, cancellationToken: TestContext.Current.CancellationToken);
         createResult.ShouldBeOfType<Ok<BoardTask>>();
         var createdTask = ((Ok<BoardTask>)createResult).Value;
 
@@ -65,7 +65,7 @@ public class BoardServiceCompleteTaskTests
     {
         var svc = CreateService();
 
-        var createResult = await svc.CreateTaskAsync(Project, ColumnId.Backlog.Value, "Ship it", null, "normal", null, ["existing"]);
+        var createResult = await svc.CreateTaskAsync(Project, ColumnId.Backlog.Value, "Ship it", null, "normal", null, ["existing"], cancellationToken: TestContext.Current.CancellationToken);
         var createdTask = ((Ok<BoardTask>)createResult).Value;
 
         svc.CompleteTaskFromResult(Project, createdTask.Id, MakeResult(createdTask.Id.Value, ["new-tag"]));
@@ -92,7 +92,7 @@ public class BoardServiceCompleteTaskTests
     {
         var svc = CreateService();
 
-        var createResult = await svc.CreateTaskAsync(Project, ColumnId.Backlog.Value, "Ship it", null, "normal", null);
+        var createResult = await svc.CreateTaskAsync(Project, ColumnId.Backlog.Value, "Ship it", null, "normal", null, cancellationToken: TestContext.Current.CancellationToken);
         var createdTask = ((Ok<BoardTask>)createResult).Value;
 
         // Move to Done first.

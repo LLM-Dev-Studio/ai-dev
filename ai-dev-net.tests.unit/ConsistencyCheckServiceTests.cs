@@ -12,7 +12,7 @@ public class ConsistencyCheckServiceTests
         var writer = new AtomicFileWriter();
         var workspace = new WorkspaceService(paths, writer);
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance);
+        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
         workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
 
@@ -41,7 +41,7 @@ public class ConsistencyCheckServiceTests
         var writer = new AtomicFileWriter();
         var workspace = new WorkspaceService(paths, writer);
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance);
+        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
         workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
 
@@ -62,13 +62,13 @@ public class ConsistencyCheckServiceTests
         var writer = new AtomicFileWriter();
         var workspace = new WorkspaceService(paths, writer);
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance);
+        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
 
         workspace.CreateProject("project1", "Project 1", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
         workspace.CreateProject("project2", "Project 2", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
 
-        var report = await service.CheckWorkspaceAsync();
+        var report = await service.CheckWorkspaceAsync(TestContext.Current.CancellationToken);
 
         report.Projects.Count.ShouldBe(2);
         report.Projects[0].ProjectSlug.Value.ShouldBe("project1");
@@ -83,7 +83,7 @@ public class ConsistencyCheckServiceTests
         var writer = new AtomicFileWriter();
         var workspace = new WorkspaceService(paths, writer);
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance);
+        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
         workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
 
@@ -114,7 +114,7 @@ public class ConsistencyCheckServiceTests
         var writer = new AtomicFileWriter();
         var workspace = new WorkspaceService(paths, writer);
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance);
+        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
         workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
 
@@ -139,7 +139,7 @@ public class ConsistencyCheckServiceTests
         var writer = new AtomicFileWriter();
         var workspace = new WorkspaceService(paths, writer);
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance);
+        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
         workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
 
@@ -169,7 +169,7 @@ Content";
         var writer = new AtomicFileWriter();
         var workspace = new WorkspaceService(paths, writer);
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance);
+        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
         workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
 
@@ -203,7 +203,7 @@ Content";
         var writer = new AtomicFileWriter();
         var workspace = new WorkspaceService(paths, writer);
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance);
+        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
         workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
 
@@ -235,7 +235,7 @@ Content";
         var writer = new AtomicFileWriter();
         var workspace = new WorkspaceService(paths, writer);
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance);
+        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
         workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
 
@@ -257,3 +257,4 @@ Content";
             => Task.FromResult<Result<AiDev.Models.Unit>>(new Ok<AiDev.Models.Unit>(AiDev.Models.Unit.Value));
     }
 }
+

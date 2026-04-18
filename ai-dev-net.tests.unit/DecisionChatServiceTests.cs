@@ -17,7 +17,7 @@ public class DecisionChatServiceTests
     public void GetMessages_WhenChatFileContainsIndentedJsonObjects_ParsesAllMessages()
     {
         var paths = CreatePaths();
-        var service = new DecisionChatService(paths, null!, new DecisionChangedNotifier(), NullLogger<DecisionChatService>.Instance);
+        var service = new DecisionChatService(paths, null!, new DecisionChangedNotifier(new ProjectStateChangedNotifier()), NullLogger<DecisionChatService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
         var decisionId = "20260410-093000-offline-executor-selection";
         var chatDir = paths.DecisionChatsDir(projectSlug).Value;
@@ -43,7 +43,7 @@ public class DecisionChatServiceTests
         var paths = CreatePaths();
         var fileWriter = new AtomicFileWriter();
         var runner = CreateRunner(paths, fileWriter);
-        var service = new DecisionChatService(paths, runner, new DecisionChangedNotifier(), NullLogger<DecisionChatService>.Instance);
+        var service = new DecisionChatService(paths, runner, new DecisionChangedNotifier(new ProjectStateChangedNotifier()), NullLogger<DecisionChatService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
         const string decisionId = "20260410-093000-offline-executor-selection";
         const string agentSlug = "pm-standard";
@@ -82,6 +82,7 @@ public class DecisionChatServiceTests
     private static AgentRunnerService CreateRunner(WorkspacePaths paths, AtomicFileWriter fileWriter)
     {
         var settings = new StudioSettingsService(new ConfigurationBuilder().Build());
+        var projectStateNotifier = new ProjectStateChangedNotifier();
         var modelRegistry = Substitute.For<IModelRegistry>();
         modelRegistry.Find(Arg.Any<string>(), Arg.Any<string>())
             .Returns(new ModelDescriptor("claude-sonnet-4-6", "Claude Sonnet 4.6", AgentExecutorName.ClaudeValue));
@@ -95,13 +96,14 @@ public class DecisionChatServiceTests
             settings,
             [new ImmediateExecutor()],
             modelRegistry,
-            new MessageChangedNotifier(),
+            new MessageChangedNotifier(projectStateNotifier),
             new KbService(paths, fileWriter, new ProjectMutationCoordinator()),
             new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()),
             new SecretsService(paths, fileWriter),
             new InsightsService([], settings, NullLogger<InsightsService>.Instance),
-            new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance),
-            NullLogger<AgentRunnerService>.Instance);
+            new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance, projectStateNotifier),
+            NullLogger<AgentRunnerService>.Instance,
+            projectStateNotifier);
     }
 
     private static async Task WaitForAgentToFinishAsync(AgentRunnerService runner, ProjectSlug projectSlug, AgentSlug agentSlug)

@@ -41,7 +41,7 @@ public class ConsistencyUiAndDetectionIntegrationTests : IDisposable
         var service = new ConsistencyCheckService(
             _paths,
             workspaceService,
-            new BoardService(_paths, new PassingDispatcher(), _fileWriter, _coordinator, NullLogger<BoardService>.Instance),
+            new BoardService(_paths, new PassingDispatcher(), _fileWriter, _coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier()),
             NullLogger<ConsistencyCheckService>.Instance);
 
         var report = await service.CheckProjectAsync(projectSlug, TestContext.Current.CancellationToken);
