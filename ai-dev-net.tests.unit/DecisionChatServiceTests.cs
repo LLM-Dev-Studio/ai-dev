@@ -17,7 +17,7 @@ public class DecisionChatServiceTests
     public void GetMessages_WhenChatFileContainsIndentedJsonObjects_ParsesAllMessages()
     {
         var paths = CreatePaths();
-        var service = new DecisionChatService(paths, null!, new DecisionChangedNotifier(new ProjectStateChangedNotifier()), NullLogger<DecisionChatService>.Instance);
+        var service = new DecisionChatService(paths, null!, new ProjectStateChangedNotifier(), NullLogger<DecisionChatService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
         var decisionId = "20260410-093000-offline-executor-selection";
         var chatDir = paths.DecisionChatsDir(projectSlug).Value;
@@ -43,7 +43,7 @@ public class DecisionChatServiceTests
         var paths = CreatePaths();
         var fileWriter = new AtomicFileWriter();
         var runner = CreateRunner(paths, fileWriter);
-        var service = new DecisionChatService(paths, runner, new DecisionChangedNotifier(new ProjectStateChangedNotifier()), NullLogger<DecisionChatService>.Instance);
+        var service = new DecisionChatService(paths, runner, new ProjectStateChangedNotifier(), NullLogger<DecisionChatService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
         const string decisionId = "20260410-093000-offline-executor-selection";
         const string agentSlug = "pm-standard";
@@ -96,12 +96,10 @@ public class DecisionChatServiceTests
             settings,
             [new ImmediateExecutor()],
             modelRegistry,
-            new MessageChangedNotifier(projectStateNotifier),
-            new KbService(paths, fileWriter, new ProjectMutationCoordinator()),
-            new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()),
+            new AgentService(paths, new AgentTemplatesService(paths), fileWriter, new ProjectMutationCoordinator(), modelRegistry, NullLogger<AgentService>.Instance),
+            new AgentPromptBuilder(new KbService(paths, fileWriter, new ProjectMutationCoordinator()), new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()), NullLogger<AgentPromptBuilder>.Instance),
+            new SessionCompletionProcessor(paths, new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance, projectStateNotifier), new InsightsService([], settings, NullLogger<InsightsService>.Instance), projectStateNotifier, NullLogger<SessionCompletionProcessor>.Instance),
             new SecretsService(paths, fileWriter),
-            new InsightsService([], settings, NullLogger<InsightsService>.Instance),
-            new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance, projectStateNotifier),
             NullLogger<AgentRunnerService>.Instance,
             projectStateNotifier);
     }

@@ -20,7 +20,7 @@ namespace AiDev.Services;
 public class OverwatchService(
     WorkspaceService workspace,
     BoardService boardService,
-    AgentRunnerService runner,
+    IAgentRunnerService runner,
     AgentService agentService,
     ExecutorHealthMonitor executorHealth,
     DecisionsService decisionsService,
@@ -33,8 +33,8 @@ public class OverwatchService(
     private static readonly TimeSpan NudgeCooldown = TimeSpan.FromMinutes(20);
     private static readonly TimeSpan ScanInterval = TimeSpan.FromMinutes(5);
 
-    private Timer? _timer;
     private CancellationTokenSource? _scanCts;
+    private Task? _scanLoop;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -44,34 +44,49 @@ public class OverwatchService(
             StallThreshold.TotalMinutes, NudgeCooldown.TotalMinutes, ScanInterval.TotalMinutes);
 
         _scanCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        // Initial scan after 30 s (let app finish init), then every ScanInterval
-        _timer = new Timer(_ => ScanAll(_scanCts.Token), null,
-            TimeSpan.FromSeconds(30), ScanInterval);
+        _scanLoop = RunScanLoopAsync(_scanCts.Token);
 
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
         logger.LogInformation("[overwatch] Stopping");
+        _scanCts?.Cancel();
+        if (_scanLoop != null)
+        {
+            try { await _scanLoop.WaitAsync(cancellationToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
+        }
         Dispose();
-        return Task.CompletedTask;
     }
 
     public void Dispose()
     {
         _scanCts?.Cancel();
         _scanCts?.Dispose();
-        _timer?.Dispose();
         GC.SuppressFinalize(this);
     }
 
     // -------------------------------------------------------------------------
-    // Scan
+    // Scan loop
     // -------------------------------------------------------------------------
 
-    private void ScanAll(CancellationToken cancellationToken)
+    private async Task RunScanLoopAsync(CancellationToken cancellationToken)
+    {
+        // Initial delay — let the app finish initialising before the first scan.
+        try { await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) { return; }
+
+        using var timer = new PeriodicTimer(ScanInterval);
+        do
+        {
+            await ScanAllAsync(cancellationToken).ConfigureAwait(false);
+        }
+        while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false));
+    }
+
+    private async Task ScanAllAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var activity = ActivitySource.StartActivity("Overwatch.Scan", ActivityKind.Internal);
@@ -80,12 +95,18 @@ public class OverwatchService(
 
         foreach (var project in projects)
         {
-            try { ScanProject(project.Slug, activity?.Id, cancellationToken); }
+            try { await ScanProjectAsync(project.Slug, activity?.Id, cancellationToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 logger.LogError(ex, "[overwatch] Error scanning project {Project}", project.Slug);
             }
         }
+    }
+
+    private Task ScanProjectAsync(ProjectSlug projectSlug, string? parentActivityId, CancellationToken cancellationToken)
+    {
+        return Task.Run(() => ScanProject(projectSlug, parentActivityId, cancellationToken), cancellationToken);
     }
 
     private void ScanProject(ProjectSlug projectSlug, string? parentActivityId, CancellationToken cancellationToken)
@@ -213,7 +234,7 @@ public class OverwatchService(
             {(string.IsNullOrEmpty(task.Description) ? "" : $"**Description:** {task.Description}\n\n")}Please action this task and move it forward. If you are blocked, raise a decision or message the relevant agent explaining the blocker.
             """;
 
-        var err = runner.WriteInboxMessage(
+        var writeResult = runner.WriteInboxMessage(
             projectSlug,
             assigneeSlug,
             from: "overwatch",
@@ -223,10 +244,10 @@ public class OverwatchService(
             body: body,
             taskId: task.Id);
 
-        if (err != null)
+        if (writeResult is Err<Unit> writeErr)
         {
             logger.LogError("[overwatch] Failed to nudge {Agent} for \"{Title}\": {Error}",
-                task.Assignee, task.Title, err);
+                task.Assignee, task.Title, writeErr.Error.Message);
             return "nudge-failed";
         }
 
@@ -247,7 +268,7 @@ public class OverwatchService(
             {(string.IsNullOrEmpty(task.Description) ? "" : $"**Description:** {task.Description}\n\n")}Please assign an agent to progress this task, or resolve it manually.
             """;
 
-        var err = decisionsService.CreateDecision(
+        var decisionResult = decisionsService.CreateDecision(
             projectSlug,
             from: "overwatch",
             subject: $"Unassigned stalled task: {task.Title}",
@@ -255,10 +276,10 @@ public class OverwatchService(
             blocks: task.Id,
             body: body);
 
-        if (err != null)
+        if (decisionResult is Err<Unit> decisionErr)
         {
             logger.LogError("[overwatch] Failed to raise decision for \"{Title}\": {Error}",
-                task.Title, err);
+                task.Title, decisionErr.Error.Message);
             return "decision-failed";
         }
 
@@ -284,7 +305,7 @@ public class OverwatchService(
             Please investigate the executor, or reassign this task to an agent with a working executor.
             """;
 
-        var err = decisionsService.CreateDecision(
+        var decisionResult = decisionsService.CreateDecision(
             projectSlug,
             from: "overwatch",
             subject: $"Executor offline — {agentSlug} ({executorName}) cannot process \"{task.Title}\"",
@@ -292,10 +313,10 @@ public class OverwatchService(
             blocks: task.Id,
             body: body);
 
-        if (err != null)
+        if (decisionResult is Err<Unit> decisionErr)
         {
             logger.LogError("[overwatch] Failed to raise executor offline decision for \"{Title}\": {Error}",
-                task.Title, err);
+                task.Title, decisionErr.Error.Message);
             return "decision-failed";
         }
 

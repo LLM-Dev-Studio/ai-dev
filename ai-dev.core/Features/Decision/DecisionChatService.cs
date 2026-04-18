@@ -9,8 +9,8 @@ namespace AiDev.Features.Decision;
 /// </summary>
 public class DecisionChatService(
     WorkspacePaths paths,
-    AgentRunnerService runner,
-    DecisionChangedNotifier decisionNotifier,
+    IAgentRunnerService runner,
+    ProjectStateChangedNotifier projectStateNotifier,
     ILogger<DecisionChatService> logger)
 {
     // -------------------------------------------------------------------------
@@ -65,7 +65,7 @@ public class DecisionChatService(
         var body = $"The human has replied to your decision request (decision-id: {decisionId}):\n\n{content.Trim()}\n\n" +
                    $"Please respond via write_outbox with type: decision-reply and decision-id: {decisionId}.";
 
-        var inboxError = runner.WriteInboxMessage(
+        var inboxResult = runner.WriteInboxMessage(
             projectSlug, new(agentSlug),
             from: "human",
             re: $"Re: decision {decisionId}",
@@ -74,10 +74,10 @@ public class DecisionChatService(
             body: body,
             decisionId: decisionId);
 
-        if (inboxError != null)
+        if (inboxResult is Err<Unit> inboxErr)
         {
-            logger.LogWarning("[decision-chat] Inbox write failed for {DecisionId}: {Error}", decisionId, inboxError);
-            return $"Failed to deliver message to agent: {inboxError}";
+            logger.LogWarning("[decision-chat] Inbox write failed for {DecisionId}: {Error}", decisionId, inboxErr.Error.Message);
+            return $"Failed to deliver message to agent: {inboxErr.Error.Message}";
         }
 
         // Auto-launch the agent so it processes the message.
@@ -161,7 +161,7 @@ public class DecisionChatService(
             }
         }
 
-        if (flushed) decisionNotifier.Notify(projectSlug);
+        if (flushed) projectStateNotifier.Notify(projectSlug, ProjectStateChangeKind.Decisions);
 
         return flushed;
     }

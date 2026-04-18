@@ -104,19 +104,18 @@ public class AgentRunnerServiceTests
         dispatcher.Dispatch(Arg.Any<IReadOnlyList<DomainEvent>>(), Arg.Any<CancellationToken>())
             .Returns(new Ok<AiDev.Models.Unit>(AiDev.Models.Unit.Value));
 
+        var projectStateNotifier = new ProjectStateChangedNotifier();
         return new AgentRunnerService(
             paths,
             settings,
             [executor],
             modelRegistry,
-            new MessageChangedNotifier(new ProjectStateChangedNotifier()),
-            new KbService(paths, fileWriter, new ProjectMutationCoordinator()),
-            new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()),
+            new AgentService(paths, new AgentTemplatesService(paths), fileWriter, new ProjectMutationCoordinator(), modelRegistry, NullLogger<AgentService>.Instance),
+            new AgentPromptBuilder(new KbService(paths, fileWriter, new ProjectMutationCoordinator()), new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()), NullLogger<AgentPromptBuilder>.Instance),
+            new SessionCompletionProcessor(paths, new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance, projectStateNotifier), new InsightsService([], settings, NullLogger<InsightsService>.Instance), projectStateNotifier, NullLogger<SessionCompletionProcessor>.Instance),
             new SecretsService(paths, fileWriter),
-            new InsightsService([], settings, NullLogger<InsightsService>.Instance),
-            new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier()),
             NullLogger<AgentRunnerService>.Instance,
-            new ProjectStateChangedNotifier());
+            projectStateNotifier);
     }
 
     private static async Task WaitForAgentToFinishAsync(AgentRunnerService runner, ProjectSlug projectSlug, AgentSlug agentSlug)

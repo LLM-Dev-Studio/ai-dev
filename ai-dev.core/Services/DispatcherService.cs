@@ -15,9 +15,8 @@ namespace AiDev.Services;
 public class DispatcherService(
     WorkspacePaths paths,
     WorkspaceService workspace,
-    AgentRunnerService runner,
-    MessageChangedNotifier messageNotifier,
-    DecisionChangedNotifier decisionNotifier,
+    IAgentRunnerService runner,
+    ProjectStateChangedNotifier projectStateNotifier,
     ILogger<DispatcherService> logger)
     : IHostedService, IDisposable
 {
@@ -127,13 +126,13 @@ public class DispatcherService(
         {
             logger.LogInformation("[dispatcher] New decision in {Project}: {File}",
                 projectSlug, Path.GetFileName(e.FullPath));
-            decisionNotifier.Notify(projectSlug);
+            projectStateNotifier.Notify(projectSlug, ProjectStateChangeKind.Decisions);
         };
         w.Deleted += (_, e) =>
         {
             logger.LogInformation("[dispatcher] Decision resolved in {Project}: {File}",
                 projectSlug, Path.GetFileName(e.FullPath));
-            decisionNotifier.Notify(projectSlug);
+            projectStateNotifier.Notify(projectSlug, ProjectStateChangeKind.Decisions);
         };
         _watchers.Add(w);
     }
@@ -256,7 +255,7 @@ public class DispatcherService(
 
             // Notify immediately so UIs refresh badges and agent inbox counts even when
             // this message is deferred because the agent is currently running.
-            messageNotifier.Notify(projectSlug);
+            projectStateNotifier.Notify(projectSlug, ProjectStateChangeKind.Messages);
 
             if (runner.IsRunning(projectSlug, agentSlug))
             {
@@ -277,7 +276,7 @@ public class DispatcherService(
             logger.LogInformation("[dispatcher] {Outcome} {Project}/{Agent}",
                 launched ? "Launched" : "Already running —", projectSlug, agentSlug);
 
-            decisionNotifier.Notify(projectSlug);
+            projectStateNotifier.Notify(projectSlug, ProjectStateChangeKind.Decisions);
         }
         catch (Exception ex)
         {
