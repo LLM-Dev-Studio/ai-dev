@@ -151,7 +151,7 @@
 
         <Border HorizontalAlignment="Center" VerticalAlignment="Center"
                 Width="700" MaxHeight="800" Padding="24" CornerRadius="12"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 Visibility="{Binding ShowTaskDialog, Converter={StaticResource BoolToVisible}}">

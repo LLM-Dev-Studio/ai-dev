@@ -9,15 +9,15 @@ namespace AiDev.Features.Planning;
 /// <summary>
 /// Implements <see cref="IPlanningChatService"/> using whichever <see cref="IPlanningLlmClient"/>
 /// matches the analyst agent's configured executor for the project.
-/// Falls back to the "anthropic" client if no analyst is found or no matching client is registered.
+/// If no analyst exists, defaults to the standard executor and model.
 /// </summary>
 public sealed class PlanningChatService(
     AgentService agentService,
     IEnumerable<IPlanningLlmClient> llmClients,
     ILogger<PlanningChatService> logger) : IPlanningChatService
 {
-    private const string FallbackExecutor = AgentExecutorName.AnthropicValue;
-    private const string DefaultModel     = "claude-haiku-4-5-20251001";
+    private const string FallbackExecutor = AgentExecutorName.ClaudeValue;
+    private const string DefaultModel     = "claude-sonnet-4-6";
 
     // -------------------------------------------------------------------------
     // Phase 1 — Business Discovery
@@ -137,18 +137,27 @@ public sealed class PlanningChatService(
             .FirstOrDefault(a => a.Slug.Value.StartsWith("analyst", StringComparison.OrdinalIgnoreCase));
 
         var executorName = analyst?.Executor?.Value ?? FallbackExecutor;
-        var modelId      = analyst?.Model ?? DefaultModel;
+        var modelId = string.IsNullOrWhiteSpace(analyst?.Model)
+            ? DefaultModel
+            : analyst!.Model;
 
         if (!clientMap.TryGetValue(executorName, out var client))
         {
-            logger.LogWarning(
-                "[planning-chat] No IPlanningLlmClient registered for executor '{Executor}'. " +
-                "Falling back to '{Fallback}'.", executorName, FallbackExecutor);
-
-            if (!clientMap.TryGetValue(FallbackExecutor, out client))
+            if (analyst is not null)
+            {
                 throw new InvalidOperationException(
-                    $"No IPlanningLlmClient registered for executor '{executorName}' and the " +
-                    $"'{FallbackExecutor}' fallback is also unavailable.");
+                    $"No IPlanningLlmClient registered for analyst executor '{executorName}'. " +
+                    "Planning requires a client matching the analyst's configured executor.");
+            }
+
+            logger.LogWarning(
+                "[planning-chat] No analyst agent found and default executor '{Executor}' is unavailable.",
+                executorName);
+
+            client = clientMap.Values.FirstOrDefault()
+                ?? throw new InvalidOperationException("No IPlanningLlmClient implementations are registered for planning chat.");
+
+            executorName = client.ExecutorName;
         }
 
         logger.LogDebug("[planning-chat] Using executor '{Executor}' model '{Model}'", executorName, modelId);
