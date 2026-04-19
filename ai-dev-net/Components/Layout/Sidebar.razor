@@ -1,12 +1,12 @@
 @using AiDev.Features.Workspace
+@using AiDev.Models
 @using AiDev.Models.Types
 @rendermode InteractiveServer
 @implements IDisposable
 @inject NavigationManager NavigationManager
 @inject WorkspaceService WorkspaceService
 @inject AiDev.Features.Decision.DecisionsService DecisionsService
-@inject AiDev.Services.DecisionChangedNotifier DecisionChangedNotifier
-@inject AiDev.Services.MessageChangedNotifier MessageChangedNotifier
+@inject AiDev.Services.ProjectStateChangedNotifier ProjectStateNotifier
 @inject AiDev.Services.MessagesService MessagesService
 
 @{
@@ -94,8 +94,7 @@
         projects = WorkspaceService.ListProjects();
         UpdateSlug();
         NavigationManager.LocationChanged += OnLocationChanged;
-        DecisionChangedNotifier.Changed += OnDecisionsChanged;
-        MessageChangedNotifier.Changed += OnMessagesChanged;
+        ProjectStateNotifier.Changed += OnStateChanged;
         UpdateUnreadDecisions();
         UpdateUnreadMessages();
     }
@@ -109,15 +108,28 @@
         StateHasChanged();
     }
 
-    private void OnDecisionsChanged(ProjectSlug changedProject)
+    private void OnStateChanged(ProjectStateChangedEvent e)
     {
-        if (_slug == null || changedProject.Value != _slug) return;
-        InvokeAsync(() =>
+        if (e.Kind.HasFlag(ProjectStateChangeKind.Decisions))
         {
-            UpdateUnreadDecisions();
-            StateHasChanged();
-            return Task.CompletedTask;
-        });
+            if (_slug != null && e.ProjectSlug.Value == _slug)
+                InvokeAsync(() =>
+                {
+                    UpdateUnreadDecisions();
+                    StateHasChanged();
+                    return Task.CompletedTask;
+                });
+        }
+        if (e.Kind.HasFlag(ProjectStateChangeKind.Messages))
+        {
+            if (_slug != null && e.ProjectSlug.Value == _slug)
+                InvokeAsync(() =>
+                {
+                    UpdateUnreadMessages();
+                    StateHasChanged();
+                    return Task.CompletedTask;
+                });
+        }
     }
 
     private void UpdateUnreadDecisions()
@@ -125,18 +137,6 @@
         if (_slug == null) { unreadDecisions = null; return; }
         unreadDecisions = DecisionsService.ListDecisions(_slug, "pending").Count;
     }
-
-    private void OnMessagesChanged(ProjectSlug changedProject)
-    {
-        if (_slug == null || changedProject.Value != _slug) return;
-        InvokeAsync(() =>
-        {
-            UpdateUnreadMessages();
-            StateHasChanged();
-            return Task.CompletedTask;
-        });
-    }
-
     private void UpdateUnreadMessages()
     {
         if (_slug == null) { unreadMessages = null; return; }
@@ -153,7 +153,6 @@
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
-        DecisionChangedNotifier.Changed -= OnDecisionsChanged;
-        MessageChangedNotifier.Changed -= OnMessagesChanged;
+        ProjectStateNotifier.Changed -= OnStateChanged;
     }
 }

@@ -1,10 +1,11 @@
 @page "/projects/{Slug}/decisions"
 @using AiDev.Features.Decision
+@using AiDev.Models
 @using AiDev.Models.Types
 @rendermode InteractiveServer
 @implements IDisposable
 @inject DecisionsService DecisionsService
-@inject AiDev.Services.DecisionChangedNotifier DecisionChangedNotifier
+@inject AiDev.Services.ProjectStateChangedNotifier ProjectStateNotifier
 @inject IJSRuntime JSRuntime
 
 <h1 class="text-xl font-semibold text-primary mb-1">Decisions</h1>
@@ -88,7 +89,7 @@ else
 
     protected override Task OnInitializedAsync()
     {
-        DecisionChangedNotifier.Changed += OnDecisionsChanged;
+        ProjectStateNotifier.Changed += OnDecisionsChanged;
         Load();
         return Task.CompletedTask;
     }
@@ -102,9 +103,9 @@ else
         }
     }
 
-    private void OnDecisionsChanged(ProjectSlug changedProject)
+    private void OnDecisionsChanged(ProjectStateChangedEvent e)
     {
-        if (changedProject.Value != Slug) return;
+        if (!e.Kind.HasFlag(ProjectStateChangeKind.Decisions) || e.ProjectSlug.Value != Slug) return;
         Load();
         InvokeAsync(async () =>
         {
@@ -148,5 +149,5 @@ else
     private static string FormatDateTime(DateTime? dt) =>
         dt.HasValue ? dt.Value.ToLocalTime().ToString("MMM d HH:mm") : string.Empty;
 
-    public void Dispose() => DecisionChangedNotifier.Changed -= OnDecisionsChanged;
+    public void Dispose() => ProjectStateNotifier.Changed -= OnDecisionsChanged;
 }

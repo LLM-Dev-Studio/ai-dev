@@ -64,6 +64,8 @@ public partial class App : Application
         // Windows and pages
         services.AddSingleton<MainWindow>();
 
+        services.AddSingleton<IUiDispatcher, DispatcherQueueUiDispatcher>();
+
         // ViewModels
         services.AddSingleton<MainViewModel>();
         services.AddTransient<ProjectsViewModel>();
