@@ -1,4 +1,6 @@
 using AiDev.Executors;
+using AiDev.Features.Planning;
+
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AiDev.Extensions;
@@ -26,6 +28,7 @@ public static class AnthropicExecutorExtensions
         });
 
         services.AddSingleton<IAgentExecutor, AnthropicAgentExecutor>();
+        services.AddSingleton<IPlanningChatService, AnthropicPlanningChatService>();
         return services;
     }
 }
