@@ -224,14 +224,14 @@ public sealed partial class MainWindow : Window
             ("Board",          Symbol.ViewAll,          "board"),
             ("Messages",       Symbol.Mail,             "messages"),
             ("Decisions",      Symbol.Important,        "decisions"),
-            ("Journals",       Symbol.Document,         "journals"),
-            ("Knowledge Base", Symbol.Library,          "kb"),
-            ("Secrets",        Symbol.ProtectedDocument,"secrets"),
             ("Digest",         Symbol.List,             "digest"),
             ("Insights",       Symbol.Bullets,          "insights"),
+            ("Journals",       Symbol.Document,         "journals"),
+            ("Knowledge Base", Symbol.Library,          "kb"),
             ("Codebase",       Symbol.Folder,           "codebase"),
             ("Consistency",    Symbol.Accept,           "consistency"),
             ("Process",        Symbol.List,             "process"),
+            ("Secrets",        Symbol.ProtectedDocument,"secrets"),
             ("Settings",       Symbol.Setting,          "project-settings"),
         };
 
@@ -245,8 +245,8 @@ public sealed partial class MainWindow : Window
             };
             RootNavigation.MenuItems.Add(item);
 
-            if (key == "messages")   _messagesNavItem  = item;
-            if (key == "decisions")  _decisionsNavItem = item;
+            if (key == "messages") _messagesNavItem = item;
+            if (key == "decisions") _decisionsNavItem = item;
         }
 
         RootNavigation.FooterMenuItems.Clear();
