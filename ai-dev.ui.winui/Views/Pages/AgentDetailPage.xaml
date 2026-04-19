@@ -182,7 +182,14 @@
                             <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
                                 <TextBlock Text="Description" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <TextBox Text="{Binding EditDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Text="{Binding EditDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         PlaceholderText="Describe what this agent does…"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         MinHeight="80"
+                                         MaxHeight="240"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         AutomationProperties.Name="Description" />
                             </StackPanel>
 
                             <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
