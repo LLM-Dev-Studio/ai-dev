@@ -1,8 +1,4 @@
 using AiDev.Executors;
-using AiDev.Features.Board;
-using AiDev.Features.Insights;
-using AiDev.Features.KnowledgeBase;
-using AiDev.Features.Playbook;
 using AiDev.Features.Secrets;
 
 namespace AiDev.Features.Agent;
@@ -17,14 +13,12 @@ public class AgentRunnerService(
     StudioSettingsService settings,
     IEnumerable<IAgentExecutor> executors,
     IModelRegistry modelRegistry,
-    MessageChangedNotifier messageNotifier,
-    KbService kbService,
-    PlaybookService playbookService,
+    AgentService agentService,
+    AgentPromptBuilder promptBuilder,
+    SessionCompletionProcessor completionProcessor,
     SecretsService secretsService,
-    InsightsService insightsService,
-    BoardService boardService,
     ILogger<AgentRunnerService> logger,
-    ProjectStateChangedNotifier projectStateChangedNotifier)
+    ProjectStateChangedNotifier projectStateChangedNotifier) : IAgentRunnerService
 {
     private static readonly ActivitySource ActivitySource = new("AiDevNet.AgentRunner");
     private readonly Dictionary<string, IAgentExecutor> _executors =
@@ -46,13 +40,8 @@ public class AgentRunnerService(
         public CancellationTokenSource Cts { get; } = cts;
     }
 
-    // Holds config loaded from agent.json that is needed across the session lifecycle.
-    private sealed record AgentConfig(string ModelAlias, AgentExecutorName Executor, IReadOnlyList<string> Skills, ThinkingLevel ThinkingLevel = ThinkingLevel.Off);
-
     private readonly ConcurrentDictionary<string, SessionInfo> _sessions = new();
     private readonly ConcurrentDictionary<string, DateTime> _rateLimitedUntil = new();
-    // Per-key semaphores to serialize usage file reads/writes when concurrent sessions finish same-day.
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _usageLocks = new();
 
     private static string Key(ProjectSlug project, AgentSlug agent) => $"{project.Value}/{agent.Value}";
 
@@ -89,19 +78,12 @@ public class AgentRunnerService(
 
             foreach (var agentDir in Directory.GetDirectories(agentsDir))
             {
-                var jsonPath = Path.Combine(agentDir, "agent.json");
-                if (!File.Exists(jsonPath)) continue;
+                if (!AgentSlug.TryParse(Path.GetFileName(agentDir), out var slug)) continue;
 
                 try
                 {
-                    var json = await File.ReadAllTextAsync(jsonPath);
-                    var doc = System.Text.Json.JsonDocument.Parse(json);
-                    if (!doc.RootElement.TryGetProperty("status", out var statusEl)) continue;
-                    if (!string.Equals(statusEl.GetString(), "running", StringComparison.OrdinalIgnoreCase)) continue;
-
-                    // Check whether this process actually owns a live session for this agent.
-                    var slug = AgentSlug.TryParse(Path.GetFileName(agentDir), out var s) ? s : null;
-                    if (slug is null) continue;
+                    var info = agentService.LoadAgent(project, slug);
+                    if (info?.Status != AgentStatus.Running) continue;
                     if (_sessions.ContainsKey(Key(project, slug))) continue;
 
                     logger.LogWarning(
@@ -118,7 +100,8 @@ public class AgentRunnerService(
                 }
                 catch (Exception ex)
                 {
-                    logger.LogWarning(ex, "[runner] Failed to inspect {Path} during stale-session recovery", jsonPath);
+                    logger.LogWarning(ex, "[runner] Failed to inspect agent {Project}/{Agent} during stale-session recovery",
+                        project.Value, slug.Value);
                 }
             }
         }
@@ -277,8 +260,8 @@ public class AgentRunnerService(
 
         // Load agent config — fail fast on missing or malformed agent.json rather than
         // silently defaulting to a different executor/model.
-        var agentConfig = LoadAgentConfig(agentDir);
-        if (agentConfig == null)
+        var loadedInfo = agentService.LoadAgent(projectSlug, agentSlug);
+        if (loadedInfo == null)
         {
             logger.LogError("[runner] Agent {Key} has missing or malformed agent.json; aborting launch", key);
             await UpdateAgentStatusAsync(agentDir, new()
@@ -292,8 +275,10 @@ public class AgentRunnerService(
             return;
         }
 
-        var modelId = ResolveModelId(agentConfig.ModelAlias, agentConfig.Executor);
-        var executorName = agentConfig.Executor;
+        var modelId = ResolveModelId(loadedInfo.Model ?? string.Empty, loadedInfo.Executor);
+        var executorName = loadedInfo.Executor;
+        var agentSkills = (IReadOnlyList<string>)loadedInfo.Skills;
+        var agentThinking = loadedInfo.ThinkingLevel;
         activity?.SetTag("agent.executor", executorName.Value);
 
         if (!_executors.TryGetValue(executorName.Value, out var resolvedExecutor))
@@ -351,33 +336,12 @@ public class AgentRunnerService(
             }
         });
 
-        // Build prompt: inject playbook and KB articles before the standard instruction.
-        var effectivePrompt = string.Join("\n\n",
+        // Build prompt: inject KB context and playbook before the standard instruction.
+        var effectivePrompt = promptBuilder.Build(
+            projectSlug, agentSlug,
             string.Format(ProjectScopedMcpPrompt, projectSlug.Value, agentSlug.Value),
-            AgentPrompt);
-        var inboxText = ReadInboxText(inboxDir, inboxSnapshot);
-
-        var kbContext = kbService.BuildInjectionContext(projectSlug, inboxText);
-        if (!string.IsNullOrEmpty(kbContext))
-        {
-            effectivePrompt = kbContext + "\n\n---\n\n" + effectivePrompt;
-            logger.LogInformation("[runner] Injected KB context into prompt for {Key}", key);
-        }
-
-        var playbookSlug = ExtractPlaybookSlug(inboxDir, inboxSnapshot);
-        if (playbookSlug != null)
-        {
-            var playbookContext = playbookService.GetInjectionContext(projectSlug, playbookSlug);
-            if (!string.IsNullOrEmpty(playbookContext))
-            {
-                effectivePrompt = playbookContext + "\n\n---\n\n" + effectivePrompt;
-                logger.LogInformation("[runner] Injected playbook '{Slug}' into prompt for {Key}", playbookSlug, key);
-            }
-            else
-            {
-                logger.LogWarning("[runner] Playbook '{Slug}' specified in inbox message not found for {Key}", playbookSlug, key);
-            }
-        }
+            AgentPrompt,
+            inboxDir, inboxSnapshot);
 
         var exitCode = 0;
         var isRateLimited = false;
@@ -395,7 +359,7 @@ public class AgentRunnerService(
             ModelId: modelId,
             Prompt: effectivePrompt,
             CancellationToken: info.Cts.Token,
-            EnabledSkills: agentConfig.Skills,
+            EnabledSkills: agentSkills,
             ReportPid: pid =>
             {
                 info.Pid = pid;
@@ -407,7 +371,7 @@ public class AgentRunnerService(
                 activity?.AddEvent(new("process.started"));
             },
             Trigger: info.Trigger,
-            ThinkingLevel: agentConfig.ThinkingLevel,
+            ThinkingLevel: agentThinking,
             Secrets: secrets.Count > 0 ? secrets : null,
             ReportWarning: warning =>
             {
@@ -482,84 +446,6 @@ public class AgentRunnerService(
             try { await consumerTask; }
             catch (Exception ex) { logger.LogWarning(ex, "[runner] Transcript flush faulted for {Key}", key); }
 
-            // Persist token usage alongside the transcript (accumulate across same-day sessions).
-            if (sessionUsage != null)
-            {
-                try
-                {
-                    var usagePath = Path.Combine(transcriptDir, $"{transcriptDate.Value}.usage.json");
-                    // Serialize concurrent session finishes on the same key to avoid TOCTOU on the usage file.
-                    var usageLock = _usageLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
-                    // Bounded wait — if the semaphore is somehow never released we should not hang forever.
-                    if (await usageLock.WaitAsync(TimeSpan.FromSeconds(30)))
-                    {
-                        try
-                        {
-                            if (File.Exists(usagePath))
-                            {
-                                try
-                                {
-                                    var existing = System.Text.Json.JsonSerializer.Deserialize<TokenUsage>(
-                                        await File.ReadAllTextAsync(usagePath), JsonDefaults.Read);
-                                    if (existing != null) sessionUsage = existing + sessionUsage;
-                                }
-                                catch { /* ignore corrupt existing file; overwrite with current session */ }
-                            }
-                            var usageJson = System.Text.Json.JsonSerializer.Serialize(sessionUsage, JsonDefaults.Write);
-                            await File.WriteAllTextAsync(usagePath, usageJson);
-                            logger.LogInformation(
-                                "[runner] Usage — {In} in / {Out} out tokens (daily total)",
-                                sessionUsage.InputTokens, sessionUsage.OutputTokens);
-                        }
-                        finally { usageLock.Release(); }
-                    }
-                    else
-                    {
-                        logger.LogWarning("[runner] Usage-lock timed out for {Key} — usage file not updated", key);
-                    }
-                }
-                catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to write usage file"); }
-            }
-
-            // Process result.json — read SessionResult from outbox, persist alongside transcript,
-            // and automatically complete the associated board task.
-            try
-            {
-                var outboxDir = paths.AgentOutboxDir(projectSlug, agentSlug).Value;
-                var resultPath = Path.Combine(outboxDir, "result.json");
-                if (File.Exists(resultPath))
-                {
-                    var resultJson = await File.ReadAllTextAsync(resultPath);
-                    var sessionResult = System.Text.Json.JsonSerializer.Deserialize<SessionResult>(resultJson, JsonDefaults.Read);
-                    if (sessionResult != null)
-                    {
-                        // Persist alongside the transcript for later querying.
-                        var persistedResultPath = Path.Combine(transcriptDir, $"{transcriptDate.Value}.result.json");
-                        await File.WriteAllTextAsync(persistedResultPath, resultJson);
-                        logger.LogInformation("[runner] Persisted result.json for {Key} → {Path}", key, persistedResultPath);
-
-                        // Delete from outbox so a crashed next session cannot replay a stale result.
-                        try { File.Delete(resultPath); } catch (Exception delEx) { logger.LogWarning(delEx, "[runner] Failed to delete result.json from outbox for {Key}", key); }
-
-                        // Resolve the task ID — prefer result.taskId, fall back to trigger.TaskId.
-                        var rawTaskId = !string.IsNullOrWhiteSpace(sessionResult.TaskId)
-                            ? sessionResult.TaskId
-                            : info.Trigger?.TaskId;
-
-                        if (rawTaskId != null && TaskId.TryParse(rawTaskId, out var resultTaskId))
-                        {
-                            boardService.CompleteTaskFromResult(projectSlug, resultTaskId, sessionResult);
-                            logger.LogInformation("[runner] Auto-completed board task {TaskId} from result.json for {Key}",
-                                resultTaskId.Value, key);
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "[runner] Failed to process result.json for {Key}", key);
-            }
-
             activity?.SetTag("agent.finishedAt", exitedAt.ToString("o"));
             activity?.AddEvent(new("session.finished"));
             logger.LogInformation("[runner] Agent {Key} finished (exit={Code}) at {Time}", key, exitCode, exitedAt);
@@ -576,17 +462,6 @@ public class AgentRunnerService(
             });
             projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
 
-            // Generate AI insights for the completed session (fire-and-forget; CancellationToken.None so
-            // insights finish writing even after the session CT is cancelled at shutdown).
-            var insightPath = paths.InsightPath(projectSlug, agentSlug, transcriptDate).Value;
-            _ = insightsService.GenerateAndSaveAsync(transcriptPath, insightPath, CancellationToken.None)
-                .ContinueWith(t =>
-                {
-                    if (t.Exception != null)
-                        logger.LogWarning(t.Exception, "[runner] Insights generation faulted for {Project}/{Agent}",
-                            projectSlug.Value, agentSlug.Value);
-                }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
-
             _sessions.TryRemove(key, out _);
 
             if (isRateLimited)
@@ -596,41 +471,22 @@ public class AgentRunnerService(
                 logger.LogWarning(
                     "[runner] Agent {Key} hit a rate limit — inbox NOT archived, launches suppressed until {Until}",
                     key, suppressUntil);
-                messageNotifier.Notify(projectSlug);
             }
             else
             {
                 _rateLimitedUntil.TryRemove(key, out _);
-                if (preserveInbox)
-                {
-                    logger.LogWarning(
-                        "[runner] Agent {Key} ended with a recoverable configuration error — inbox preserved for retry",
-                        key);
-                    if (inboxSnapshot.Length > 0) messageNotifier.Notify(projectSlug);
-                }
-                else
-                {
-                    ArchiveInbox(inboxDir, inboxSnapshot);
-                    if (inboxSnapshot.Length > 0) messageNotifier.Notify(projectSlug);
-
-                    var pendingAfterSession = Directory.Exists(inboxDir)
-                        ? Directory.GetFiles(inboxDir, "*.md")
-                            .Count(f => !f.Contains(
-                                Path.DirectorySeparatorChar + "processed" + Path.DirectorySeparatorChar,
-                                StringComparison.OrdinalIgnoreCase))
-                        : 0;
-
-                    if (pendingAfterSession > 0)
-                    {
-                        logger.LogInformation(
-                            "[runner] {Count} message(s) arrived during session for {Key} — re-launching",
-                            pendingAfterSession, key);
-                        activity?.SetTag("agent.relaunch", true);
-                        activity?.SetTag("agent.relaunchReason", "inbox-messages-during-session");
-                        LaunchAgent(projectSlug, agentSlug);
-                    }
-                }
             }
+
+            await completionProcessor.ProcessAsync(
+                key, projectSlug, agentSlug,
+                transcriptDir, transcriptDate, transcriptPath,
+                inboxDir, inboxSnapshot,
+                exitCode, isRateLimited, preserveInbox,
+                sessionUsage,
+                relaunch: LaunchAgent);
+
+            if (!isRateLimited && !preserveInbox)
+                activity?.SetTag("agent.relaunchReason", "inbox-messages-during-session");
         }
     }
 
@@ -654,43 +510,6 @@ public class AgentRunnerService(
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
-
-    private AgentConfig? LoadAgentConfig(string agentDir)
-    {
-        const string DefaultModel = "claude-sonnet-4-6";
-        var path = Path.Combine(agentDir, "agent.json");
-        if (!File.Exists(path)) return null;
-        try
-        {
-            var raw = File.ReadAllText(path);
-            var doc = System.Text.Json.JsonDocument.Parse(raw);
-            var root = doc.RootElement;
-
-            var executor = root.TryGetProperty("executor", out var e)
-                && AgentExecutorName.TryParse(e.GetString(), out var configuredExecutor)
-                    ? configuredExecutor
-                    : AgentExecutorName.Default;
-
-            var rawModel = root.TryGetProperty("model", out var m) ? m.GetString() ?? DefaultModel : DefaultModel;
-            // Resolve old alias at runtime — guards against agents launched before migration ran.
-            var model = LegacyModelAliases.Resolve(rawModel, executor.Value) ?? rawModel;
-
-            List<string> skills = [];
-            if (root.TryGetProperty("skills", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.Array)
-                skills = s.EnumerateArray().Select(x => x.GetString() ?? string.Empty).Where(x => x.Length > 0).ToList();
-
-            var thinking = root.TryGetProperty("thinking", out var th)
-                ? ThinkingLevelExtensions.Parse(th.GetString())
-                : ThinkingLevel.Off;
-
-            return new(ModelAlias: model, Executor: executor, Skills: skills, ThinkingLevel: thinking);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "[runner] Failed to parse agent.json in {AgentDir}", agentDir);
-            return null;
-        }
-    }
 
     private string ResolveModelId(string modelOrAlias, AgentExecutorName executor)
     {
@@ -733,65 +552,10 @@ public class AgentRunnerService(
         catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to update agent status in {AgentDir}", agentDir); }
     }
 
-    private void ArchiveInbox(string inboxDir, string[] snapshot)
-    {
-        if (snapshot.Length == 0) return;
-        var processedDir = Path.Combine(inboxDir, "processed");
-        try
-        {
-            Directory.CreateDirectory(processedDir);
-            foreach (var filename in snapshot)
-            {
-                var src = Path.Combine(inboxDir, filename);
-                var dst = Path.Combine(processedDir, filename);
-                if (File.Exists(src)) File.Move(src, dst, overwrite: true);
-            }
-            logger.LogInformation("[runner] Archived {Count} inbox file(s)", snapshot.Length);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "[runner] Failed to archive inbox");
-        }
-    }
-
-    private static string? ExtractPlaybookSlug(string inboxDir, string[] snapshot)
-    {
-        foreach (var filename in snapshot)
-        {
-            try
-            {
-                var path = Path.Combine(inboxDir, filename);
-                if (!File.Exists(path)) continue;
-                var content = File.ReadAllText(path);
-                var (fields, _) = FrontmatterParser.Parse(content);
-                if (fields.TryGetValue("playbook", out var slug) && !string.IsNullOrWhiteSpace(slug))
-                    return slug.Trim();
-            }
-            catch { /* ignore unreadable files */ }
-        }
-        return null;
-    }
-
-    private static string ReadInboxText(string inboxDir, string[] snapshot)
-    {
-        if (snapshot.Length == 0) return string.Empty;
-        var sb = new System.Text.StringBuilder();
-        foreach (var filename in snapshot)
-        {
-            try
-            {
-                var path = Path.Combine(inboxDir, filename);
-                if (File.Exists(path)) sb.AppendLine(File.ReadAllText(path));
-            }
-            catch { /* ignore unreadable files */ }
-        }
-        return sb.ToString();
-    }
-
     /// <summary>
     /// Writes a human-readable message to an agent's inbox.
     /// </summary>
-    public string? WriteInboxMessage(ProjectSlug projectSlug, AgentSlug agentSlug,
+    public Result<Unit> WriteInboxMessage(ProjectSlug projectSlug, AgentSlug agentSlug,
         string from, string re, string type, string priority, string body, TaskId? taskId = null, string? decisionId = null)
     {
         using var activity = ActivitySource.StartActivity("Agent.WriteInboxMessage", ActivityKind.Internal);
@@ -828,7 +592,7 @@ public class AgentRunnerService(
             activity?.SetTag("message.success", true);
             logger.LogInformation("[runner] Inbox message written: {Project}/{Agent} ← {From} ({Type}) [{File}]",
                 projectSlug, agentSlug, from, type, unique);
-            return null;
+            return new Ok<Unit>(Unit.Value);
         }
         catch (Exception ex)
         {
@@ -836,7 +600,7 @@ public class AgentRunnerService(
             activity?.SetTag("message.error", ex.Message);
             logger.LogError(ex, "[runner] Failed to write inbox message to {Project}/{Agent} from {From}: {Error}",
                 projectSlug, agentSlug, from, ex.Message);
-            return ex.Message;
+            return new Err<Unit>(new DomainError("INBOX_WRITE_FAILED", ex.Message));
         }
     }
 }

@@ -17,7 +17,7 @@ public class DecisionChatServiceTests
     public void GetMessages_WhenChatFileContainsIndentedJsonObjects_ParsesAllMessages()
     {
         var paths = CreatePaths();
-        var service = new DecisionChatService(paths, null!, new DecisionChangedNotifier(new ProjectStateChangedNotifier()), NullLogger<DecisionChatService>.Instance);
+        var service = new DecisionChatService(paths, null!, new ProjectStateChangedNotifier(), NullLogger<DecisionChatService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
         var decisionId = "20260410-093000-offline-executor-selection";
         var chatDir = paths.DecisionChatsDir(projectSlug).Value;
@@ -43,7 +43,7 @@ public class DecisionChatServiceTests
         var paths = CreatePaths();
         var fileWriter = new AtomicFileWriter();
         var runner = CreateRunner(paths, fileWriter);
-        var service = new DecisionChatService(paths, runner, new DecisionChangedNotifier(new ProjectStateChangedNotifier()), NullLogger<DecisionChatService>.Instance);
+        var service = new DecisionChatService(paths, runner, new ProjectStateChangedNotifier(), NullLogger<DecisionChatService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
         const string decisionId = "20260410-093000-offline-executor-selection";
         const string agentSlug = "pm-standard";
@@ -73,6 +73,95 @@ public class DecisionChatServiceTests
         lines[0].ShouldContain("\"content\":\"Option A\"");
     }
 
+    [Fact]
+    public void FlushAgentReplies_WhenMatchingOutboxMessageExists_AppendsToChatAndArchivesMessage()
+    {
+        var paths = CreatePaths();
+        var runner = Substitute.For<IAgentRunnerService>();
+        var notifier = new ProjectStateChangedNotifier();
+        var service = new DecisionChatService(paths, runner, notifier, NullLogger<DecisionChatService>.Instance);
+        var projectSlug = new ProjectSlug("demo-project");
+        const string decisionId = "20260410-093000-offline-executor-selection";
+        const string agentSlug = "pm-standard";
+
+        var notified = false;
+        notifier.Changed += e =>
+        {
+            if (e.ProjectSlug == projectSlug && e.Kind.HasFlag(ProjectStateChangeKind.Decisions))
+                notified = true;
+        };
+
+        var outboxDir = paths.AgentOutboxDir(projectSlug, new AgentSlug(agentSlug)).Value;
+        Directory.CreateDirectory(outboxDir);
+
+        var outboxContent = FrontmatterParser.Stringify(
+            new Dictionary<string, string>
+            {
+                ["type"] = "decision-reply",
+                ["decision-id"] = decisionId,
+                ["from"] = agentSlug,
+                ["date"] = DateTime.UtcNow.ToString("o"),
+            },
+            "I recommend Option B because it unblocks release.");
+
+        var outboxFile = Path.Combine(outboxDir, "20260410-100000-reply.md");
+        File.WriteAllText(outboxFile, outboxContent);
+
+        var flushed = service.FlushAgentReplies(projectSlug, decisionId, agentSlug);
+        var messages = service.GetMessages(projectSlug, decisionId);
+
+        flushed.ShouldBeTrue();
+        notified.ShouldBeTrue();
+        messages.Count.ShouldBe(1);
+        messages[0].IsHuman.ShouldBeFalse();
+        messages[0].From.ShouldBe(agentSlug);
+        messages[0].Content.ShouldBe("I recommend Option B because it unblocks release.");
+
+        var processedFile = Path.Combine(outboxDir, "processed", Path.GetFileName(outboxFile));
+        File.Exists(processedFile).ShouldBeTrue();
+        File.Exists(outboxFile).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void FlushAgentReplies_WhenDecisionIdDoesNotMatch_DoesNotAppendOrArchive()
+    {
+        var paths = CreatePaths();
+        var runner = Substitute.For<IAgentRunnerService>();
+        var notifier = new ProjectStateChangedNotifier();
+        var service = new DecisionChatService(paths, runner, notifier, NullLogger<DecisionChatService>.Instance);
+        var projectSlug = new ProjectSlug("demo-project");
+        const string decisionId = "20260410-093000-offline-executor-selection";
+        const string otherDecisionId = "20260410-093000-different";
+        const string agentSlug = "pm-standard";
+
+        var notified = false;
+        notifier.Changed += _ => notified = true;
+
+        var outboxDir = paths.AgentOutboxDir(projectSlug, new AgentSlug(agentSlug)).Value;
+        Directory.CreateDirectory(outboxDir);
+
+        var outboxContent = FrontmatterParser.Stringify(
+            new Dictionary<string, string>
+            {
+                ["type"] = "decision-reply",
+                ["decision-id"] = otherDecisionId,
+                ["from"] = agentSlug,
+                ["date"] = DateTime.UtcNow.ToString("o"),
+            },
+            "Reply for a different decision.");
+
+        var outboxFile = Path.Combine(outboxDir, "20260410-100000-reply.md");
+        File.WriteAllText(outboxFile, outboxContent);
+
+        var flushed = service.FlushAgentReplies(projectSlug, decisionId, agentSlug);
+        var messages = service.GetMessages(projectSlug, decisionId);
+
+        flushed.ShouldBeFalse();
+        notified.ShouldBeFalse();
+        messages.ShouldBeEmpty();
+        File.Exists(outboxFile).ShouldBeTrue();
+    }
+
     private static WorkspacePaths CreatePaths()
     {
         var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
@@ -96,12 +185,10 @@ public class DecisionChatServiceTests
             settings,
             [new ImmediateExecutor()],
             modelRegistry,
-            new MessageChangedNotifier(projectStateNotifier),
-            new KbService(paths, fileWriter, new ProjectMutationCoordinator()),
-            new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()),
+            new AgentService(paths, new AgentTemplatesService(paths), fileWriter, new ProjectMutationCoordinator(), modelRegistry, NullLogger<AgentService>.Instance),
+            new AgentPromptBuilder(new KbService(paths, fileWriter, new ProjectMutationCoordinator()), new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()), NullLogger<AgentPromptBuilder>.Instance),
+            new SessionCompletionProcessor(paths, new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance, projectStateNotifier), new InsightsService([], settings, NullLogger<InsightsService>.Instance), projectStateNotifier, NullLogger<SessionCompletionProcessor>.Instance),
             new SecretsService(paths, fileWriter),
-            new InsightsService([], settings, NullLogger<InsightsService>.Instance),
-            new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance, projectStateNotifier),
             NullLogger<AgentRunnerService>.Instance,
             projectStateNotifier);
     }

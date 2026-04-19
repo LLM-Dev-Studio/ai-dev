@@ -8,9 +8,9 @@
 @rendermode InteractiveServer
 @inject DecisionsService DecisionsService
 @inject DecisionChatService ChatService
-@inject AgentRunnerService RunnerService
+@inject IAgentRunnerService RunnerService
 @inject AgentService AgentService
-@inject DecisionChangedNotifier DecisionNotifier
+@inject ProjectStateChangedNotifier DecisionNotifier
 @inject NavigationManager NavigationManager
 @inject ILogger<DecisionDetailPage> Logger
 @implements IDisposable
@@ -216,9 +216,9 @@ else
         }
     }
 
-    private void OnDecisionChanged(ProjectSlug project)
+    private void OnDecisionChanged(ProjectStateChangedEvent e)
     {
-        if (project.Value != Slug) return;
+        if (!e.Kind.HasFlag(ProjectStateChangeKind.Decisions) || e.ProjectSlug.Value != Slug) return;
         InvokeAsync(() =>
         {
             RefreshDecisionState(flushReplies: false);

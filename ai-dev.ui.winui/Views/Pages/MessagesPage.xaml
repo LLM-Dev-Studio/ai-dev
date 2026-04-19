@@ -136,11 +136,11 @@
                     </TextBlock>
                 </StackPanel>
 
-                <ScrollViewer Grid.Row="2">
-                    <TextBlock Text="{Binding SelectedMessage.Body}"
-                               TextWrapping="Wrap"
-                               Style="{StaticResource BodyTextBlockStyle}" />
-                </ScrollViewer>
+                <Border Grid.Row="2"
+                        CornerRadius="6"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                    <WebView2 x:Name="MessageBodyWebView" />
+                </Border>
 
                 <Button Grid.Row="3"
                         Content="Mark Processed"

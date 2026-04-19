@@ -25,7 +25,6 @@ public static class CoreServiceExtensions
     {
         services.AddSingleton<IDomainEventDispatcher, InProcessDomainEventDispatcher>();
         services.AddSingleton<IDomainEventHandler<TaskAssigned>, TaskAssignedHandler>();
-        services.AddSingleton<IDomainEventHandler<DecisionResolved>, DecisionResolvedHandler>();
         services.AddSingleton<ProjectStateChangedNotifier>();
         services.AddSingleton<ProjectStateSnapshotService>();
         services.AddSingleton<AtomicFileWriter>();
@@ -37,8 +36,6 @@ public static class CoreServiceExtensions
         services.AddSingleton<AgentTemplatesService>();
         services.AddSingleton<AgentService>();
         services.AddSingleton<BoardService>();
-        services.AddSingleton<MessageChangedNotifier>();
-        services.AddSingleton<DecisionChangedNotifier>();
         services.AddSingleton<MessagesService>();
         services.AddSingleton<DecisionsService>();
         services.AddSingleton<DecisionChatService>();
@@ -49,7 +46,10 @@ public static class CoreServiceExtensions
         services.AddSingleton<GitService>();
         services.AddSingleton<PromptEnhancerService>();
         services.AddSingleton<InsightsService>();
+        services.AddSingleton<AgentPromptBuilder>();
+        services.AddSingleton<SessionCompletionProcessor>();
         services.AddSingleton<AgentRunnerService>();
+        services.AddSingleton<IAgentRunnerService>(sp => sp.GetRequiredService<AgentRunnerService>());
 
         // ExecutorHealthMonitor polls all registered IAgentExecutor implementations.
         // Registered as both a singleton (so it can be injected by name) and a hosted service.

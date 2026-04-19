@@ -368,9 +368,35 @@ public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentEx
 
         // Multiple agents in the same project may launch concurrently and race on this file.
         // Write to a temp file and atomically move it to avoid sharing violations.
+        // On Windows, File.Move(overwrite: true) can fail transiently when a concurrent
+        // Claude CLI process (or antivirus scanner) holds the destination. Retry with
+        // back-off; if all retries fail but a settings.json already exists from a prior
+        // session, proceed with it — the content is functionally equivalent for the same
+        // project. Only throw if the file is absent and we truly cannot create it.
         var tmpPath = settingsPath + $".{Guid.NewGuid():N}.tmp";
-        File.WriteAllText(tmpPath, json);
-        File.Move(tmpPath, settingsPath, overwrite: true);
+        try
+        {
+            File.WriteAllText(tmpPath, json);
+
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    File.Move(tmpPath, settingsPath, overwrite: true);
+                    break;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < 3)
+                {
+                    Thread.Sleep(50 * (1 << attempt)); // 50 ms, 100 ms, 200 ms
+                }
+            }
+        }
+        catch (Exception) when (File.Exists(settingsPath))
+        {
+            // Transient write failure — settings.json already exists from a prior session.
+            // Proceed with the existing version rather than aborting the entire launch.
+            try { File.Delete(tmpPath); } catch { /* best-effort cleanup */ }
+        }
     }
 
     private static bool IsRateLimitLine(string line) =>

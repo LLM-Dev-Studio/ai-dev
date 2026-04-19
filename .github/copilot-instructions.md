@@ -15,6 +15,11 @@
 - Leave mostly read-only services like `GitService`, `MessagesService`, and `JournalsService` on null/empty semantics.
 - Model supported executor types in `agent.json` as a first-class supported type rather than a magic string, and ensure executor details are editable in the agent detail UI.
 
+### Testing & UI
+- Prefer testing WinUI behavior through ViewModel/unit tests before adding UI automation.
+- Provide UI automation only as exploratory samples or documentation; do not rely on them as primary CI tests.
+- In ViewModel tests, assert command execution, property changes, navigation intents, and interactions with services via interfaces/mocks.
+
 ## Application Hosting
 - Aspire must start both the MCP server and the web app; do not simplify AppHost to only run the web project.
 

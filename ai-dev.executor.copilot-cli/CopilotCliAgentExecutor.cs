@@ -333,8 +333,27 @@ public class CopilotCliAgentExecutor(ILogger<CopilotCliAgentExecutor> logger) : 
         var json = config.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
 
         var tmpPath = configPath + $".{Guid.NewGuid():N}.tmp";
-        File.WriteAllText(tmpPath, json);
-        File.Move(tmpPath, configPath, overwrite: true);
+        try
+        {
+            File.WriteAllText(tmpPath, json);
+
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    File.Move(tmpPath, configPath, overwrite: true);
+                    break;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < 3)
+                {
+                    Thread.Sleep(50 * (1 << attempt)); // 50 ms, 100 ms, 200 ms
+                }
+            }
+        }
+        catch (Exception) when (File.Exists(configPath))
+        {
+            try { File.Delete(tmpPath); } catch { /* best-effort cleanup */ }
+        }
 
         return configPath;
     }

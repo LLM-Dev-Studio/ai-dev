@@ -156,7 +156,8 @@ public class ProductionReadinessIntegrationTests : IDisposable
             new AgentTemplatesService(_paths),
             _fileWriter,
             _coordinator,
-            modelRegistry);
+            modelRegistry,
+            NullLogger<AgentService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
         var workspaceService = new WorkspaceService(_paths, _fileWriter);
         workspaceService.CreateProject(projectSlug.Value, "Demo Project", null).ShouldBeOfType<Ok<Unit>>();

@@ -2,7 +2,7 @@ using AiDev.Features.Agent;
 
 namespace AiDev.Features.Digest;
 
-public class DigestService(WorkspacePaths paths)
+public class DigestService(WorkspacePaths paths, AgentService agentService)
 {
     public DigestData GetDigest(ProjectSlug projectSlug, string date)
     {
@@ -21,21 +21,10 @@ public class DigestService(WorkspacePaths paths)
             {
                 if (!AgentSlug.TryParse(Path.GetFileName(agentDir), out var agentSlug)) continue;
 
-                var jsonPath = paths.AgentJsonPath(projectSlug, agentSlug);
-                var name = agentSlug.Value;
-                var executor = string.Empty;
-                var model = string.Empty;
-                if (jsonPath.Exists())
-                {
-                    try
-                    {
-                        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(jsonPath));
-                        if (doc.RootElement.TryGetProperty("name", out var n)) name = n.GetString() ?? agentSlug.Value;
-                        if (doc.RootElement.TryGetProperty("executor", out var e)) executor = e.GetString() ?? string.Empty;
-                        if (doc.RootElement.TryGetProperty("model", out var m)) model = m.GetString() ?? string.Empty;
-                    }
-                    catch { }
-                }
+                var agentInfo = agentService.LoadAgent(projectSlug, agentSlug);
+                var name = agentInfo?.Name ?? agentSlug.Value;
+                var executor = agentInfo?.Executor.Value ?? string.Empty;
+                var model = agentInfo?.Model ?? string.Empty;
 
                 var sent = CountFilesForDate(paths.AgentOutboxDir(projectSlug, agentSlug), date);
                 var received = CountFilesForDate(paths.AgentInboxDir(projectSlug, agentSlug), date);

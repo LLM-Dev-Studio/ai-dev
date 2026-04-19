@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace AiDevNet.Tests.Unit;
 
 public class AgentServiceTests
@@ -83,6 +85,7 @@ public class AgentServiceTests
             new AgentTemplatesService(paths),
             new AtomicFileWriter(),
             new ProjectMutationCoordinator(),
-            modelRegistry);
+            modelRegistry,
+            NullLogger<AgentService>.Instance);
     }
 }

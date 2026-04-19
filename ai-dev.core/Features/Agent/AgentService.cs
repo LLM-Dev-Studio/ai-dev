@@ -25,7 +25,8 @@ public class AgentService(
     AgentTemplatesService templates,
     AtomicFileWriter fileWriter,
     ProjectMutationCoordinator coordinator,
-    IModelRegistry modelRegistry)
+    IModelRegistry modelRegistry,
+    ILogger<AgentService> logger)
 {
     private static readonly DomainError InvalidAgentSlugError = new("AGENT_INVALID_SLUG", "Invalid agent slug.");
     private static readonly DomainError AgentNotFoundError = new("AGENT_NOT_FOUND", "Agent not found.");
@@ -77,7 +78,11 @@ public class AgentService(
                 failoverExecutor: AgentExecutorName.TryParse(data.FailoverExecutor, out var failoverExecutor) ? failoverExecutor : null,
                 failedOverAt: DateTime.TryParse(data.FailedOverAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var failedOverAt) ? failedOverAt : null);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[agent] Failed to load agent.json for {Project}/{Agent}", projectSlug, agentSlug);
+            return null;
+        }
     }
 
     /// <summary>

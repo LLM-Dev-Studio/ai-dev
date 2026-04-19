@@ -1,4 +1,5 @@
 using AiDev.Features.Digest;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AiDevNet.Tests.Unit;
 
@@ -235,6 +236,15 @@ public class DigestServiceTests
     {
         var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
         paths = new WorkspacePaths(root);
-        return new DigestService(paths);
+        var modelRegistry = Substitute.For<IModelRegistry>();
+        modelRegistry.Find(Arg.Any<string>(), Arg.Any<string>()).Returns((ModelDescriptor?)null);
+        var agentService = new AgentService(
+            paths,
+            new AgentTemplatesService(paths),
+            new AtomicFileWriter(),
+            new ProjectMutationCoordinator(),
+            modelRegistry,
+            NullLogger<AgentService>.Instance);
+        return new DigestService(paths, agentService);
     }
 }
