@@ -150,11 +150,12 @@
               HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
         <Border HorizontalAlignment="Center" VerticalAlignment="Center"
-                Width="520" Padding="24" CornerRadius="12"
+                Width="700" MaxHeight="800" Padding="24" CornerRadius="12"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 Visibility="{Binding ShowTaskDialog, Converter={StaticResource BoolToVisible}}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="12">
 
                 <TextBlock Text="{Binding DialogTitle}" Style="{StaticResource SubtitleTextBlockStyle}" />
@@ -192,6 +193,8 @@
                              AcceptsReturn="True"
                              TextWrapping="Wrap"
                              MinHeight="80"
+                             MaxHeight="200"
+                             VerticalScrollBarVisibility="Auto"
                              PlaceholderText="Optional details, acceptance criteria…" />
                 </StackPanel>
 
@@ -248,6 +251,7 @@
                     </StackPanel>
                 </Grid>
             </StackPanel>
+            </ScrollViewer>
         </Border>
     </Grid>
 </Page>
