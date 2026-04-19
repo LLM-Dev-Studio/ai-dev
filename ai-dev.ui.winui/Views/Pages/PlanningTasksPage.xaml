@@ -261,8 +261,7 @@
                 <Border Grid.Row="1" VerticalAlignment="Top"
                         Background="#FFF4CE" Padding="12,8" CornerRadius="4" Margin="16,4"
                         BorderBrush="#F7A800" BorderThickness="1"
-                        Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisible}}"
-                        Canvas.ZIndex="10">
+                        Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisible}}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <TextBlock Text="!" FontWeight="Bold" Foreground="#7D5A00" />
                         <TextBlock Text="{Binding ErrorMessage}"
@@ -423,7 +422,6 @@
                              AcceptsReturn="True"
                              MinHeight="64" MaxHeight="200"
                              TextWrapping="Wrap"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto"
                              Margin="0,0,8,0"
                              IsEnabled="{Binding ShowHardLimit, Converter={StaticResource InverseBool}}"
                              KeyDown="MessageInput_KeyDown" />

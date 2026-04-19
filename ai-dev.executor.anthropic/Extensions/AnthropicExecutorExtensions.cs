@@ -28,7 +28,7 @@ public static class AnthropicExecutorExtensions
         });
 
         services.AddSingleton<IAgentExecutor, AnthropicAgentExecutor>();
-        services.AddSingleton<IPlanningChatService, AnthropicPlanningChatService>();
+        services.AddSingleton<IPlanningLlmClient, AnthropicPlanningLlmClient>();
         return services;
     }
 }

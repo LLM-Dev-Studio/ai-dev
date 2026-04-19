@@ -264,18 +264,18 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
             switch (CurrentPhase)
             {
                 case SessionPhase.Phase1BusinessDiscovery:
-                    response = await _chatService.SendPhase1MessageAsync(history, userText, ct);
+                    response = await _chatService.SendPhase1MessageAsync(CurrentSlug!, history, userText, ct);
                     break;
 
                 case SessionPhase.Phase2SolutionShaping:
                     var businessDsl2 = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase1BusinessDiscovery) ?? "";
-                    response = await _chatService.SendPhase2MessageAsync(history, businessDsl2, userText, ct);
+                    response = await _chatService.SendPhase2MessageAsync(CurrentSlug!, history, businessDsl2, userText, ct);
                     break;
 
                 case SessionPhase.Phase3PlanningDecomposition:
                     var businessDsl3 = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase1BusinessDiscovery) ?? "";
                     var solutionDsl3 = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase2SolutionShaping) ?? "";
-                    response = await _chatService.SendPhase3MessageAsync(history, businessDsl3, solutionDsl3, userText, ct);
+                    response = await _chatService.SendPhase3MessageAsync(CurrentSlug!, history, businessDsl3, solutionDsl3, userText, ct);
                     break;
 
                 default:
@@ -341,12 +341,12 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
             switch (CurrentPhase)
             {
                 case SessionPhase.Phase1BusinessDiscovery:
-                    yaml = await _chatService.GenerateBusinessDslAsync(history);
+                    yaml = await _chatService.GenerateBusinessDslAsync(CurrentSlug!, history);
                     break;
 
                 case SessionPhase.Phase2SolutionShaping:
                     var businessDsl = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase1BusinessDiscovery) ?? "";
-                    yaml = await _chatService.GenerateSolutionDslAsync(history, businessDsl);
+                    yaml = await _chatService.GenerateSolutionDslAsync(CurrentSlug!, history, businessDsl);
                     // Validate before displaying
                     var validation = SolutionDslValidator.Validate(yaml);
                     if (!validation.IsValid)
@@ -360,7 +360,7 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
                 case SessionPhase.Phase3PlanningDecomposition:
                     var bDsl = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase1BusinessDiscovery) ?? "";
                     var sDsl = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase2SolutionShaping) ?? "";
-                    yaml = await _chatService.GeneratePlanDslAsync(history, bDsl, sDsl);
+                    yaml = await _chatService.GeneratePlanDslAsync(CurrentSlug!, history, bDsl, sDsl);
                     break;
 
                 default:

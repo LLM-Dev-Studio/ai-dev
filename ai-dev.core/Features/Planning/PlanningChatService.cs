@@ -1,96 +1,66 @@
-using System.Net.Http;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-
-using AiDev.Features.Planning;
-using AiDev.Services;
+using AiDev.Executors;
+using AiDev.Features.Agent;
+using AiDev.Features.Planning.Models;
 
 using Microsoft.Extensions.Logging;
 
-namespace AiDev.Executors;
+namespace AiDev.Features.Planning;
 
 /// <summary>
-/// Anthropic Messages API-backed implementation of <see cref="IPlanningChatService"/>.
-///
-/// Implements:
-/// - Phase 1 (Business Discovery): system prompt with implementation-detail prohibition,
-///   EC-6 keyword filter on all assistant responses (AD-02 blocklist).
-/// - Phase 2 (Solution Shaping): Solution Architect role constrained to the VSA stack taxonomy
-///   (AD-09). Refusal rules for excluded technologies, EC-4 handling.
-///   Solution.dsl generation prompt constrained to valid type/module enumerations (AD-10).
-/// - Phase 3 (Planning &amp; Decomposition): system prompt with Business.dsl and Solution.dsl
-///   injected as read-only context.
-/// - Token counting from API response: soft warning at 32,000 input tokens,
-///   hard limit at 40,000 input tokens per phase.
-/// - Business.dsl, Solution.dsl, and Plan.dsl YAML generation prompts.
+/// Implements <see cref="IPlanningChatService"/> using whichever <see cref="IPlanningLlmClient"/>
+/// matches the analyst agent's configured executor for the project.
+/// Falls back to the "anthropic" client if no analyst is found or no matching client is registered.
 /// </summary>
-public sealed class AnthropicPlanningChatService(
-    IHttpClientFactory httpClientFactory,
-    StudioSettingsService settingsService,
-    ILogger<AnthropicPlanningChatService> logger) : IPlanningChatService
+public sealed class PlanningChatService(
+    AgentService agentService,
+    IEnumerable<IPlanningLlmClient> llmClients,
+    ILogger<PlanningChatService> logger) : IPlanningChatService
 {
-    private const string AnthropicApiUrl = "https://api.anthropic.com/v1/messages";
-    private const string ModelId         = "claude-haiku-4-5-20251001"; // cost-effective for planning conversations
-    private const int    MaxTokens       = 8192;
+    private const string FallbackExecutor = AgentExecutorName.AnthropicValue;
+    private const string DefaultModel     = "claude-haiku-4-5-20251001";
 
     // -------------------------------------------------------------------------
     // Phase 1 — Business Discovery
     // -------------------------------------------------------------------------
 
     public async Task<PlanningChatResponse> SendPhase1MessageAsync(
+        ProjectSlug projectSlug,
         IReadOnlyList<ConversationTurn> history,
         string userMessage,
         CancellationToken ct = default)
     {
-        var messages = BuildMessages(history, userMessage);
-        var (content, inputTokens, outputTokens) =
-            await CallApiAsync(Phase1SystemPrompt, messages, ct).ConfigureAwait(false);
+        var (client, modelId) = Resolve(projectSlug);
+        var result = await client.ChatAsync(modelId, Phase1SystemPrompt, ToMessages(history), userMessage, ct)
+            .ConfigureAwait(false);
 
-        // EC-6: apply implementation-detail keyword filter to Phase 1 responses.
-        var firstMatch  = PlanningKeywordBlocklist.FindFirstMatch(content);
+        var firstMatch  = PlanningKeywordBlocklist.FindFirstMatch(result.Content);
         var wasFiltered = firstMatch != null;
-
-        var tokenStatus = TokenStatus.From(inputTokens);
+        var tokenStatus = TokenStatus.From(result.InputTokens);
 
         if (wasFiltered)
         {
-            IReadOnlyList<string> filteredTerms = [firstMatch!];
-
-            logger.LogInformation(
-                "[planning-chat] EC-6 filter triggered — terms: {Terms}",
-                string.Join(", ", filteredTerms));
-
+            logger.LogInformation("[planning-chat] EC-6 filter triggered — term: {Term}", firstMatch);
             const string blockedMessage =
                 "I notice I was about to mention some technical implementation details, which aren't appropriate for this phase. " +
                 "Let's keep our focus on the business problem. Could you rephrase your last message in purely business terms? " +
                 "For example, instead of naming specific technologies, describe what the system needs to do for the users.";
-
-            return new PlanningChatResponse(
-                blockedMessage,
-                WasFiltered: true,
-                filteredTerms,
-                inputTokens,
-                outputTokens,
-                tokenStatus);
+            return new PlanningChatResponse(blockedMessage, WasFiltered: true, [firstMatch!],
+                result.InputTokens, result.OutputTokens, tokenStatus);
         }
 
-        return new PlanningChatResponse(
-            content,
-            WasFiltered: false,
-            [],
-            inputTokens,
-            outputTokens,
-            tokenStatus);
+        return new PlanningChatResponse(result.Content, WasFiltered: false, [],
+            result.InputTokens, result.OutputTokens, tokenStatus);
     }
 
     public async Task<string> GenerateBusinessDslAsync(
+        ProjectSlug projectSlug,
         IReadOnlyList<ConversationTurn> history,
         CancellationToken ct = default)
     {
-        var messages = BuildMessages(history, BusinessDslGenerationPrompt);
-        var (content, _, _) = await CallApiAsync(Phase1SystemPrompt, messages, ct).ConfigureAwait(false);
-        return content;
+        var (client, modelId) = Resolve(projectSlug);
+        var result = await client.ChatAsync(modelId, Phase1SystemPrompt, ToMessages(history),
+            BusinessDslGenerationPrompt, ct).ConfigureAwait(false);
+        return result.Content;
     }
 
     // -------------------------------------------------------------------------
@@ -98,36 +68,29 @@ public sealed class AnthropicPlanningChatService(
     // -------------------------------------------------------------------------
 
     public async Task<PlanningChatResponse> SendPhase2MessageAsync(
+        ProjectSlug projectSlug,
         IReadOnlyList<ConversationTurn> history,
         string businessDsl,
         string userMessage,
         CancellationToken ct = default)
     {
-        var systemPrompt = BuildPhase2SystemPrompt(businessDsl);
-        var messages     = BuildMessages(history, userMessage);
-        var (content, inputTokens, outputTokens) =
-            await CallApiAsync(systemPrompt, messages, ct).ConfigureAwait(false);
-
-        var tokenStatus = TokenStatus.From(inputTokens);
-
-        return new PlanningChatResponse(
-            content,
-            WasFiltered: false,
-            [],
-            inputTokens,
-            outputTokens,
-            tokenStatus);
+        var (client, modelId) = Resolve(projectSlug);
+        var result = await client.ChatAsync(modelId, BuildPhase2SystemPrompt(businessDsl),
+            ToMessages(history), userMessage, ct).ConfigureAwait(false);
+        return new PlanningChatResponse(result.Content, WasFiltered: false, [],
+            result.InputTokens, result.OutputTokens, TokenStatus.From(result.InputTokens));
     }
 
     public async Task<string> GenerateSolutionDslAsync(
+        ProjectSlug projectSlug,
         IReadOnlyList<ConversationTurn> history,
         string businessDsl,
         CancellationToken ct = default)
     {
-        var systemPrompt = BuildPhase2SystemPrompt(businessDsl);
-        var messages     = BuildMessages(history, SolutionDslGenerationPrompt);
-        var (content, _, _) = await CallApiAsync(systemPrompt, messages, ct).ConfigureAwait(false);
-        return content;
+        var (client, modelId) = Resolve(projectSlug);
+        var result = await client.ChatAsync(modelId, BuildPhase2SystemPrompt(businessDsl),
+            ToMessages(history), SolutionDslGenerationPrompt, ct).ConfigureAwait(false);
+        return result.Content;
     }
 
     // -------------------------------------------------------------------------
@@ -135,138 +98,73 @@ public sealed class AnthropicPlanningChatService(
     // -------------------------------------------------------------------------
 
     public async Task<PlanningChatResponse> SendPhase3MessageAsync(
+        ProjectSlug projectSlug,
         IReadOnlyList<ConversationTurn> history,
         string businessDsl,
         string solutionDsl,
         string userMessage,
         CancellationToken ct = default)
     {
-        var systemPrompt = BuildPhase3SystemPrompt(businessDsl, solutionDsl);
-        var messages     = BuildMessages(history, userMessage);
-        var (content, inputTokens, outputTokens) =
-            await CallApiAsync(systemPrompt, messages, ct).ConfigureAwait(false);
-
-        var tokenStatus = TokenStatus.From(inputTokens);
-
-        return new PlanningChatResponse(
-            content,
-            WasFiltered: false,
-            [],
-            inputTokens,
-            outputTokens,
-            tokenStatus);
+        var (client, modelId) = Resolve(projectSlug);
+        var result = await client.ChatAsync(modelId, BuildPhase3SystemPrompt(businessDsl, solutionDsl),
+            ToMessages(history), userMessage, ct).ConfigureAwait(false);
+        return new PlanningChatResponse(result.Content, WasFiltered: false, [],
+            result.InputTokens, result.OutputTokens, TokenStatus.From(result.InputTokens));
     }
 
     public async Task<string> GeneratePlanDslAsync(
+        ProjectSlug projectSlug,
         IReadOnlyList<ConversationTurn> history,
         string businessDsl,
         string solutionDsl,
         CancellationToken ct = default)
     {
-        var systemPrompt = BuildPhase3SystemPrompt(businessDsl, solutionDsl);
-        var messages     = BuildMessages(history, PlanDslGenerationPrompt);
-        var (content, _, _) = await CallApiAsync(systemPrompt, messages, ct).ConfigureAwait(false);
-        return content;
+        var (client, modelId) = Resolve(projectSlug);
+        var result = await client.ChatAsync(modelId, BuildPhase3SystemPrompt(businessDsl, solutionDsl),
+            ToMessages(history), PlanDslGenerationPrompt, ct).ConfigureAwait(false);
+        return result.Content;
     }
 
     // -------------------------------------------------------------------------
-    // HTTP helper
+    // Resolution
     // -------------------------------------------------------------------------
 
-    private async Task<(string Content, int InputTokens, int OutputTokens)> CallApiAsync(
-        string systemPrompt, JsonArray messages, CancellationToken ct)
+    private (IPlanningLlmClient Client, string ModelId) Resolve(ProjectSlug projectSlug)
     {
-        var apiKey = settingsService.GetSettings().AnthropicApiKey;
-        if (string.IsNullOrWhiteSpace(apiKey))
-            throw new InvalidOperationException("AnthropicApiKey not configured in studio settings.");
+        var clientMap = llmClients.ToDictionary(c => c.ExecutorName, StringComparer.OrdinalIgnoreCase);
 
-        var requestBody = new JsonObject
-        {
-            ["model"]      = ModelId,
-            ["max_tokens"] = MaxTokens,
-            ["system"]     = systemPrompt,
-            ["messages"]   = messages,
-        };
+        var analyst = agentService.ListAgents(projectSlug)
+            .FirstOrDefault(a => a.Slug.Value.StartsWith("analyst", StringComparison.OrdinalIgnoreCase));
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, AnthropicApiUrl)
-        {
-            Content = new StringContent(requestBody.ToJsonString(), Encoding.UTF8, "application/json"),
-        };
-        request.Headers.Add("x-api-key", apiKey);
-        request.Headers.Add("anthropic-version", "2023-06-01");
+        var executorName = analyst?.Executor?.Value ?? FallbackExecutor;
+        var modelId      = analyst?.Model ?? DefaultModel;
 
-        var http = httpClientFactory.CreateClient("anthropic");
-        HttpResponseMessage response;
+        if (!clientMap.TryGetValue(executorName, out var client))
+        {
+            logger.LogWarning(
+                "[planning-chat] No IPlanningLlmClient registered for executor '{Executor}'. " +
+                "Falling back to '{Fallback}'.", executorName, FallbackExecutor);
 
-        try
-        {
-            response = await http.SendAsync(request, ct).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogError(ex, "[planning-chat] Failed to call Anthropic API");
-            throw;
+            if (!clientMap.TryGetValue(FallbackExecutor, out client))
+                throw new InvalidOperationException(
+                    $"No IPlanningLlmClient registered for executor '{executorName}' and the " +
+                    $"'{FallbackExecutor}' fallback is also unavailable.");
         }
 
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            logger.LogError("[planning-chat] Anthropic returned HTTP {Status}: {Body}",
-                (int)response.StatusCode, body);
-            throw new HttpRequestException(
-                $"Anthropic API returned HTTP {(int)response.StatusCode}: {body}");
-        }
-
-        await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
-        var root = doc.RootElement;
-
-        var content = root
-            .GetProperty("content")
-            .EnumerateArray()
-            .Where(b => b.TryGetProperty("type", out var t) && t.GetString() == "text")
-            .Select(b => b.GetProperty("text").GetString() ?? string.Empty)
-            .FirstOrDefault() ?? string.Empty;
-
-        var inputTokens  = 0;
-        var outputTokens = 0;
-        if (root.TryGetProperty("usage", out var usage))
-        {
-            if (usage.TryGetProperty("input_tokens",  out var it)) inputTokens  = it.GetInt32();
-            if (usage.TryGetProperty("output_tokens", out var ot)) outputTokens = ot.GetInt32();
-        }
-
-        logger.LogDebug("[planning-chat] tokens: {Input} in / {Output} out", inputTokens, outputTokens);
-        return (content, inputTokens, outputTokens);
+        logger.LogDebug("[planning-chat] Using executor '{Executor}' model '{Model}'", executorName, modelId);
+        return (client, modelId);
     }
 
     // -------------------------------------------------------------------------
-    // Message building
+    // Helpers
     // -------------------------------------------------------------------------
 
-    private static JsonArray BuildMessages(IReadOnlyList<ConversationTurn> history, string newUserMessage)
-    {
-        var array = new JsonArray();
-
-        // Add history turns (interleaved user/assistant as Anthropic requires).
-        foreach (var turn in history)
+    private static IReadOnlyList<ConversationMessage> ToMessages(IReadOnlyList<ConversationTurn> turns) =>
+        turns.Select(t => new ConversationMessage
         {
-            array.Add(new JsonObject
-            {
-                ["role"]    = turn.Role == ConversationRole.User ? "user" : "assistant",
-                ["content"] = turn.Content,
-            });
-        }
-
-        // Append the new user message.
-        array.Add(new JsonObject
-        {
-            ["role"]    = "user",
-            ["content"] = newUserMessage,
-        });
-
-        return array;
-    }
+            Role    = t.Role == ConversationRole.User ? "user" : "assistant",
+            Content = t.Content,
+        }).ToList();
 
     // -------------------------------------------------------------------------
     // System prompts
@@ -407,35 +305,6 @@ public sealed class AnthropicPlanningChatService(
         ```
         """;
 
-    private const string SolutionDslGenerationPrompt = """
-        Based on our solution shaping conversation, please generate the Solution.dsl YAML document.
-
-        Output ONLY the YAML document — no prose, no explanation, no markdown code fence.
-        The output must be valid YAML 1.2, UTF-8, with LF line endings.
-
-        Use ONLY these exact enum values:
-        - project.type: API | Infrastructure | SharedContractsSDK | MauiHybridUI | Worker
-        - module.name:  Auth | CQRS | EFCore | Observability | Validation | Caching | Messaging
-
-        Follow this schema exactly:
-
-        version: "1.0"
-
-        solution:
-          name: <string>              # Required. Matches project.name from Business.dsl.
-          business_dsl_ref: "./business.yaml"
-
-        projects:                     # Required. At least one entry.
-          - name: <string>            # e.g. "StaffLeave.Api"
-            type: <enum>              # API | Infrastructure | SharedContractsSDK | MauiHybridUI | Worker
-            description: <string>    # What this project is responsible for.
-
-        modules:                      # Optional. Omit if no cross-cutting modules apply.
-          - name: <enum>              # Auth | CQRS | EFCore | Observability | Validation | Caching | Messaging
-            applies_to:              # List of project names this module applies to.
-              - <project-name>
-        """;
-
     private const string BusinessDslGenerationPrompt = """
         Based on our conversation so far, please generate the Business.dsl YAML document.
 
@@ -465,6 +334,35 @@ public sealed class AnthropicPlanningChatService(
         open_questions:         # Optional. Items still unresolved.
           - id: <string>
             question: <string>
+        """;
+
+    private const string SolutionDslGenerationPrompt = """
+        Based on our solution shaping conversation, please generate the Solution.dsl YAML document.
+
+        Output ONLY the YAML document — no prose, no explanation, no markdown code fence.
+        The output must be valid YAML 1.2, UTF-8, with LF line endings.
+
+        Use ONLY these exact enum values:
+        - project.type: API | Infrastructure | SharedContractsSDK | MauiHybridUI | Worker
+        - module.name:  Auth | CQRS | EFCore | Observability | Validation | Caching | Messaging
+
+        Follow this schema exactly:
+
+        version: "1.0"
+
+        solution:
+          name: <string>              # Required. Matches project.name from Business.dsl.
+          business_dsl_ref: "./business.yaml"
+
+        projects:                     # Required. At least one entry.
+          - name: <string>            # e.g. "StaffLeave.Api"
+            type: <enum>              # API | Infrastructure | SharedContractsSDK | MauiHybridUI | Worker
+            description: <string>    # What this project is responsible for.
+
+        modules:                      # Optional. Omit if no cross-cutting modules apply.
+          - name: <enum>              # Auth | CQRS | EFCore | Observability | Validation | Caching | Messaging
+            applies_to:              # List of project names this module applies to.
+              - <project-name>
         """;
 
     private const string PlanDslGenerationPrompt = """
@@ -504,4 +402,3 @@ public sealed class AnthropicPlanningChatService(
                     estimated_size: <"XS"|"S"|"M"|"L">
         """;
 }
-
