@@ -87,6 +87,7 @@ public partial class App : Application
         services.AddTransient<CodebaseViewModel>();
         services.AddTransient<ProjectSettingsViewModel>();
         services.AddTransient<TemplatesViewModel>();
+        services.AddTransient<PlanningTasksViewModel>();
     }
 
     /// <summary>
