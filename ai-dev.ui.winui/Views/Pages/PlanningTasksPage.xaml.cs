@@ -58,7 +58,7 @@ public sealed partial class PlanningTasksPage : Page
             SessionPhase.Phase3PlanningDecomposition => Windows.UI.Color.FromArgb(255, 134, 0,   77),  // #86004D purple
             _ => Windows.UI.Color.FromArgb(255, 100, 100, 100),
         };
-        PhaseAccentBar.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(accentColor);
+        PhaseAccentBar.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(accentColor);
 
         // Phase title + role badge
         PhaseTitleText.Text = phase switch

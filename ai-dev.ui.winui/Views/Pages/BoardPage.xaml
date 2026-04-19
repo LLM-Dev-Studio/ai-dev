@@ -194,7 +194,6 @@
                              TextWrapping="Wrap"
                              MinHeight="80"
                              MaxHeight="200"
-                             VerticalScrollBarVisibility="Auto"
                              PlaceholderText="Optional details, acceptance criteria…" />
                 </StackPanel>
 

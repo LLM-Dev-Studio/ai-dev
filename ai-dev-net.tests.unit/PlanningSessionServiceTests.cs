@@ -3,6 +3,8 @@ using AiDev.Models;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
+#pragma warning disable xUnit1051
+
 namespace AiDevNet.Tests.Unit;
 
 public class PlanningSessionServiceTests
@@ -159,7 +161,7 @@ public class PlanningSessionServiceTests
 
         var result = await service.LockPhaseAsync(slug, session.Id, SessionPhase.Phase1BusinessDiscovery, yaml);
 
-        result.ShouldBeOfType<Ok<Unit>>();
+        result.ShouldBeOfType<Ok<AiDev.Models.Unit>>();
         var updated = service.GetSession(slug, session.Id);
         updated!.State.ShouldBe(PlanningSessionState.Phase1Locked);
         updated.Phase1LockedAt.ShouldNotBeNull();
@@ -192,7 +194,7 @@ public class PlanningSessionServiceTests
         await service.LockPhaseAsync(slug, session.Id, SessionPhase.Phase1BusinessDiscovery, yaml);
         var secondAttempt = await service.LockPhaseAsync(slug, session.Id, SessionPhase.Phase1BusinessDiscovery, yaml);
 
-        secondAttempt.ShouldBeOfType<Err<Unit>>();
+        secondAttempt.ShouldBeOfType<Err<AiDev.Models.Unit>>();
     }
 
     [Fact]
@@ -204,7 +206,7 @@ public class PlanningSessionServiceTests
 
         var result = await service.LockPhaseAsync(slug, session.Id, SessionPhase.Phase2SolutionShaping, "version: \"1.0\"\n");
 
-        result.ShouldBeOfType<Err<Unit>>();
+        result.ShouldBeOfType<Err<AiDev.Models.Unit>>();
     }
 
     [Fact]
@@ -221,7 +223,7 @@ public class PlanningSessionServiceTests
         // Phase 2 not yet locked — Phase 3 should be rejected
         var result = await service.LockPhaseAsync(slug, session.Id, SessionPhase.Phase3PlanningDecomposition, yaml);
 
-        result.ShouldBeOfType<Err<Unit>>();
+        result.ShouldBeOfType<Err<AiDev.Models.Unit>>();
     }
 
     [Fact]
@@ -278,3 +280,5 @@ public class PlanningSessionServiceTests
         return new PlanningSessionService(paths, new AtomicFileWriter(), NullLogger<PlanningSessionService>.Instance);
     }
 }
+
+#pragma warning restore xUnit1051
