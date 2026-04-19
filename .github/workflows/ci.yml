@@ -28,7 +28,6 @@ jobs:
           dotnet test ai-dev-net.tests.unit/ai-dev-net.tests.unit.csproj
           --configuration Release
           --no-build
-          -p:Platform=x64
           --logger trx
           --results-directory TestResults
 
