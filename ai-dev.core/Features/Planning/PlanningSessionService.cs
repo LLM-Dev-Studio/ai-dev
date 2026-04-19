@@ -296,7 +296,9 @@ public sealed class PlanningSessionService(
 
             ## Unsupported Requirement
 
+            ```
             {unsupportedRequirement}
+            ```
 
             ## Why It's Unsupported
 
@@ -307,7 +309,9 @@ public sealed class PlanningSessionService(
 
             ## Closest Supported Alternative
 
+            ```
             {closestAlternative}
+            ```
 
             ## User Decision
 
