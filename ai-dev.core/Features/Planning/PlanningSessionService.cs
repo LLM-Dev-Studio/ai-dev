@@ -274,6 +274,9 @@ public sealed class PlanningSessionService(
     {
         ct.ThrowIfCancellationRequested();
 
+        unsupportedRequirement = unsupportedRequirement.Replace("```", "` ` `");
+        closestAlternative     = closestAlternative.Replace("```", "` ` `");
+
         var decisionsDir = paths.DecisionsPendingDir(projectSlug);
         decisionsDir.Create();
 

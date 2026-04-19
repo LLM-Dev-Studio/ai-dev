@@ -62,4 +62,40 @@ public partial class InsightsViewModel : ObservableObject
         SelectedDate = date;
         SelectedInsight = _agentService.ReadInsights(CurrentSlug, SelectedAgent.Slug, date);
     }
+
+    [RelayCommand]
+    public void CopyInsight()
+    {
+        if (SelectedInsight is null) return;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"{SelectedInsight.TaskClassification}  {SelectedInsight.SessionSizeRating}");
+
+        if (SelectedInsight.Issues.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Issues");
+            foreach (var issue in SelectedInsight.Issues)
+                sb.AppendLine($"[{issue.Impact}] {issue.Description}");
+        }
+
+        if (SelectedInsight.KnowledgeGaps.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Knowledge gaps");
+            foreach (var gap in SelectedInsight.KnowledgeGaps)
+                sb.AppendLine($"• {gap}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(SelectedInsight.ImprovedPromptSuggestion))
+        {
+            sb.AppendLine();
+            sb.AppendLine("Improved prompt suggestion");
+            sb.Append(SelectedInsight.ImprovedPromptSuggestion);
+        }
+
+        var dataPackage = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        dataPackage.SetText(sb.ToString().TrimEnd());
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+    }
 }
