@@ -277,9 +277,12 @@
                                                Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 </StackPanel>
-                                <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center"
-                                           Text="{Binding ClaudeExpanded, Converter={StaticResource BoolToVisible}}"
-                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <Grid HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <FontIcon Glyph="&#xE70E;" FontSize="12"
+                                              Visibility="{Binding ClaudeExpanded, Converter={StaticResource BoolToVisible}}" />
+                                    <FontIcon Glyph="&#xE70D;" FontSize="12"
+                                              Visibility="{Binding ClaudeExpanded, Converter={StaticResource InverseBoolToVisible}}" />
+                                </Grid>
                             </Grid>
                         </Button>
 

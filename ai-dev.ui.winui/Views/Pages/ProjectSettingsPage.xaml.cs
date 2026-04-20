@@ -1,4 +1,5 @@
 using AiDev.WinUI.ViewModels;
+using AiDev.WinUI.Views.Dialogs;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -44,5 +45,12 @@ public sealed partial class ProjectSettingsPage : Page
             if (string.IsNullOrWhiteSpace(ViewModel.NewAgentName))
                 ViewModel.NewAgentName = template.Name;
         }
+    }
+
+    private async void SwitchExecutor_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.OpenBulkSwitch();
+        var dialog = new BulkSwitchExecutorDialog(ViewModel) { XamlRoot = XamlRoot };
+        await dialog.ShowAsync();
     }
 }
