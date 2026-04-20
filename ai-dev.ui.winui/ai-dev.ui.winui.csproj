@@ -10,7 +10,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
-    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsPackageType>MSIX</WindowsPackageType>
     <EnableMsixTooling>true</EnableMsixTooling>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x86;x64;ARM64</Platforms>
@@ -62,6 +62,7 @@
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
+    <AssemblyTitle>AI Dev Studio</AssemblyTitle>
   </PropertyGroup>
 
   <ItemGroup>

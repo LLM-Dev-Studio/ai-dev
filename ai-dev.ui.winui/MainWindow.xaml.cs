@@ -48,6 +48,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetWindowIcon();
         Activated += OnActivated;
+        Closed += (_, _) => _viewModel.StopLiveHealthUpdates();
 
         _viewModel.PropertyChanged += (_, e) =>
         {
@@ -67,6 +68,7 @@ public sealed partial class MainWindow : Window
         try
         {
             await _viewModel.LoadExecutorStatusesAsync();
+            _viewModel.StartLiveHealthUpdates(DispatcherQueue);
         }
         catch (Exception ex)
         {

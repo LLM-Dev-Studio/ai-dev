@@ -127,14 +127,16 @@
 
                             <!-- Description -->
                             <TextBlock Grid.Row="2"
-                                       Margin="0,0,0,8"
+                                       Margin="0,4,0,0"
                                        Text="{Binding Agent.Description}"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"
                                        MaxLines="2"
                                        TextTrimming="CharacterEllipsis"
+                                       IsTabStop="True"
                                        ToolTipService.ToolTip="{Binding Agent.Description}"
+                                       AutomationProperties.HelpText="{Binding Agent.Description}"
                                        Visibility="{Binding Agent.Description, Converter={StaticResource NullToVisible}}" />
 
                             <!-- Inbox count + last run -->
