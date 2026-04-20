@@ -33,6 +33,7 @@ public partial class ProjectSettingsViewModel : ObservableObject
     // Bulk executor switch
     [ObservableProperty] public partial bool ShowBulkSwitch { get; set; }
     [ObservableProperty] public partial string BulkTargetExecutor { get; set; } = "";
+    [ObservableProperty] public partial string BulkTargetModelOverride { get; set; } = "";
     [ObservableProperty] public partial bool ApplyingBulkSwitch { get; set; }
     [ObservableProperty] public partial string BulkSwitchError { get; set; } = "";
 
@@ -134,13 +135,14 @@ public partial class ProjectSettingsViewModel : ObservableObject
         ShowBulkSwitch = false;
         BulkSwitchError = "";
         BulkTargetExecutor = "";
+        BulkTargetModelOverride = "";
     }
 
     [RelayCommand]
     public async Task ApplyBulkSwitchAsync()
-        => await ApplyBulkSwitchToExecutorAsync(BulkTargetExecutor);
+        => await ApplyBulkSwitchToExecutorAsync(BulkTargetExecutor, BulkTargetModelOverride);
 
-    public async Task<string?> ApplyBulkSwitchToExecutorAsync(string? targetExecutorValue)
+    public async Task<string?> ApplyBulkSwitchToExecutorAsync(string? targetExecutorValue, string? modelOverride = null)
     {
         var currentSlug = CurrentSlug;
         if (currentSlug is null)
@@ -170,15 +172,27 @@ public partial class ProjectSettingsViewModel : ObservableObject
         ApplyingBulkSwitch = true;
         BulkSwitchError = "";
         BulkTargetExecutor = targetExecutor.Value;
+        BulkTargetModelOverride = modelOverride ?? "";
         try
         {
             var executorModels = _modelRegistry.GetModelsForExecutor(targetExecutor.Value);
+            ModelDescriptor? overrideModel = null;
+
+            if (!string.IsNullOrWhiteSpace(modelOverride))
+            {
+                overrideModel = executorModels.FirstOrDefault(m => string.Equals(m.Id, modelOverride, StringComparison.OrdinalIgnoreCase));
+                if (overrideModel is null)
+                {
+                    BulkSwitchError = $"{targetExecutor.DisplayName} does not offer model '{modelOverride}'.";
+                    return BulkSwitchError;
+                }
+            }
 
             foreach (var agent in Agents.ToList())
             {
-                var newModel = agent.Model;
+                var newModel = overrideModel?.Id ?? agent.Model;
 
-                if (!executorModels.Any(m => string.Equals(m.Id, newModel, StringComparison.OrdinalIgnoreCase)))
+                if (overrideModel is null && !executorModels.Any(m => string.Equals(m.Id, newModel, StringComparison.OrdinalIgnoreCase)))
                 {
                     if (executorModels.Count == 0)
                     {
@@ -189,9 +203,10 @@ public partial class ProjectSettingsViewModel : ObservableObject
                     newModel = executorModels[0].Id;
                 }
 
-                var supportsReasoning = executorModels
+                var selectedModel = overrideModel ?? executorModels
                     .FirstOrDefault(m => string.Equals(m.Id, newModel, StringComparison.OrdinalIgnoreCase))
-                    ?.Capabilities.HasFlag(ModelCapabilities.Reasoning) == true;
+                    ;
+                var supportsReasoning = selectedModel?.Capabilities.HasFlag(ModelCapabilities.Reasoning) == true;
                 var newThinkingLevel = supportsReasoning ? agent.ThinkingLevel : ThinkingLevel.Off;
 
                 var result = _agentService.SaveAgentMeta(
@@ -214,12 +229,24 @@ public partial class ProjectSettingsViewModel : ObservableObject
             RefreshAgents();
             ShowBulkSwitch = false;
             BulkTargetExecutor = "";
+            BulkTargetModelOverride = "";
             return null;
         }
         finally
         {
             ApplyingBulkSwitch = false;
         }
+    }
+
+    public IReadOnlyList<string> GetAvailableModelsForExecutor(string? executorValue)
+    {
+        if (string.IsNullOrWhiteSpace(executorValue)) return [];
+
+        return [..
+            _modelRegistry.GetModelsForExecutor(executorValue)
+                .Select(model => model.Id)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(model => model, StringComparer.OrdinalIgnoreCase)];
     }
 
     private void RefreshAgents()

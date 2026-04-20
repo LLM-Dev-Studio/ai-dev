@@ -9,9 +9,11 @@ namespace AiDev.WinUI.Views.Dialogs;
 public sealed partial class BulkSwitchExecutorDialog : ContentDialog
 {
     private sealed record ExecutorOption(string Value, string DisplayName);
+    private sealed record ModelOption(string? Value, string DisplayName);
 
     private readonly ProjectSettingsViewModel _viewModel;
     private readonly ComboBox _executorCombo;
+    private readonly ComboBox _modelCombo;
     private readonly TextBlock _errorText;
 
     public BulkSwitchExecutorDialog(ProjectSettingsViewModel viewModel)
@@ -40,6 +42,15 @@ public sealed partial class BulkSwitchExecutorDialog : ContentDialog
         if (executorOptions.Count > 0)
             _executorCombo.SelectedIndex = 0;
 
+        _modelCombo = new ComboBox
+        {
+            DisplayMemberPath = nameof(ModelOption.DisplayName),
+            SelectedValuePath = nameof(ModelOption.Value),
+            PlaceholderText = "Keep compatible model"
+        };
+
+        _executorCombo.SelectionChanged += (_, _) => RefreshModelOptions();
+
         _errorText = new TextBlock
         {
             Visibility = Visibility.Collapsed,
@@ -49,6 +60,13 @@ public sealed partial class BulkSwitchExecutorDialog : ContentDialog
 
         var panel = new StackPanel { Width = 420, Spacing = 10 };
         panel.Children.Add(BuildField("Target executor", _executorCombo));
+        panel.Children.Add(BuildField("Model override (optional)", _modelCombo));
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"Leave the model override blank to keep each agent's current model when compatible, or fall back automatically when it is not.",
+            TextWrapping = TextWrapping.Wrap,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"]
+        });
         panel.Children.Add(new TextBlock
         {
             Text = $"This updates {viewModel.Agents.Count} agent(s) in the current project.",
@@ -59,6 +77,7 @@ public sealed partial class BulkSwitchExecutorDialog : ContentDialog
 
         Content = panel;
         IsPrimaryButtonEnabled = executorOptions.Count > 0 && viewModel.Agents.Count > 0;
+        RefreshModelOptions();
         PrimaryButtonClick += OnPrimaryButtonClick;
     }
 
@@ -82,7 +101,8 @@ public sealed partial class BulkSwitchExecutorDialog : ContentDialog
             HideError();
 
             var targetExecutor = _executorCombo.SelectedValue as string;
-            var error = await _viewModel.ApplyBulkSwitchToExecutorAsync(targetExecutor);
+            var modelOverride = _modelCombo.SelectedValue as string;
+            var error = await _viewModel.ApplyBulkSwitchToExecutorAsync(targetExecutor, modelOverride);
             if (error is not null)
             {
                 ShowError(error);
@@ -105,5 +125,20 @@ public sealed partial class BulkSwitchExecutorDialog : ContentDialog
     {
         _errorText.Text = message;
         _errorText.Visibility = Visibility.Visible;
+    }
+
+    private void RefreshModelOptions()
+    {
+        var selectedExecutor = _executorCombo.SelectedValue as string;
+        var modelOptions = new List<ModelOption>
+        {
+            new(null, "Keep compatible model")
+        };
+
+        modelOptions.AddRange(_viewModel.GetAvailableModelsForExecutor(selectedExecutor)
+            .Select(model => new ModelOption(model, model)));
+
+        _modelCombo.ItemsSource = modelOptions;
+        _modelCombo.SelectedIndex = 0;
     }
 }

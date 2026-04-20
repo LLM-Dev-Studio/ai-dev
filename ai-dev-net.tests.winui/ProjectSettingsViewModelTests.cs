@@ -99,6 +99,65 @@ public sealed class ProjectSettingsViewModelTests : IDisposable
         viewModel.ApplyingBulkSwitch.ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task ApplyBulkSwitchToExecutorAsync_WhenModelOverrideProvided_UsesOverrideForAllAgents()
+    {
+        var modelRegistry = Substitute.For<IModelRegistry>();
+        modelRegistry.GetModelsForExecutor(AgentExecutorName.AnthropicValue).Returns([
+            new ModelDescriptor("anthropic-haiku", "Anthropic Haiku", AgentExecutorName.AnthropicValue),
+            new ModelDescriptor("anthropic-sonnet", "Anthropic Sonnet", AgentExecutorName.AnthropicValue, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning)
+        ]);
+
+        var (viewModel, _, agentService, _) = CreateViewModel(modelRegistry: modelRegistry);
+        SeedProjectWithAgent(agentService);
+        viewModel.Load();
+
+        var error = await viewModel.ApplyBulkSwitchToExecutorAsync(AgentExecutorName.AnthropicValue, "anthropic-sonnet");
+        var updatedAgent = agentService.LoadAgent(new ProjectSlug("demo-project"), new AgentSlug("dev-alex"));
+
+        error.ShouldBeNull();
+        updatedAgent.ShouldNotBeNull();
+        updatedAgent!.Executor.ShouldBe(AgentExecutorName.Anthropic);
+        updatedAgent.Model.ShouldBe("anthropic-sonnet");
+        updatedAgent.ThinkingLevel.ShouldBe(ThinkingLevel.High);
+    }
+
+    [Fact]
+    public async Task ApplyBulkSwitchToExecutorAsync_WhenModelOverrideIsUnsupported_ReturnsError()
+    {
+        var modelRegistry = Substitute.For<IModelRegistry>();
+        modelRegistry.GetModelsForExecutor(AgentExecutorName.AnthropicValue).Returns([
+            new ModelDescriptor("anthropic-haiku", "Anthropic Haiku", AgentExecutorName.AnthropicValue)
+        ]);
+
+        var (viewModel, _, agentService, _) = CreateViewModel(modelRegistry: modelRegistry);
+        SeedProjectWithAgent(agentService);
+        viewModel.Load();
+
+        var error = await viewModel.ApplyBulkSwitchToExecutorAsync(AgentExecutorName.AnthropicValue, "missing-model");
+
+        error.ShouldBe("Anthropic API does not offer model 'missing-model'.");
+        viewModel.BulkSwitchError.ShouldBe(error);
+        viewModel.ApplyingBulkSwitch.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GetAvailableModelsForExecutor_WhenExecutorHasModels_ReturnsDistinctSortedIds()
+    {
+        var modelRegistry = Substitute.For<IModelRegistry>();
+        modelRegistry.GetModelsForExecutor(AgentExecutorName.AnthropicValue).Returns([
+            new ModelDescriptor("z-model", "Z Model", AgentExecutorName.AnthropicValue),
+            new ModelDescriptor("a-model", "A Model", AgentExecutorName.AnthropicValue),
+            new ModelDescriptor("A-model", "A Model Duplicate", AgentExecutorName.AnthropicValue)
+        ]);
+
+        var (viewModel, _, _, _) = CreateViewModel(modelRegistry: modelRegistry);
+
+        var models = viewModel.GetAvailableModelsForExecutor(AgentExecutorName.AnthropicValue);
+
+        models.ShouldBe(["a-model", "z-model"]);
+    }
+
     private (ProjectSettingsViewModel ViewModel, WorkspaceService WorkspaceService, AgentService AgentService, MainViewModel MainViewModel) CreateViewModel(
         bool withActiveProject = true,
         IModelRegistry? modelRegistry = null,
