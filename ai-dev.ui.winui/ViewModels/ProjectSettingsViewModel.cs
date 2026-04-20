@@ -123,6 +123,7 @@ public partial class ProjectSettingsViewModel : ObservableObject
     [RelayCommand]
     public void OpenBulkSwitch()
     {
+        RefreshExecutors();
         BulkSwitchError = "";
         ShowBulkSwitch = true;
     }
@@ -137,21 +138,56 @@ public partial class ProjectSettingsViewModel : ObservableObject
 
     [RelayCommand]
     public async Task ApplyBulkSwitchAsync()
+        => await ApplyBulkSwitchToExecutorAsync(BulkTargetExecutor);
+
+    public async Task<string?> ApplyBulkSwitchToExecutorAsync(string? targetExecutorValue)
     {
-        if (CurrentSlug is null) return;
-        if (string.IsNullOrWhiteSpace(BulkTargetExecutor)) return;
-        if (!AgentExecutorName.TryParse(BulkTargetExecutor, out var targetExecutor)) return;
+        var currentSlug = CurrentSlug;
+        if (currentSlug is null)
+        {
+            BulkSwitchError = "No active project is selected.";
+            return BulkSwitchError;
+        }
+
+        if (Agents.Count == 0)
+        {
+            BulkSwitchError = "This project has no agents to update.";
+            return BulkSwitchError;
+        }
+
+        if (string.IsNullOrWhiteSpace(targetExecutorValue))
+        {
+            BulkSwitchError = "Choose a target executor.";
+            return BulkSwitchError;
+        }
+
+        if (!AgentExecutorName.TryParse(targetExecutorValue, out var targetExecutor))
+        {
+            BulkSwitchError = $"Unsupported executor '{targetExecutorValue}'.";
+            return BulkSwitchError;
+        }
 
         ApplyingBulkSwitch = true;
         BulkSwitchError = "";
+        BulkTargetExecutor = targetExecutor.Value;
         try
         {
-            foreach (var agent in Agents)
+            var executorModels = _modelRegistry.GetModelsForExecutor(targetExecutor.Value);
+
+            foreach (var agent in Agents.ToList())
             {
                 var newModel = agent.Model;
-                var executorModels = _modelRegistry.GetModelsForExecutor(targetExecutor.Value);
-                if (executorModels.Count > 0 && !executorModels.Any(m => string.Equals(m.Id, newModel, StringComparison.OrdinalIgnoreCase)))
+
+                if (!executorModels.Any(m => string.Equals(m.Id, newModel, StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (executorModels.Count == 0)
+                    {
+                        BulkSwitchError = $"{targetExecutor.DisplayName} has no available models.";
+                        return BulkSwitchError;
+                    }
+
                     newModel = executorModels[0].Id;
+                }
 
                 var supportsReasoning = executorModels
                     .FirstOrDefault(m => string.Equals(m.Id, newModel, StringComparison.OrdinalIgnoreCase))
@@ -159,7 +195,7 @@ public partial class ProjectSettingsViewModel : ObservableObject
                 var newThinkingLevel = supportsReasoning ? agent.ThinkingLevel : ThinkingLevel.Off;
 
                 var result = _agentService.SaveAgentMeta(
-                    CurrentSlug,
+                    currentSlug,
                     agent.Slug,
                     agent.Name,
                     agent.Description,
@@ -171,20 +207,19 @@ public partial class ProjectSettingsViewModel : ObservableObject
                 if (result is Err<Unit> err)
                 {
                     BulkSwitchError = $"Failed to update {agent.Name}: {err.Error.Message}";
-                    return;
+                    return BulkSwitchError;
                 }
             }
 
             RefreshAgents();
             ShowBulkSwitch = false;
             BulkTargetExecutor = "";
+            return null;
         }
         finally
         {
             ApplyingBulkSwitch = false;
         }
-
-        await Task.CompletedTask;
     }
 
     private void RefreshAgents()
@@ -209,5 +244,15 @@ public partial class ProjectSettingsViewModel : ObservableObject
             foreach (var executor in AgentExecutorName.Supported)
                 AvailableExecutors.Add(executor.Value);
         }
+
+        var distinctExecutors = AvailableExecutors
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (distinctExecutors.Count == AvailableExecutors.Count) return;
+
+        AvailableExecutors.Clear();
+        foreach (var executor in distinctExecutors)
+            AvailableExecutors.Add(executor);
     }
 }
