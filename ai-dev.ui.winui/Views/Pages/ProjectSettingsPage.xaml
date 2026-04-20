@@ -66,7 +66,7 @@
                         <TextBlock Text="Agents" Style="{StaticResource SubtitleTextBlockStyle}" />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                             <Button Content="Switch executor"
-                                    Command="{Binding OpenBulkSwitchCommand}" />
+                                    Click="SwitchExecutor_Click" />
                             <Button Content="+ Add agent"
                                     Command="{Binding OpenAddAgentCommand}" />
                         </StackPanel>
@@ -99,34 +99,6 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-
-                    <Border CornerRadius="8" Padding="14"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            Visibility="{Binding ShowBulkSwitch, Converter={StaticResource BoolToVisible}}">
-                        <StackPanel Spacing="10">
-                            <TextBlock Text="Switch all agents to executor" Style="{StaticResource BodyStrongTextBlockStyle}" />
-
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="Target executor" Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <ComboBox ItemsSource="{Binding AvailableExecutors}"
-                                          SelectedItem="{Binding BulkTargetExecutor, Mode=TwoWay}" />
-                            </StackPanel>
-
-                            <TextBlock Text="{Binding BulkSwitchError}"
-                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                                       Visibility="{Binding BulkSwitchError, Converter={StaticResource NullToVisible}}" />
-
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                                <Button Content="Cancel" Command="{Binding CancelBulkSwitchCommand}" />
-                                <Button Content="Switch all" Style="{StaticResource AccentButtonStyle}"
-                                        Command="{Binding ApplyBulkSwitchCommand}"
-                                        IsEnabled="{Binding ApplyingBulkSwitch, Converter={StaticResource InverseBoolToVisible}}" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
 
                     <!-- Add-agent form -->
                     <Border CornerRadius="8" Padding="14"
