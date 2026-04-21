@@ -34,7 +34,7 @@ public sealed partial class NewProjectDialog : ContentDialog
         _slugBox = new TextBox { PlaceholderText = "my-project", FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Code,Consolas,monospace") };
         _descriptionBox = new TextBox { PlaceholderText = "What is this project about?" };
         _codebasePathBox = new TextBox { PlaceholderText = @"C:\path\to\your\code", FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Code,Consolas,monospace") };
-        _errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Red) };
+        _errorText = new TextBlock { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap, Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"] };
 
         _nameBox.TextChanged += NameBox_TextChanged;
         _slugBox.TextChanged += SlugBox_TextChanged;

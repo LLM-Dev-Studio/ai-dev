@@ -13,11 +13,15 @@
     <WindowsPackageType>None</WindowsPackageType>
     <EnableMsixTooling>true</EnableMsixTooling>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AppxManifest>Package.appxmanifest</AppxManifest>
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
-    <PublishProfile>win-$(Platform).pubxml</PublishProfile>
+    <PublishProfile Condition="'$(IsPublishing)' == 'true'">win-$(Platform).pubxml</PublishProfile>
+    <PublishReadyToRun Condition="'$(Configuration)' != 'Debug' and '$(RuntimeIdentifier)' != ''">True</PublishReadyToRun>
+    <PublishReadyToRun Condition="'$(Configuration)' == 'Debug' or '$(RuntimeIdentifier)' == ''">False</PublishReadyToRun>
     <LangVersion>preview</LangVersion>
     <ApplicationIcon>..\logo.ico</ApplicationIcon>
+    <WindowsAppSDKSelfContained Condition="'$(RuntimeIdentifier)' != ''">true</WindowsAppSDKSelfContained>
   </PropertyGroup>
 
   <ItemGroup>
@@ -62,6 +66,8 @@
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
+    <AssemblyTitle>AI Dev Studio</AssemblyTitle>
+    <DefaultLanguage>en-AU</DefaultLanguage>
   </PropertyGroup>
 
   <ItemGroup>

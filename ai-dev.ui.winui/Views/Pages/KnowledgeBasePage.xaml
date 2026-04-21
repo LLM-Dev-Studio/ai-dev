@@ -93,13 +93,25 @@
                 </StackPanel>
             </Grid>
 
-            <TextBox Grid.Row="1"
-                     Text="{Binding ArticleContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     AcceptsReturn="True"
-                     TextWrapping="Wrap"
-                     FontFamily="Consolas"
-                     FontSize="13"
-                     ScrollViewer.VerticalScrollBarVisibility="Auto" />
+            <Pivot Grid.Row="1">
+                <PivotItem Header="Editor">
+                    <TextBox Text="{Binding ArticleContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             FontFamily="Consolas"
+                             FontSize="13"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                </PivotItem>
+                <PivotItem Header="Preview">
+                    <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                        <WebView2 x:Name="PreviewWebView"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch" />
+                    </Border>
+                </PivotItem>
+            </Pivot>
 
             <TextBlock Grid.Row="2"
                        Style="{StaticResource CaptionTextBlockStyle}"

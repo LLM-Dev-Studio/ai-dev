@@ -24,7 +24,9 @@
       "Bash(./ai-dev-net.tests.unit.exe --help)",
       "Bash(./ai-dev-net.tests.unit.exe -class \"AiDev.Tests.ExecutorHealthMonitorTests\")",
       "Bash(./ai-dev-net.tests.unit.exe)",
-      "Bash(copilot -p \"Reply with the single word OK\" --output-format json --allow-all-tools --no-auto-update --no-ask-user --model gpt-5.2)"
+      "Bash(copilot -p \"Reply with the single word OK\" --output-format json --allow-all-tools --no-auto-update --no-ask-user --model gpt-5.2)",
+      "mcp__serena__get_symbols_overview",
+      "mcp__serena__find_symbol"
     ]
   }
 }
