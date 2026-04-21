@@ -1,4 +1,5 @@
 using AiDev.Executors;
+using AiDev.Features.Planning;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AiDev.Extensions;
@@ -11,7 +12,9 @@ public static class ClaudeExecutorExtensions
     /// </summary>
     public static IServiceCollection AddClaudeExecutor(this IServiceCollection services)
     {
-        services.AddSingleton<IAgentExecutor, ClaudeAgentExecutor>();
+        services.AddSingleton<ClaudeAgentExecutor>();
+        services.AddSingleton<IAgentExecutor>(sp => sp.GetRequiredService<ClaudeAgentExecutor>());
+        services.AddSingleton<IPlanningLlmClient, ClaudePlanningLlmClient>();
         return services;
     }
 }
