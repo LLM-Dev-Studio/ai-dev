@@ -47,8 +47,35 @@ public class CopilotCliAgentExecutor(ILogger<CopilotCliAgentExecutor> logger) : 
 
     public IReadOnlyList<ModelDescriptor> KnownModels { get; } =
     [
+        // Claude models (via GitHub Copilot)
+        new("claude-sonnet-4.6", "Claude Sonnet 4.6 (Copilot)", AgentExecutorName.CopilotCliValue,
+            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
+        new("claude-sonnet-4.5", "Claude Sonnet 4.5 (Copilot)", AgentExecutorName.CopilotCliValue,
+            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling),
+        new("claude-haiku-4.5", "Claude Haiku 4.5 (Copilot)", AgentExecutorName.CopilotCliValue,
+            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling),
+        new("claude-opus-4.6", "Claude Opus 4.6 (Copilot)", AgentExecutorName.CopilotCliValue,
+            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
+        new("claude-opus-4.5", "Claude Opus 4.5 (Copilot)", AgentExecutorName.CopilotCliValue,
+            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
+        new("claude-sonnet-4", "Claude Sonnet 4 (Copilot)", AgentExecutorName.CopilotCliValue,
+            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling),
+
+        // GPT models (via GitHub Copilot)
+        new("gpt-5.4", "GPT-5.4 (Copilot)", AgentExecutorName.CopilotCliValue,
+            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
+        new("gpt-5.3-codex", "GPT-5.3-Codex (Copilot)", AgentExecutorName.CopilotCliValue,
+            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
+        new("gpt-5.2-codex", "GPT-5.2-Codex (Copilot)", AgentExecutorName.CopilotCliValue,
+            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
         new("gpt-5.2", "GPT-5.2 (Copilot)", AgentExecutorName.CopilotCliValue,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
+        new("gpt-5.4-mini", "GPT-5.4 mini (Copilot)", AgentExecutorName.CopilotCliValue,
+            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling),
+        new("gpt-5-mini", "GPT-5 mini (Copilot)", AgentExecutorName.CopilotCliValue,
+            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling),
+        new("gpt-4.1", "GPT-4.1 (Copilot)", AgentExecutorName.CopilotCliValue,
+            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling),
     ];
 
     // -------------------------------------------------------------------------

@@ -1,5 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 
+using Microsoft.UI.Dispatching;
+
 using System.Collections.ObjectModel;
 
 namespace AiDev.WinUI.ViewModels;
@@ -15,6 +17,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ExecutorHealthMonitor _healthMonitor;
     private readonly MessagesService _messagesService;
     private readonly DecisionsService _decisionsService;
+    private IDisposable? _healthSubscription;
 
     [ObservableProperty] public partial ProjectDetail? ActiveProject { get; set; }
     [ObservableProperty] public partial AgentInfo? PendingAgent { get; set; }
@@ -90,5 +93,18 @@ public partial class MainViewModel : ObservableObject
         {
             System.Diagnostics.Debug.WriteLine($"Executor health check failed at startup: {ex.Message}");
         }
+    }
+
+    public void StartLiveHealthUpdates(DispatcherQueue dispatcher)
+    {
+        _healthSubscription?.Dispose();
+        _healthSubscription = _healthMonitor.SubscribeChanged(() =>
+            dispatcher.TryEnqueue(async () => await LoadExecutorStatusesAsync()));
+    }
+
+    public void StopLiveHealthUpdates()
+    {
+        _healthSubscription?.Dispose();
+        _healthSubscription = null;
     }
 }
