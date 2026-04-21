@@ -32,7 +32,6 @@ jobs:
         run: >
           dotnet test ai-dev-net.tests.unit/ai-dev-net.tests.unit.csproj
           --configuration ${{ env.BUILD_CONFIGURATION }}
-          -p:Platform="${{ env.BUILD_PLATFORM }}"
           --no-build
           --logger trx
           --results-directory TestResults
