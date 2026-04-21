@@ -166,7 +166,7 @@ else
                                 @foreach (var m in executorModels)
                                 {
                                     <option value="@m.Id" selected="@(m.Id == editModel)">
-                                        @m.DisplayName@(m.Capabilities.HasFlag(ModelCapabilities.ToolCalling) ? " 🔧" : "")@(m.Capabilities.HasFlag(ModelCapabilities.Vision) ? " 👁" : "")@(m.Capabilities.HasFlag(ModelCapabilities.Reasoning) ? " 🧠" : "")
+                                        @m.DisplayName@(m.Capabilities.HasFlag(ModelCapabilities.ToolCalling) ? " 🔧" : "")@(m.Capabilities.HasFlag(ModelCapabilities.Vision) ? " 👁" : "")@(m.Capabilities.HasFlag(ModelCapabilities.Reasoning) ? " 🧠" : "")@(m.ContextWindow > 0 ? $" — {m.ContextWindow:N0} ctx" : "")
                                     </option>
                                 }
                             </select>

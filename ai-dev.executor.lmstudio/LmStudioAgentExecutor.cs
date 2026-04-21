@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text;
@@ -40,6 +41,11 @@ public sealed class LmStudioAgentExecutor(
 
     private const int MaxToolIterations = 30;
     private const int DefaultMaxTokens  = 4096;
+
+    // Cache of context-window sizes per model, populated from the /api/v1/models
+    // health-check response. Used by RunAsync to preflight requests against the
+    // loaded context window and avoid fruitless calls to LM Studio.
+    private readonly ConcurrentDictionary<string, int> _contextWindows = new(StringComparer.OrdinalIgnoreCase);
 
     // -------------------------------------------------------------------------
     // Health check
@@ -114,7 +120,7 @@ public sealed class LmStudioAgentExecutor(
         }
     }
 
-    private static List<ModelDescriptor> ParseModelDescriptors(JsonElement models)
+    private List<ModelDescriptor> ParseModelDescriptors(JsonElement models)
     {
         var result = new List<ModelDescriptor>();
 
@@ -142,7 +148,19 @@ public sealed class LmStudioAgentExecutor(
                     caps |= ModelCapabilities.Vision;
             }
 
-            result.Add(new ModelDescriptor(id, name, "lmstudio", caps));
+            // LM Studio exposes both the loaded context window (for currently-loaded models) and
+            // the model's maximum supported context. Prefer the loaded value — it reflects what
+            // was actually allocated, which is what matters for preflight budget checks.
+            var contextWindow =
+                   TryGetInt32(m, "loaded_context_length")
+                ?? TryGetInt32(m, "max_context_length")
+                ?? TryGetInt32(m, "context_length")
+                ?? 0;
+
+            if (contextWindow > 0)
+                _contextWindows[id] = contextWindow;
+
+            result.Add(new ModelDescriptor(id, name, "lmstudio", caps, ContextWindow: contextWindow));
         }
 
         return result;
@@ -178,6 +196,21 @@ public sealed class LmStudioAgentExecutor(
         }
 
         return false;
+    }
+
+    private static int? TryGetInt32(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var prop))
+            return null;
+
+        if (prop.ValueKind == JsonValueKind.Number && prop.TryGetInt32(out var n))
+            return n;
+
+        if (prop.ValueKind == JsonValueKind.String
+            && int.TryParse(prop.GetString(), out var parsed))
+            return parsed;
+
+        return null;
     }
 
     // -------------------------------------------------------------------------
@@ -235,6 +268,18 @@ public sealed class LmStudioAgentExecutor(
             new JsonObject { ["role"] = "user",   ["content"] = context.Prompt },
         };
 
+        // Resolve the model's loaded context window. If the cache is empty (e.g. the user
+        // skipped the health check UI), trigger a probe to populate it. A context of 0 means
+        // "unknown" and the preflight will skip — we then rely on LM Studio to report errors.
+        var contextWindow = await ResolveContextWindowAsync(context.ModelId, context.CancellationToken)
+            .ConfigureAwait(false);
+        var maxOutputTokens = TokenBudget.RecommendMaxOutputTokens(contextWindow, floor: 512, ceiling: DefaultMaxTokens);
+        var toolsJson       = enableTools ? OllamaToolSchemas.GetToolsArray().ToJsonString() : null;
+
+        if (contextWindow > 0)
+            output.TryWrite(
+                $"[{DateTime.UtcNow:o}] [lmstudio] context_window={contextWindow} max_output_tokens={maxOutputTokens}");
+
         var http      = httpClientFactory.CreateClient("lmstudio");
         int iteration = 0;
         TokenUsage? totalUsage = null;
@@ -243,7 +288,28 @@ public sealed class LmStudioAgentExecutor(
         {
             context.CancellationToken.ThrowIfCancellationRequested();
 
-            var requestBody = BuildRequest(context.ModelId, messages, enableTools);
+            // Preflight: estimate token budget before each request. Because the messages list
+            // grows with tool_call/tool_result pairs, an overflow can appear mid-session even
+            // after the first iteration fits.
+            var preflight = TokenBudget.Preflight(
+                contextWindow:   contextWindow,
+                maxOutputTokens: maxOutputTokens,
+                messageContents: messages.Select(ExtractMessageContent),
+                toolsJson:       toolsJson,
+                modelId:         context.ModelId,
+                executorName:    DisplayName);
+
+            if (!preflight.Fits)
+            {
+                var msg = iteration == 1
+                    ? preflight.Error!
+                    : preflight.Error + $" (after {iteration - 1} tool iteration(s))";
+                logger.LogError("[lmstudio] {Message}", msg);
+                output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
+                return new ExecutorResult(1, Usage: totalUsage, ErrorMessage: msg);
+            }
+
+            var requestBody = BuildRequest(context.ModelId, messages, enableTools, maxOutputTokens);
 
             HttpResponseMessage response;
             try
@@ -463,12 +529,12 @@ public sealed class LmStudioAgentExecutor(
     // Private helpers
     // -------------------------------------------------------------------------
 
-    private static string BuildRequest(string modelId, List<JsonNode> messages, bool includeTools)
+    private static string BuildRequest(string modelId, List<JsonNode> messages, bool includeTools, int maxOutputTokens)
     {
         var obj = new JsonObject
         {
             ["model"]      = modelId,
-            ["max_tokens"] = DefaultMaxTokens,
+            ["max_tokens"] = maxOutputTokens,
             ["messages"]   = new JsonArray(messages.Select(m => m.DeepClone()).ToArray()),
             ["stream"]     = true,
             ["stream_options"] = new JsonObject { ["include_usage"] = true },
@@ -490,6 +556,50 @@ public sealed class LmStudioAgentExecutor(
 
     private static string DeriveWorkspaceRoot(string workingDir) =>
         Path.GetFullPath(Path.Combine(workingDir, "../.."));
+
+    /// <summary>
+    /// Extract a best-effort string representation of a message's billable content
+    /// for token estimation. Includes the content field plus any tool_call arguments.
+    /// </summary>
+    private static string ExtractMessageContent(JsonNode message)
+    {
+        if (message is not JsonObject obj) return message.ToJsonString();
+
+        var sb = new StringBuilder();
+
+        if (obj["content"] is JsonNode content && content is not null)
+        {
+            sb.Append(content is JsonValue v && v.TryGetValue<string>(out var s)
+                ? s
+                : content.ToJsonString());
+        }
+
+        if (obj["tool_calls"] is JsonArray toolCalls)
+            sb.Append(toolCalls.ToJsonString());
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Look up the cached context window for a model. If unknown, trigger a one-shot
+    /// health-check probe to populate the cache. Returns 0 when the value cannot be resolved.
+    /// </summary>
+    private async Task<int> ResolveContextWindowAsync(string modelId, CancellationToken ct)
+    {
+        if (_contextWindows.TryGetValue(modelId, out var cached))
+            return cached;
+
+        try
+        {
+            _ = await CheckHealthAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogDebug(ex, "[lmstudio] On-demand health probe failed while resolving context window");
+        }
+
+        return _contextWindows.TryGetValue(modelId, out var resolved) ? resolved : 0;
+    }
 
     // -------------------------------------------------------------------------
     // Tool call accumulator
