@@ -23,7 +23,7 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore ai-dev-net.slnx --configuration ${{ env.BUILD_CONFIGURATION }} -p:Platform="${{ env.BUILD_PLATFORM }}"
+        run: dotnet restore ai-dev-net.slnx -p:Configuration=${{ env.BUILD_CONFIGURATION }} -p:Platform="${{ env.BUILD_PLATFORM }}"
 
       - name: Build
         run: dotnet build ai-dev-net.slnx --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore -p:Platform="${{ env.BUILD_PLATFORM }}"
