@@ -21,7 +21,7 @@
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug' or '$(RuntimeIdentifier)' == ''">False</PublishReadyToRun>
     <LangVersion>preview</LangVersion>
     <ApplicationIcon>..\logo.ico</ApplicationIcon>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <WindowsAppSDKSelfContained Condition="'$(RuntimeIdentifier)' != ''">true</WindowsAppSDKSelfContained>
   </PropertyGroup>
 
   <ItemGroup>

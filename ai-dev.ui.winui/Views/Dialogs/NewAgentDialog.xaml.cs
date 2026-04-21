@@ -50,7 +50,7 @@ public sealed partial class NewAgentDialog : ContentDialog
         {
             Visibility = Visibility.Collapsed,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Red)
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"]
         };
 
         var panel = new StackPanel { Width = 420, Spacing = 10 };
