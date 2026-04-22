@@ -226,6 +226,6 @@ Each lettered commit (1a through 3c) is independently buildable, tested, and rev
 | 2e | `LocalToolBroker` | Done | |
 | 2f | `LlmPlanner` + `OllamaLlmClient` | Done | |
 | 2g | Regression tests | Done | **Phase 2 PR** |
-| 3a | Sub-agent role decomposition | | |
-| 3b | OpenTelemetry instrumentation | | |
-| 3c | Policy tuning | | **Phase 3 PR** |
+| 3a | Sub-agent role decomposition | Done | |
+| 3b | OpenTelemetry instrumentation | Done | |
+| 3c | Policy tuning | Done | **Phase 3 PR** |
