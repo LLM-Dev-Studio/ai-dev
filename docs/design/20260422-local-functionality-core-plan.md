@@ -214,18 +214,18 @@ Each lettered commit (1a through 3c) is independently buildable, tested, and rev
 |---|---|---|---|
 | P0 | Project scaffold + design blueprint | Done | |
 | P1 | `AppFeatureFlags`, `FeatureFlagsService`, `PreferencesPage` (WinUI) | Done | **Pre-work** |
-| 1a | `LocalOrchestratorOptions` + DI registration | | |
-| 1b | Null-object implementations | | |
-| 1c | `LocalOrchestrator` loop | | |
-| 1d | `AgentRunnerService` integration | | |
-| 1e | Unit tests | | **Phase 1 PR** |
-| 2a | `StaticModelStrategyResolver` | | |
-| 2b | `RuleBasedContextCompactor` | | |
-| 2c | `FileSystemRuntimeMemoryStore` | | |
-| 2d | `ProgressiveDiscoveryEngine` | | |
-| 2e | `LocalToolBroker` | | |
-| 2f | `LlmPlanner` | | |
-| 2g | Regression tests | | **Phase 2 PR** |
+| 1a | `LocalOrchestratorOptions` + DI registration | Done | |
+| 1b | Null-object implementations | Done | |
+| 1c | `LocalOrchestrator` loop | Done | |
+| 1d | `AgentRunnerService` integration | Done | |
+| 1e | Unit tests | Done | **Phase 1 PR** |
+| 2a | `StaticModelStrategyResolver` | Done | |
+| 2b | `RuleBasedContextCompactor` | Done | |
+| 2c | `FileSystemRuntimeMemoryStore` | Done | |
+| 2d | `ProgressiveDiscoveryEngine` | Done | |
+| 2e | `LocalToolBroker` | Done | |
+| 2f | `LlmPlanner` + `OllamaLlmClient` | Done | |
+| 2g | Regression tests | Done | **Phase 2 PR** |
 | 3a | Sub-agent role decomposition | | |
 | 3b | OpenTelemetry instrumentation | | |
 | 3c | Policy tuning | | **Phase 3 PR** |
