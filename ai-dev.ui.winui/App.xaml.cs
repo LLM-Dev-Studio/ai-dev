@@ -1,3 +1,4 @@
+using AiDev.Core.Local.Extensions;
 using AiDev.WinUI.ViewModels;
 
 using Microsoft.Extensions.Configuration;
@@ -52,6 +53,7 @@ public partial class App : Application
 
         // Core domain services
         services.AddAiDevCore();
+        services.AddLocalCore();
 
         // Executor plugins
         services.AddClaudeExecutor();
