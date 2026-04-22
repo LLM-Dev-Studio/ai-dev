@@ -1,6 +1,7 @@
 using AiDev.Core.Local.Implementation;
 using AiDev.Core.Local.Implementation.Null;
 using AiDev.Core.Local.Orchestration;
+using AiDev.Features.Agent;
 
 
 namespace AiDev.Core.Local.Extensions;
@@ -20,6 +21,7 @@ public static class LocalCoreExtensions
         services.AddSingleton<IModelStrategyResolver, NullModelStrategyResolver>();
         services.AddSingleton<IRuntimeMemoryStore, InMemoryRuntimeMemoryStore>();
         services.AddSingleton<ILocalOrchestrator, LocalOrchestrator>();
+        services.AddSingleton<ILocalAgentHook, LocalAgentHookAdapter>();
 
         return services;
     }
