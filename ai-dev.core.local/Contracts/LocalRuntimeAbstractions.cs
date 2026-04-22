@@ -35,6 +35,14 @@ public interface IModelStrategyResolver
     Result<RuntimeModelStrategy> Resolve(RuntimeModelProfile profile);
 }
 
+public interface ILocalOrchestrator
+{
+    Task<Result<CompactionSnapshot>> RunAsync(
+        LocalObjective objective,
+        RuntimeModelProfile modelProfile,
+        CancellationToken ct = default);
+}
+
 public sealed record RuntimeModelStrategy(
     int PlanningDepth,
     int DiscoveryBreadth,

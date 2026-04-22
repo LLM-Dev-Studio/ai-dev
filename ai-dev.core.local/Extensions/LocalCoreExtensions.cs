@@ -2,6 +2,7 @@ using AiDev.Core.Local.Implementation;
 using AiDev.Core.Local.Implementation.Null;
 using AiDev.Core.Local.Orchestration;
 
+
 namespace AiDev.Core.Local.Extensions;
 
 public static class LocalCoreExtensions
@@ -18,6 +19,7 @@ public static class LocalCoreExtensions
         services.AddSingleton<IContextCompactor, NullCompactor>();
         services.AddSingleton<IModelStrategyResolver, NullModelStrategyResolver>();
         services.AddSingleton<IRuntimeMemoryStore, InMemoryRuntimeMemoryStore>();
+        services.AddSingleton<ILocalOrchestrator, LocalOrchestrator>();
 
         return services;
     }
