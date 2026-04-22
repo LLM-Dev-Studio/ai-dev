@@ -14,7 +14,8 @@ public static class LocalCoreExtensions
     {
         services.AddSingleton(options ?? LocalOrchestratorOptions.Default);
 
-        services.AddSingleton<ILocalPlanner, NullPlanner>();
+        services.AddSingleton<ILlmClient, OllamaLlmClient>();
+        services.AddSingleton<ILocalPlanner, LlmPlanner>();
         services.AddSingleton<ILocalToolBroker, LocalToolBroker>();
         services.AddSingleton<IProgressiveDiscoveryEngine, ProgressiveDiscoveryEngine>();
         services.AddSingleton<IContextCompactor, RuleBasedContextCompactor>();

@@ -35,6 +35,12 @@ public interface IModelStrategyResolver
     Result<RuntimeModelStrategy> Resolve(RuntimeModelProfile profile);
 }
 
+public interface ILlmClient
+{
+    string Provider { get; }
+    Task<Result<string>> CompleteAsync(string prompt, string modelId, CancellationToken ct = default);
+}
+
 public interface ILocalOrchestrator
 {
     Task<Result<CompactionSnapshot>> RunAsync(
