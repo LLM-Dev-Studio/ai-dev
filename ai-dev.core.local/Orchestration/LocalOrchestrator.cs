@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
 namespace AiDev.Core.Local.Orchestration;
@@ -8,7 +9,8 @@ internal sealed class LocalOrchestrator(
     IContextCompactor compactor,
     IRuntimeMemoryStore memoryStore,
     IModelStrategyResolver strategyResolver,
-    LocalOrchestratorOptions options) : ILocalOrchestrator
+    LocalOrchestratorOptions options,
+    ILogger<LocalOrchestrator>? logger = null) : ILocalOrchestrator
 {
     public async Task<Result<CompactionSnapshot>> RunAsync(
         LocalObjective objective,
@@ -94,27 +96,44 @@ internal sealed class LocalOrchestrator(
                 Iteration = i + 1,
             };
 
-            // 5. Compact on interval
-            if (state.Iteration % strategy.CompactionInterval == 0)
+            // 5. Compact on interval or when estimated token load exceeds compaction ratio threshold
+            var estimatedTokens = state.Transcript.Observations.Sum(o => o.Summary.Length / 4);
+            var tokenThreshold = (int)(state.Budget.MaxContextTokens * strategy.CompactionRatio);
+            var shouldCompact = state.Iteration % strategy.CompactionInterval == 0
+                             || estimatedTokens >= tokenThreshold;
+
+            if (shouldCompact)
             {
-                var snapBefore = state.Transcript.Observations.Sum(o => o.Summary.Length / 4);
                 var snap = compactor.Compact(state);
                 if (snap is Ok<CompactionSnapshot> { Value: var interim })
                 {
-                    var tokensSaved = Math.Max(0, snapBefore - interim.EstimatedTokens);
+                    var tokensSaved = Math.Max(0, estimatedTokens - interim.EstimatedTokens);
                     LocalOrchestratorTelemetry.CompactionTokensSaved.Record(tokensSaved);
                     iterActivity?.SetTag("compaction.tokens_saved", tokensSaved);
+                    logger?.LogInformation(
+                        "[aidev.loop] objective={ObjectiveId} iteration={Iteration} compaction_tokens_saved={TokensSaved} estimated_tokens={EstimatedTokens}",
+                        objective.CorrelationId, state.Iteration, tokensSaved, interim.EstimatedTokens);
                     await memoryStore.SaveSnapshotAsync(objective.CorrelationId, interim, ct).ConfigureAwait(false);
                 }
             }
 
-            // 6. Enforce tool-call budget
-            if (state.Transcript.Observations.Count >= state.Budget.MaxToolCalls)
+            // Emit structured iteration metrics for dashboard visibility
+            logger?.LogDebug(
+                "[aidev.loop] objective={ObjectiveId} iteration={Iteration} tool_calls={ToolCalls} model={ModelId} role_tools_allowed={MaxParallelTools}",
+                objective.CorrelationId, state.Iteration, plan.ToolRequests.Count,
+                modelProfile.ModelId, strategy.MaxParallelTools);
+
+            // 6. Enforce tool-call budget (strategy override takes precedence)
+            var effectiveBudget = strategy.ToolCallBudget > 0
+                ? strategy.ToolCallBudget
+                : state.Budget.MaxToolCalls;
+
+            if (state.Transcript.Observations.Count >= effectiveBudget)
             {
                 LocalOrchestratorTelemetry.LoopFailures.Add(1);
                 return new Err<CompactionSnapshot>(new DomainError(
                     "LocalOrchestrator.BudgetExhausted",
-                    $"Tool call budget of {state.Budget.MaxToolCalls} exhausted after {state.Iteration} iterations."));
+                    $"Tool call budget of {effectiveBudget} exhausted after {state.Iteration} iterations."));
             }
         }
 

@@ -5,10 +5,10 @@ namespace AiDevNet.Tests.Unit;
 
 public class StaticModelStrategyResolverTests
 {
-    public static TheoryData<string, int, int, int, decimal, int> ModelClassTable => new()
+    public static TheoryData<string, int, int, int, decimal, int, decimal, int> ModelClassTable => new()
     {
-        { "small-local", 1, 3, 1, 0.6m, 3 },
-        { "large-local", 3, 8, 4, 0.5m, 5 },
+        { "small-local", 1, 3, 1, 0.6m, 3, 0.6m, 20 },
+        { "large-local", 3, 8, 4, 0.5m, 5, 0.8m, 50 },
     };
 
     [Theory]
@@ -19,7 +19,9 @@ public class StaticModelStrategyResolverTests
         int discoveryBreadth,
         int maxParallelTools,
         decimal minimumConfidence,
-        int compactionInterval)
+        int compactionInterval,
+        decimal compactionRatio,
+        int toolCallBudget)
     {
         var profile = new RuntimeModelProfile("test-model", modelClass, "ollama", 32_000, false);
 
@@ -31,6 +33,8 @@ public class StaticModelStrategyResolverTests
         strategy.MaxParallelTools.ShouldBe(maxParallelTools);
         strategy.MinimumConfidenceToProceed.ShouldBe(minimumConfidence);
         strategy.CompactionInterval.ShouldBe(compactionInterval);
+        strategy.CompactionRatio.ShouldBe(compactionRatio);
+        strategy.ToolCallBudget.ShouldBe(toolCallBudget);
     }
 
     [Theory]

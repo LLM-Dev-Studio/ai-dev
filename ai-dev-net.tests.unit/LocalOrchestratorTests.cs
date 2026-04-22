@@ -166,4 +166,31 @@ public class LocalOrchestratorTests
         var err = result.ShouldBeOfType<Err<CompactionSnapshot>>();
         err.Error.ShouldBe(strategyError);
     }
+
+    [Fact]
+    public async Task RunAsync_StrategyToolCallBudgetOverridesDefaultBudget()
+    {
+        // DefaultBudget allows 50 tool calls but the resolved strategy caps at 1.
+        var resolver = Substitute.For<IModelStrategyResolver>();
+        resolver.Resolve(Arg.Any<RuntimeModelProfile>()).Returns(new Ok<RuntimeModelStrategy>(
+            DefaultStrategy with { ToolCallBudget = 1 }));
+
+        var planner = Substitute.For<ILocalPlanner>();
+        planner.PlanNextAsync(Arg.Any<LocalRuntimeState>(), Arg.Any<CancellationToken>())
+            .Returns(new Ok<RuntimeActionPlan>(new RuntimeActionPlan(
+                Intent: "run tool",
+                ToolRequests: [new ToolRequest("read", new Dictionary<string, string>(), "read file")],
+                ExpectedOutcome: "file contents",
+                RequiresUserInput: false)));
+
+        var toolBroker = Substitute.For<ILocalToolBroker>();
+        toolBroker.ExecuteAsync(Arg.Any<IReadOnlyList<ToolRequest>>(), Arg.Any<CancellationToken>())
+            .Returns(new Ok<IReadOnlyList<ToolOutcome>>([new ToolOutcome("read", true, "contents", [])]));
+
+        var orchestrator = Create(planner, toolBroker: toolBroker, resolver: resolver);
+
+        var result = await orchestrator.RunAsync(AnyObjective, AnyProfile, TestContext.Current.CancellationToken);
+
+        result.ShouldBeOfType<Err<CompactionSnapshot>>().Error.Code.ShouldBe("LocalOrchestrator.BudgetExhausted");
+    }
 }

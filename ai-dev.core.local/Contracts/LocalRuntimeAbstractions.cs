@@ -54,4 +54,13 @@ public sealed record RuntimeModelStrategy(
     int DiscoveryBreadth,
     int MaxParallelTools,
     decimal MinimumConfidenceToProceed,
-    int CompactionInterval);
+    int CompactionInterval,
+    /// <summary>
+    /// Fraction of MaxContextTokens at which a mid-loop compaction is forced regardless of interval.
+    /// 1.0 = never force early; 0.5 = force when estimated tokens exceed half the budget.
+    /// </summary>
+    decimal CompactionRatio = 0.8m,
+    /// <summary>
+    /// Model-class-specific tool-call ceiling. 0 means fall back to RuntimeBudget.MaxToolCalls.
+    /// </summary>
+    int ToolCallBudget = 0);
