@@ -19,7 +19,7 @@ public static class LocalCoreExtensions
         services.AddSingleton<IProgressiveDiscoveryEngine, NullDiscoveryEngine>();
         services.AddSingleton<IContextCompactor, RuleBasedContextCompactor>();
         services.AddSingleton<IModelStrategyResolver, StaticModelStrategyResolver>();
-        services.AddSingleton<IRuntimeMemoryStore, InMemoryRuntimeMemoryStore>();
+        services.AddSingleton<IRuntimeMemoryStore, FileSystemRuntimeMemoryStore>();
         services.AddSingleton<ILocalOrchestrator, LocalOrchestrator>();
         services.AddSingleton<ILocalAgentHook, LocalAgentHookAdapter>();
 
