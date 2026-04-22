@@ -1,3 +1,5 @@
+using AiDev.Core.Local.Implementation;
+using AiDev.Core.Local.Implementation.Null;
 using AiDev.Core.Local.Orchestration;
 
 namespace AiDev.Core.Local.Extensions;
@@ -9,6 +11,14 @@ public static class LocalCoreExtensions
         LocalOrchestratorOptions? options = null)
     {
         services.AddSingleton(options ?? LocalOrchestratorOptions.Default);
+
+        services.AddSingleton<ILocalPlanner, NullPlanner>();
+        services.AddSingleton<ILocalToolBroker, NullToolBroker>();
+        services.AddSingleton<IProgressiveDiscoveryEngine, NullDiscoveryEngine>();
+        services.AddSingleton<IContextCompactor, NullCompactor>();
+        services.AddSingleton<IModelStrategyResolver, NullModelStrategyResolver>();
+        services.AddSingleton<IRuntimeMemoryStore, InMemoryRuntimeMemoryStore>();
+
         return services;
     }
 }
