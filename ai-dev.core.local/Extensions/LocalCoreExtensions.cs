@@ -17,7 +17,7 @@ public static class LocalCoreExtensions
         services.AddSingleton<ILocalPlanner, NullPlanner>();
         services.AddSingleton<ILocalToolBroker, NullToolBroker>();
         services.AddSingleton<IProgressiveDiscoveryEngine, NullDiscoveryEngine>();
-        services.AddSingleton<IContextCompactor, NullCompactor>();
+        services.AddSingleton<IContextCompactor, RuleBasedContextCompactor>();
         services.AddSingleton<IModelStrategyResolver, StaticModelStrategyResolver>();
         services.AddSingleton<IRuntimeMemoryStore, InMemoryRuntimeMemoryStore>();
         services.AddSingleton<ILocalOrchestrator, LocalOrchestrator>();
