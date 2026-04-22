@@ -15,7 +15,7 @@ public static class LocalCoreExtensions
         services.AddSingleton(options ?? LocalOrchestratorOptions.Default);
 
         services.AddSingleton<ILocalPlanner, NullPlanner>();
-        services.AddSingleton<ILocalToolBroker, NullToolBroker>();
+        services.AddSingleton<ILocalToolBroker, LocalToolBroker>();
         services.AddSingleton<IProgressiveDiscoveryEngine, ProgressiveDiscoveryEngine>();
         services.AddSingleton<IContextCompactor, RuleBasedContextCompactor>();
         services.AddSingleton<IModelStrategyResolver, StaticModelStrategyResolver>();
