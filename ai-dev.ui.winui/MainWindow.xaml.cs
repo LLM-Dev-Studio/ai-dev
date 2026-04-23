@@ -39,6 +39,7 @@ public sealed partial class MainWindow : Window
         ["codebase"] = typeof(CodebasePage),
         ["project-settings"] = typeof(ProjectSettingsPage),
         ["process"] = typeof(ProcessPage),
+        ["planning"] = typeof(PlanningTasksPage),
     };
 
     public MainWindow(MainViewModel viewModel)
@@ -224,6 +225,7 @@ public sealed partial class MainWindow : Window
         {
             ("Agents",         Symbol.People,           "agents"),
             ("Board",          Symbol.ViewAll,          "board"),
+            ("Planning",       Symbol.Document,         "planning"),
             ("Messages",       Symbol.Mail,             "messages"),
             ("Decisions",      Symbol.Important,        "decisions"),
             ("Digest",         Symbol.List,             "digest"),

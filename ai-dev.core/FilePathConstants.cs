@@ -24,4 +24,12 @@ public static class FilePathConstants
     public const string JournalDirName = "journal";
     public const string TranscriptsDirName = "transcripts";
     public const string SecretsJsonFileName = "secrets.json";
+    public const string PlanningDirName = "planning";
+    public const string SessionsDirName = "sessions";
+    public const string DraftsDirName = "drafts";
+    public const string PlanningMetadataFileName = "metadata.json";
+    public const string PlanningConversationFileName = "conversation.jsonl";
+    public const string BusinessDslFileName = "Business.dsl";
+    public const string SolutionDslFileName = "Solution.dsl";
+    public const string PlanDslFileName = "Plan.dsl";
 }
