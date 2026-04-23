@@ -53,5 +53,7 @@
   <Project Path="ai-dev.ui.winui/ai-dev.ui.winui.csproj">
     <Platform Solution="Debug|Any CPU" Project="x64" />
   </Project>
-  <Project Path="samples/winappdriver-sample/WinAppDriver.Sample.Tests.csproj" />
+  <Project Path="samples/winappdriver-sample/WinAppDriver.Sample.Tests.csproj">
+    <Build Solution="Debug|*" Project="false" />
+  </Project>
 </Solution>

@@ -90,6 +90,7 @@ public partial class App : Application
         services.AddTransient<ProjectSettingsViewModel>();
         services.AddTransient<TemplatesViewModel>();
         services.AddTransient<PreferencesViewModel>();
+        services.AddTransient<PlanningTasksViewModel>();
     }
 
     /// <summary>

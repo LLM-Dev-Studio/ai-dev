@@ -6,6 +6,7 @@ using AiDev.Features.Digest;
 using AiDev.Features.Insights;
 using AiDev.Features.Journal;
 using AiDev.Features.KnowledgeBase;
+using AiDev.Features.Planning;
 using AiDev.Features.Playbook;
 using AiDev.Features.Secrets;
 using AiDev.Features.Workspace;
@@ -48,6 +49,8 @@ public static class CoreServiceExtensions
         services.AddSingleton<PromptEnhancerService>();
         services.AddSingleton<InsightsService>();
         services.AddSingleton<AgentPromptBuilder>();
+        services.AddSingleton<IPlanningSessionService, PlanningSessionService>();
+        services.AddSingleton<IPlanningChatService, PlanningChatService>();
         services.AddSingleton<SessionCompletionProcessor>();
         services.AddSingleton<AgentRunnerService>();
         services.AddSingleton<IAgentRunnerService>(sp => sp.GetRequiredService<AgentRunnerService>());

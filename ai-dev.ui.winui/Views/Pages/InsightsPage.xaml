@@ -74,21 +74,31 @@
                     <ScrollViewer Grid.Column="2"
                                   Visibility="{Binding SelectedInsight, Converter={StaticResource NullToVisible}}">
                         <StackPanel Spacing="12">
-                            <!-- Classification badges -->
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Border CornerRadius="12" Padding="8,3"
-                                        Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}">
-                                    <TextBlock x:Name="ClassificationText"
-                                               Style="{StaticResource CaptionTextBlockStyle}" />
-                                </Border>
-                                <Border CornerRadius="12" Padding="8,3"
-                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        BorderThickness="1">
-                                    <TextBlock x:Name="SizeRatingText"
-                                               Style="{StaticResource CaptionTextBlockStyle}" />
-                                </Border>
-                            </StackPanel>
+                            <!-- Classification badges + copy -->
+                            <Grid>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border CornerRadius="12" Padding="8,3"
+                                            Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}">
+                                        <TextBlock x:Name="ClassificationText"
+                                                   Style="{StaticResource CaptionTextBlockStyle}" />
+                                    </Border>
+                                    <Border CornerRadius="12" Padding="8,3"
+                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1">
+                                        <TextBlock x:Name="SizeRatingText"
+                                                   Style="{StaticResource CaptionTextBlockStyle}" />
+                                    </Border>
+                                </StackPanel>
+                                <Button HorizontalAlignment="Right"
+                                        Command="{Binding CopyInsightCommand}"
+                                        ToolTipService.ToolTip="Copy insights to clipboard">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon FontSize="12" Glyph="&#xE8C8;" />
+                                        <TextBlock Text="Copy" Style="{StaticResource CaptionTextBlockStyle}" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
 
                             <!-- Issues -->
                             <StackPanel x:Name="IssuesPanel" Spacing="8">
