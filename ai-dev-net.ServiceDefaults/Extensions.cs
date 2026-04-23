@@ -58,13 +58,15 @@ public static class Extensions
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
-                    .AddMeter("AiDevNet.Core");
+                    .AddMeter("AiDevNet.Core")
+                    .AddMeter("AiDev.LocalOrchestrator");
             })
             .WithTracing(tracing =>
             {
                 tracing.AddSource(builder.Environment.ApplicationName)
                     .AddSource("AiDevNet.Core")
                     .AddSource("AiDevNet.AgentRunner")
+                    .AddSource("AiDev.LocalOrchestrator")
                     .AddAspNetCoreInstrumentation(tracing =>
                         // Exclude health check requests from tracing
                         tracing.Filter = context =>

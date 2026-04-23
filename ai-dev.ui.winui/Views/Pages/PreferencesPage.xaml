@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="AiDev.WinUI.Views.Pages.PreferencesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="using:AiDev.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
+    </Page.Resources>
+
+    <ScrollViewer Margin="24">
+        <StackPanel Spacing="20" MaxWidth="640" HorizontalAlignment="Left">
+
+            <!-- Header -->
+            <StackPanel>
+                <TextBlock Text="Preferences" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="Feature flags are opt-in. Toggles take effect immediately and are stored in feature-flags.json."
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,4,0,0" />
+            </StackPanel>
+
+            <!-- Experimental Features -->
+            <Border Padding="16" CornerRadius="8"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Experimental Features" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                    <!-- Local Functionality Core -->
+                    <Border Padding="12" CornerRadius="6"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,16,0">
+                                <TextBlock Text="Local Functionality Core"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock Text="Enables the local-first orchestration engine: planner, progressive discovery, context compaction, and runtime memory. For development and testing only."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1"
+                                         IsOn="{Binding LocalFunctionalityEnabled, Mode=TwoWay}"
+                                         VerticalAlignment="Center"
+                                         OffContent=""
+                                         OnContent="" />
+                        </Grid>
+                    </Border>
+
+                </StackPanel>
+            </Border>
+
+            <!-- Saved feedback -->
+            <TextBlock Text="Preferences saved"
+                       Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                       Visibility="{Binding Saved, Converter={StaticResource BoolToVisible}}"
+                       Style="{StaticResource CaptionTextBlockStyle}" />
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

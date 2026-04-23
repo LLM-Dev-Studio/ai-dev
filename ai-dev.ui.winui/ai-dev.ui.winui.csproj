@@ -72,6 +72,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ai-dev.core\ai-dev.core.csproj" />
+    <ProjectReference Include="..\ai-dev.core.local\ai-dev.core.local.csproj" />
     <ProjectReference Include="..\ai-dev.executor.claude\ai-dev.executor.claude.csproj" />
     <ProjectReference Include="..\ai-dev.executor.copilot-cli\ai-dev.executor.copilot-cli.csproj" />
     <ProjectReference Include="..\ai-dev.executor.anthropic\ai-dev.executor.anthropic.csproj" />

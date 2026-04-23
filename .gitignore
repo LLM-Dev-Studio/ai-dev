@@ -435,3 +435,4 @@ FodyWeavers.xsd
 Plugin/Video Portal Web/
 Plugin/Video Portal API/
 /Plugin/VideoPortal/JJs.VideoPortal.Api/ffmpeg-8.0.1-essentials_build
+/.claude/settings.local.json

@@ -34,6 +34,7 @@ public static class CoreServiceExtensions
         services.AddSingleton<SecretsService>();
         services.AddSingleton<WorkspaceService>();
         services.AddSingleton<StudioSettingsService>();
+        services.AddSingleton<FeatureFlagsService>();
         services.AddSingleton<AgentTemplatesService>();
         services.AddSingleton<AgentService>();
         services.AddSingleton<BoardService>();
