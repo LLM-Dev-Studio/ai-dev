@@ -1,4 +1,5 @@
 using AiDev.WinUI.ViewModels;
+using AiDev.WinUI.Views.Dialogs;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -25,28 +26,36 @@ public sealed partial class BoardPage : Page
     }
 
     // "＋ Add" button on a column header — Tag is the ColumnId
-    private void AddTask_Click(object sender, RoutedEventArgs e)
+    private async void AddTask_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: ColumnId columnId })
-            ViewModel.OpenNewTask(columnId.Value);
-        else if (sender is Button { Tag: string columnIdText } && !string.IsNullOrWhiteSpace(columnIdText))
-            ViewModel.OpenNewTask(columnIdText);
+        string? columnId = null;
+        if (sender is Button { Tag: ColumnId col })
+            columnId = col.Value;
+        else if (sender is Button { Tag: string colText } && !string.IsNullOrWhiteSpace(colText))
+            columnId = colText;
+
+        if (columnId is null) return;
+        ViewModel.OpenNewTask(columnId);
+        await ShowTaskDialogAsync();
     }
 
     // "Edit" button on a task card — Tag is the BoardTask, parent column Tag is the ColumnId string
-    private void EditTask_Click(object sender, RoutedEventArgs e)
+    private async void EditTask_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: BoardTask task, Parent: FrameworkElement parent })
-        {
-            // Walk up the visual tree to find the column container whose Tag holds the ColumnId
-            var columnId = FindColumnId(parent) ?? ViewModel.Columns
-                .FirstOrDefault(c => c.Tasks.Contains(task))?.Column.Id.Value ?? "";
-            ViewModel.OpenEditTask(task, columnId);
-        }
+        if (sender is not Button { Tag: BoardTask task, Parent: FrameworkElement parent })
+            return;
+
+        var columnId = FindColumnId(parent) ?? ViewModel.Columns
+            .FirstOrDefault(c => c.Tasks.Contains(task))?.Column.Id.Value ?? "";
+        ViewModel.OpenEditTask(task, columnId);
+        await ShowTaskDialogAsync();
     }
 
-    private void DeleteTask_Click(object sender, RoutedEventArgs e)
-        => ViewModel.DeleteTaskCommand.Execute(null);
+    private async Task ShowTaskDialogAsync()
+    {
+        var dialog = new TaskDialog(ViewModel) { XamlRoot = XamlRoot };
+        await dialog.ShowAsync();
+    }
 
     private void ClearCompleted_Click(object sender, RoutedEventArgs e)
     {

@@ -5,6 +5,7 @@ public static class FilePathConstants
     public const string WorkspacesDirName = "workspaces";
     public const string RegistryFileName = "workspaces.json";
     public const string StudioSettingsFileName = "studio-settings.json";
+    public const string FeatureFlagsFileName = "feature-flags.json";
     public const string AgentTemplatesDirName = "agent-templates";
     public const string ProjectJsonFileName = "project.json";
     public const string AgentsDirName = "agents";

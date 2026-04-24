@@ -135,7 +135,14 @@
                             <StackPanel Grid.Column="1" Grid.Row="2" Spacing="4">
                                 <TextBlock Text="Description" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <TextBox Text="{Binding EditDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Text="{Binding EditDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         MinHeight="80"
+                                         MaxHeight="300"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         PlaceholderText="Describe what this template is for"
+                                         AutomationProperties.Name="Description" />
                             </StackPanel>
                         </Grid>
 

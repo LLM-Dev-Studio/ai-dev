@@ -16,6 +16,19 @@
                 "kind": "build",
                 "isDefault": true
             }
+        },
+        {
+            "label": "build-winui-arm64",
+            "type": "process",
+            "command": "dotnet",
+            "args": [
+                "build",
+                "${workspaceFolder}/ai-dev.ui.winui/ai-dev.ui.winui.csproj",
+                "-p:Platform=ARM64",
+                "/consoleloggerparameters:NoSummary"
+            ],
+            "problemMatcher": "$msCompile",
+            "group": "build"
         }
     ]
 }

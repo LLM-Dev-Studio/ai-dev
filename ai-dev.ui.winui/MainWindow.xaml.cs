@@ -39,6 +39,7 @@ public sealed partial class MainWindow : Window
         ["codebase"] = typeof(CodebasePage),
         ["project-settings"] = typeof(ProjectSettingsPage),
         ["process"] = typeof(ProcessPage),
+        ["preferences"] = typeof(PreferencesPage),
         ["planning"] = typeof(PlanningTasksPage),
     };
 
@@ -49,6 +50,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetWindowIcon();
         Activated += OnActivated;
+        Closed += (_, _) => _viewModel.StopLiveHealthUpdates();
 
         _viewModel.PropertyChanged += (_, e) =>
         {
@@ -68,6 +70,7 @@ public sealed partial class MainWindow : Window
         try
         {
             await _viewModel.LoadExecutorStatusesAsync();
+            _viewModel.StartLiveHealthUpdates(DispatcherQueue);
         }
         catch (Exception ex)
         {
@@ -168,6 +171,12 @@ public sealed partial class MainWindow : Window
         });
         RootNavigation.FooterMenuItems.Add(new NavigationViewItem
         {
+            Content = "Preferences",
+            Tag = "preferences",
+            Icon = new SymbolIcon(Symbol.Manage)
+        });
+        RootNavigation.FooterMenuItems.Add(new NavigationViewItem
+        {
             Content = "Settings",
             Tag = "settings",
             Icon = new SymbolIcon(Symbol.Setting)
@@ -257,6 +266,12 @@ public sealed partial class MainWindow : Window
             Content = "Templates",
             Tag = "templates",
             Icon = new SymbolIcon(Symbol.Library)
+        });
+        RootNavigation.FooterMenuItems.Add(new NavigationViewItem
+        {
+            Content = "Preferences",
+            Tag = "preferences",
+            Icon = new SymbolIcon(Symbol.Manage)
         });
         RootNavigation.FooterMenuItems.Add(new NavigationViewItem
         {

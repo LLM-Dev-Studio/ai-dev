@@ -12,6 +12,16 @@
             "stopAtEntry": false
         },
         {
+            "name": "WinUI (ARM64)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build-winui-arm64",
+            "program": "${workspaceFolder}/ai-dev.ui.winui/bin/ARM64/Debug/net10.0-windows10.0.19041.0/ai-dev.ui.winui.exe",
+            "cwd": "${workspaceFolder}/ai-dev.ui.winui/bin/ARM64/Debug/net10.0-windows10.0.19041.0",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        },
+        {
             "name": "C#: ai-dev-net.AppHost Debug",
             "type": "dotnet",
             "request": "launch",

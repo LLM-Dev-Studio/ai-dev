@@ -12,7 +12,6 @@
     <Page.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVisible" />
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisible" />
-        <conv:InverseBoolConverter x:Key="InverseBool" />
         <conv:PriorityColorConverter x:Key="PriorityColor" />
         <conv:PriorityTextConverter x:Key="PriorityText" />
         <conv:NullToVisibilityConverter x:Key="NullToVisible" />
@@ -144,114 +143,6 @@
             </ScrollViewer>
         </Grid>
 
-        <!-- Task dialog overlay -->
-        <Grid Visibility="{Binding ShowTaskDialog, Converter={StaticResource BoolToVisible}}"
-              Background="#99000000"
-              HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
-
-        <Border HorizontalAlignment="Center" VerticalAlignment="Center"
-                Width="700" MaxHeight="800" Padding="24" CornerRadius="12"
-                Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                Visibility="{Binding ShowTaskDialog, Converter={StaticResource BoolToVisible}}">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="12">
-
-                <TextBlock Text="{Binding DialogTitle}" Style="{StaticResource SubtitleTextBlockStyle}" />
-
-                <!-- Title + Enhance -->
-                <StackPanel Spacing="4">
-                    <TextBlock Text="Title" Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0"
-                                 Text="{Binding TaskTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="Task title" />
-                        <Button Grid.Column="1"
-                                Content="✨ Enhance"
-                                Command="{Binding EnhanceCommand}"
-                                Visibility="{Binding IsEnhancing, Converter={StaticResource InverseBoolToVisible}}" />
-                        <Button Grid.Column="1"
-                                Content="Cancel"
-                                Command="{Binding CancelEnhanceCommand}"
-                                Visibility="{Binding IsEnhancing, Converter={StaticResource BoolToVisible}}" />
-                    </Grid>
-                    <ProgressBar IsIndeterminate="True"
-                                 Visibility="{Binding IsEnhancing, Converter={StaticResource BoolToVisible}}" />
-                </StackPanel>
-
-                <!-- Description -->
-                <StackPanel Spacing="4">
-                    <TextBlock Text="Description" Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBox Text="{Binding TaskDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             MinHeight="80"
-                             MaxHeight="200"
-                             PlaceholderText="Optional details, acceptance criteria…" />
-                </StackPanel>
-
-                <!-- Priority + Column -->
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Spacing="4">
-                        <TextBlock Text="Priority" Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <ComboBox x:Name="PriorityCombo"
-                                  HorizontalAlignment="Stretch"
-                                  SelectedValuePath="Tag"
-                                  SelectedValue="{Binding TaskPriority, Mode=TwoWay}">
-                            <ComboBoxItem Content="Low" Tag="low" />
-                            <ComboBoxItem Content="Normal" Tag="normal" />
-                            <ComboBoxItem Content="High" Tag="high" />
-                            <ComboBoxItem Content="Critical" Tag="critical" />
-                        </ComboBox>
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Spacing="4">
-                        <TextBlock Text="Assignee" Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <ComboBox x:Name="AssigneeCombo"
-                                  HorizontalAlignment="Stretch"
-                                  ItemsSource="{Binding AssigneeOptions}"
-                                  DisplayMemberPath="DisplayName"
-                                  SelectedItem="{Binding SelectedAssigneeOption, Mode=TwoWay}" />
-                    </StackPanel>
-                </Grid>
-
-                <!-- Error -->
-                <TextBlock Text="{Binding TaskError}"
-                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                           Visibility="{Binding TaskError, Converter={StaticResource NullToVisible}}"
-                           Style="{StaticResource CaptionTextBlockStyle}" />
-
-                <!-- Footer buttons -->
-                <Grid Margin="0,4,0,0">
-                    <Button Content="Delete task"
-                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                            HorizontalAlignment="Left"
-                            Visibility="{Binding ShowTaskDialog, Converter={StaticResource BoolToVisible}}"
-                            Click="DeleteTask_Click" />
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                        <Button Content="Cancel"
-                                Command="{Binding CloseTaskDialogCommand}" />
-                        <Button Content="{Binding DialogTitle}"
-                                Style="{StaticResource AccentButtonStyle}"
-                                Command="{Binding SaveTaskCommand}"
-                                IsEnabled="{Binding IsSavingTask, Converter={StaticResource InverseBool}}" />
-                    </StackPanel>
-                </Grid>
-            </StackPanel>
-            </ScrollViewer>
-        </Border>
     </Grid>
 </Page>
 

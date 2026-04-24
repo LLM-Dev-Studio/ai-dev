@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 namespace AiDev.Features.Planning;
 
 /// <summary>
@@ -84,7 +82,7 @@ public static class PlanningKeywordBlocklist
         "Backend for Frontend", "BFF", "Hexagonal Architecture", "Clean Architecture",
         "Layered Architecture", "Pipe-and-Filter", "Publish-Subscribe",
         "Eventual Consistency", "ACID", "BASE", "CAP Theorem",
-        "Event-Driven Architecture", "Choreography", "Orchestration",
+        "Event-Driven Architecture", "Choreography", "Orchestration", "Repository Pattern", 
 
         // Auth & security
         "OAuth", "OpenID Connect", "JWT", "SAML", "Kerberos", "LDAP",

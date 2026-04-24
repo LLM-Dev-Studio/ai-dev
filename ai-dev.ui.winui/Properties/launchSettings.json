@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ai-dev.ui.winui (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "ai-dev.ui.winui (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

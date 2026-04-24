@@ -48,6 +48,7 @@
   <Project Path="ai-dev.executor.github-models/ai-dev.executor.github-models.csproj" />
   <Project Path="ai-dev.executor.lmstudio/ai-dev.executor.lmstudio.csproj" />
   <Project Path="ai-dev.executor.ollama/ai-dev.executor.ollama.csproj" />
+  <Project Path="ai-dev.core.local/ai-dev.core.local.csproj" />
   <Project Path="ai-dev.mcp/ai-dev.mcp.csproj" />
   <Project Path="ai-dev.ui.winui/ai-dev.ui.winui.csproj">
     <Platform Solution="Debug|Any CPU" Project="x64" />
