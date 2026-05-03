@@ -183,8 +183,8 @@ public class OllamaAgentExecutor(
         activity?.SetTag("agent.trigger.reason", context.Trigger?.Reason);
         activity?.SetTag("message.file", context.Trigger?.MessageFile);
 
-        var systemPrompt = BuildSystemPrompt(context.WorkingDir);
-        var rawBaseUrl   = settingsService.GetSettings().OllamaBaseUrl.TrimEnd('/');
+        var settings   = settingsService.GetSettings();
+        var rawBaseUrl = settings.OllamaBaseUrl.TrimEnd('/');
 
         if (!Uri.TryCreate(rawBaseUrl, UriKind.Absolute, out var parsedUri)
             || (parsedUri.Scheme != Uri.UriSchemeHttp && parsedUri.Scheme != Uri.UriSchemeHttps))
@@ -223,23 +223,36 @@ public class OllamaAgentExecutor(
         if (enableTools)
             output.TryWrite($"[{DateTime.UtcNow:o}] [ollama] workspace tools enabled — root={workspaceRoot}");
 
+        // Resolve context window (from health-check cache, or probe on demand).
+        var contextWindow = await ResolveContextWindowAsync(rawBaseUrl, context.ModelId, context.CancellationToken)
+            .ConfigureAwait(false);
+        var maxOutputTokens = TokenBudget.RecommendMaxOutputTokens(
+            contextWindow, floor: 512, ceiling: DefaultMaxOutputTokens);
+        var toolsJson = enableTools ? OllamaToolSchemas.GetToolsArray().ToJsonString() : null;
+
+        var systemPrompt = SystemPromptLoader.Load(
+            context.WorkingDir, contextWindow, settings.CompactPromptThreshold);
+        var promptTier = contextWindow > 0 && contextWindow < settings.CompactPromptThreshold ? "compact" : "full";
+
+        if (contextWindow > 0)
+            output.TryWrite(
+                $"[{DateTime.UtcNow:o}] [ollama] context_window={contextWindow} max_output_tokens={maxOutputTokens} prompt_tier={promptTier}");
+
+        if (!TokenBudget.CanFitCompact(contextWindow, systemPrompt, maxOutputTokens))
+        {
+            var minRequired = TokenBudget.EstimateTokens(systemPrompt) + maxOutputTokens + TokenBudget.SafetyMargin;
+            var refusal = SystemPromptLoader.BuildRefusalMessage(context.ModelId, contextWindow, minRequired);
+            logger.LogWarning("[ollama] {Refusal}", refusal);
+            output.TryWrite($"[{DateTime.UtcNow:o}] {refusal}");
+            return new ExecutorResult(1, ErrorMessage: refusal);
+        }
+
         // Build mutable message history for the tool execution loop.
         var messages = new List<JsonNode>
         {
             new JsonObject { ["role"] = "system", ["content"] = systemPrompt },
             new JsonObject { ["role"] = "user",   ["content"] = context.Prompt },
         };
-
-        // Resolve context window (from health-check cache, or probe on demand).
-        var contextWindow = await ResolveContextWindowAsync(rawBaseUrl, context.ModelId, context.CancellationToken)
-            .ConfigureAwait(false);
-        var maxOutputTokens = TokenBudget.RecommendMaxOutputTokens(
-            contextWindow, floor: 512, ceiling: DefaultMaxOutputTokens);
-        var toolsJson       = enableTools ? OllamaToolSchemas.GetToolsArray().ToJsonString() : null;
-
-        if (contextWindow > 0)
-            output.TryWrite(
-                $"[{DateTime.UtcNow:o}] [ollama] context_window={contextWindow} max_output_tokens={maxOutputTokens}");
 
         var http      = httpClientFactory.CreateClient("ollama");
         int iteration = 0;
@@ -487,14 +500,6 @@ public class OllamaAgentExecutor(
     /// </summary>
     private static string DeriveWorkspaceRoot(string workingDir) =>
         Path.GetFullPath(Path.Combine(workingDir, "../.."));
-
-    private static string BuildSystemPrompt(string workingDir)
-    {
-        var claudeMd = Path.Combine(workingDir, "CLAUDE.md");
-        if (!File.Exists(claudeMd)) return "You are a helpful AI agent.";
-        try { return File.ReadAllText(claudeMd, System.Text.Encoding.UTF8); }
-        catch { return "You are a helpful AI agent."; }
-    }
 
     /// <summary>
     /// Extract a best-effort string representation of a message's billable content

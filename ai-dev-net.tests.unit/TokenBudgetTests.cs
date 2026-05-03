@@ -106,4 +106,66 @@ public class TokenBudgetTests
         // 8192 / 4 = 2048, within bounds
         TokenBudget.RecommendMaxOutputTokens(8192).ShouldBe(2048);
     }
+
+    [Fact]
+    public void SelectSystemPrompt_ContextWindowBelowThreshold_ReturnsCompact()
+    {
+        var result = TokenBudget.SelectSystemPrompt(
+            contextWindow: 8192, fullPrompt: "full", compactPrompt: "compact", threshold: 16384);
+
+        result.ShouldBe("compact");
+    }
+
+    [Fact]
+    public void SelectSystemPrompt_ContextWindowAtThreshold_ReturnsFull()
+    {
+        var result = TokenBudget.SelectSystemPrompt(
+            contextWindow: 16384, fullPrompt: "full", compactPrompt: "compact", threshold: 16384);
+
+        result.ShouldBe("full");
+    }
+
+    [Fact]
+    public void SelectSystemPrompt_ContextWindowAboveThreshold_ReturnsFull()
+    {
+        var result = TokenBudget.SelectSystemPrompt(
+            contextWindow: 32768, fullPrompt: "full", compactPrompt: "compact", threshold: 16384);
+
+        result.ShouldBe("full");
+    }
+
+    [Fact]
+    public void SelectSystemPrompt_UnknownContextWindow_ReturnsFull()
+    {
+        var result = TokenBudget.SelectSystemPrompt(
+            contextWindow: 0, fullPrompt: "full", compactPrompt: "compact", threshold: 16384);
+
+        result.ShouldBe("full");
+    }
+
+    [Fact]
+    public void CanFitCompact_PromptAndOutputFitInWindow_ReturnsTrue()
+    {
+        // compact prompt = 400 chars = 100 tokens, output = 512, margin = 64 => 676 < 8192
+        var compact = new string('x', 400);
+
+        TokenBudget.CanFitCompact(8192, compact, maxOutputTokens: 512).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void CanFitCompact_PromptAndOutputExceedWindow_ReturnsFalse()
+    {
+        // compact = 16000 chars = 4000 tokens, output = 4096, margin = 64 => 8160 > 4096
+        var compact = new string('x', 16_000);
+
+        TokenBudget.CanFitCompact(4096, compact, maxOutputTokens: 4096).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void CanFitCompact_UnknownContextWindow_ReturnsTrue()
+    {
+        var compact = new string('x', 100_000);
+
+        TokenBudget.CanFitCompact(0, compact, maxOutputTokens: 4096).ShouldBeTrue();
+    }
 }

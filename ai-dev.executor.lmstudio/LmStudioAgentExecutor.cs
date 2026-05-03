@@ -228,8 +228,8 @@ public sealed class LmStudioAgentExecutor(
         activity?.SetTag("agent.trigger.reason", context.Trigger?.Reason);
         activity?.SetTag("message.file", context.Trigger?.MessageFile);
 
-        var systemPrompt = BuildSystemPrompt(context.WorkingDir);
-        var rawBaseUrl   = settingsService.GetSettings().LmStudioBaseUrl.TrimEnd('/');
+        var settings     = settingsService.GetSettings();
+        var rawBaseUrl   = settings.LmStudioBaseUrl.TrimEnd('/');
 
         if (!Uri.TryCreate(rawBaseUrl, UriKind.Absolute, out var parsedUri)
             || (parsedUri.Scheme != Uri.UriSchemeHttp && parsedUri.Scheme != Uri.UriSchemeHttps))
@@ -261,24 +261,37 @@ public sealed class LmStudioAgentExecutor(
         if (enableTools)
             output.TryWrite($"[{DateTime.UtcNow:o}] [lmstudio] workspace tools enabled — root={workspaceRoot}");
 
+        // Resolve the model's loaded context window. If the cache is empty (e.g. the user
+        // skipped the health check UI), trigger a probe to populate it. A context of 0 means
+        // "unknown" and the preflight will skip — we then rely on LM Studio to report errors.
+        var contextWindow   = await ResolveContextWindowAsync(context.ModelId, context.CancellationToken)
+            .ConfigureAwait(false);
+        var maxOutputTokens = TokenBudget.RecommendMaxOutputTokens(contextWindow, floor: 512, ceiling: DefaultMaxTokens);
+        var toolsJson       = enableTools ? OllamaToolSchemas.GetToolsArray().ToJsonString() : null;
+
+        var systemPrompt = SystemPromptLoader.Load(
+            context.WorkingDir, contextWindow, settings.CompactPromptThreshold);
+        var promptTier = contextWindow > 0 && contextWindow < settings.CompactPromptThreshold ? "compact" : "full";
+
+        if (contextWindow > 0)
+            output.TryWrite(
+                $"[{DateTime.UtcNow:o}] [lmstudio] context_window={contextWindow} max_output_tokens={maxOutputTokens} prompt_tier={promptTier}");
+
+        if (!TokenBudget.CanFitCompact(contextWindow, systemPrompt, maxOutputTokens))
+        {
+            var minRequired = TokenBudget.EstimateTokens(systemPrompt) + maxOutputTokens + TokenBudget.SafetyMargin;
+            var refusal = SystemPromptLoader.BuildRefusalMessage(context.ModelId, contextWindow, minRequired);
+            logger.LogWarning("[lmstudio] {Refusal}", refusal);
+            output.TryWrite($"[{DateTime.UtcNow:o}] {refusal}");
+            return new ExecutorResult(1, ErrorMessage: refusal);
+        }
+
         // Build mutable message history for the tool execution loop.
         var messages = new List<JsonNode>
         {
             new JsonObject { ["role"] = "system", ["content"] = systemPrompt },
             new JsonObject { ["role"] = "user",   ["content"] = context.Prompt },
         };
-
-        // Resolve the model's loaded context window. If the cache is empty (e.g. the user
-        // skipped the health check UI), trigger a probe to populate it. A context of 0 means
-        // "unknown" and the preflight will skip — we then rely on LM Studio to report errors.
-        var contextWindow = await ResolveContextWindowAsync(context.ModelId, context.CancellationToken)
-            .ConfigureAwait(false);
-        var maxOutputTokens = TokenBudget.RecommendMaxOutputTokens(contextWindow, floor: 512, ceiling: DefaultMaxTokens);
-        var toolsJson       = enableTools ? OllamaToolSchemas.GetToolsArray().ToJsonString() : null;
-
-        if (contextWindow > 0)
-            output.TryWrite(
-                $"[{DateTime.UtcNow:o}] [lmstudio] context_window={contextWindow} max_output_tokens={maxOutputTokens}");
 
         var http      = httpClientFactory.CreateClient("lmstudio");
         int iteration = 0;
@@ -544,14 +557,6 @@ public sealed class LmStudioAgentExecutor(
             obj["tools"] = OllamaToolSchemas.GetToolsArray();
 
         return obj.ToJsonString();
-    }
-
-    private static string BuildSystemPrompt(string workingDir)
-    {
-        var claudeMd = Path.Combine(workingDir, "CLAUDE.md");
-        if (!File.Exists(claudeMd)) return "You are a helpful AI agent.";
-        try { return File.ReadAllText(claudeMd, Encoding.UTF8); }
-        catch { return "You are a helpful AI agent."; }
     }
 
     private static string DeriveWorkspaceRoot(string workingDir) =>

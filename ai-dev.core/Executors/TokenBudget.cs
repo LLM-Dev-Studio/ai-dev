@@ -107,4 +107,42 @@ public static class TokenBudget
         var quarter = contextWindow / 4;
         return Math.Clamp(quarter, floor, ceiling);
     }
+
+    /// <summary>
+    /// Returns the maximum token budget for the system prompt: half the context window.
+    /// Returns 0 when the context window is unknown — callers should skip truncation in that case.
+    /// </summary>
+    public static int MaxSystemPromptTokens(int contextWindow) =>
+        contextWindow > 0 ? contextWindow / 2 : 0;
+
+    /// <summary>
+    /// Truncate <paramref name="text"/> so it fits within <paramref name="maxTokens"/> using
+    /// the same character-based estimator as the rest of the budget system. Returns the original
+    /// string unchanged when it already fits.
+    /// </summary>
+    public static string TruncateSystemPrompt(string text, int maxTokens)
+    {
+        var maxChars = maxTokens * CharsPerToken;
+        return text.Length <= maxChars ? text : text[..maxChars];
+    }
+
+    /// <summary>
+    /// Select the appropriate system prompt tier based on the model's context window and the
+    /// configured threshold. Returns <paramref name="compactPrompt"/> when the context window
+    /// is known and below <paramref name="threshold"/>; otherwise returns <paramref name="fullPrompt"/>.
+    /// </summary>
+    public static string SelectSystemPrompt(
+        int contextWindow, string fullPrompt, string compactPrompt, int threshold) =>
+        contextWindow > 0 && contextWindow < threshold ? compactPrompt : fullPrompt;
+
+    /// <summary>
+    /// Check whether the compact system prompt and the output reservation fit within the
+    /// model's context window. Returns true when the context window is unknown (0).
+    /// </summary>
+    public static bool CanFitCompact(int contextWindow, string compactPrompt, int maxOutputTokens)
+    {
+        if (contextWindow <= 0) return true;
+        var required = EstimateTokens(compactPrompt) + maxOutputTokens + SafetyMargin;
+        return required <= contextWindow;
+    }
 }
