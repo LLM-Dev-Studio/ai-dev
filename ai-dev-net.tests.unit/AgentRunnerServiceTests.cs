@@ -115,7 +115,9 @@ public class AgentRunnerServiceTests
             new SessionCompletionProcessor(paths, new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance, projectStateNotifier), new InsightsService([], settings, NullLogger<InsightsService>.Instance), projectStateNotifier, NullLogger<SessionCompletionProcessor>.Instance),
             new SecretsService(paths, fileWriter),
             NullLogger<AgentRunnerService>.Instance,
-            projectStateNotifier);
+            projectStateNotifier,
+            new FeatureFlagsService(),
+            []);
     }
 
     private static async Task WaitForAgentToFinishAsync(AgentRunnerService runner, ProjectSlug projectSlug, AgentSlug agentSlug)

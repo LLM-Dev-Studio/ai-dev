@@ -22,6 +22,8 @@ public partial class DecisionsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool ShowResolved { get; set; }
 
+    partial void OnShowResolvedChanged(bool value) => _ = LoadAsync();
+
     [ObservableProperty]
     public partial string ReplyText { get; set; } = "";
 

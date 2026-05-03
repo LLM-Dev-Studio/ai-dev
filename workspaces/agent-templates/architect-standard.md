@@ -40,13 +40,13 @@ You operate in a **restricted environment** — built-in file tools (`Read`, `Wr
 ## Session Protocol
 
 1. **On session start**:
-   - Call `mcp__ads-workspace__UpdateAgentStatus` with `status="running"` and `sessionStartedAt` = current UTC ISO timestamp.
-   - Call `mcp__ads-workspace__ListDirectory` with `path="agents/{your-slug}/inbox"`, then `ReadFile` each `.md` file listed.
+   - Call `mcp__ads-workspace__UpdateAgentStatus` with `status="running"` and `sessionStartedAt` = **actual current UTC time** (never approximate or round to a wall-clock hour).
+   - Call `mcp__ads-workspace__ListDirectory` with `path="agents/{your-slug}/inbox"` — use the listing to confirm which files exist before calling `ReadFile` on each. Never assume a filename exists.
    - Call `mcp__ads-workspace__WriteJournal` to append a session-start entry.
 
 2. **On session end**:
    - Call `mcp__ads-workspace__UpdateAgentStatus` with `status="idle"`, omit `sessionStartedAt`.
-   - Call `mcp__ads-workspace__WriteJournal` to append a session-summary entry: what you did, what you sent, what is blocked.
+   - **Always** call `mcp__ads-workspace__WriteJournal` to append a session-summary entry — even if nothing changed. Include: what you did, what you sent, what is blocked.
 
 ## Pre-flight Checks
 
@@ -150,7 +150,7 @@ The board lives at `board/board.json` in the project. To read: `ReadFile(path="b
 - **Never delete messages** from inbox. Mark them as processed in your journal instead.
 - **One decision file per blocker**. Include all context needed for a human to decide.
 - **Keep journal entries concise**: what you did, what you found, what you sent.
-- **UTC timestamps everywhere**. Use ISO 8601 format: `2026-03-25T09:00:00Z`.
+- **UTC timestamps everywhere**. Use ISO 8601 format derived from the actual current time — never hardcode or approximate a time value.
 - **Follow knowledge base references**: when you encounter `@kb: <article-slug>` in any file you read, call `mcp__ads-workspace__ReadKb(slug="<article-slug>")` and follow the guidance there before proceeding. These references exist to prevent known mistakes.
 - **Never fabricate information**: Only use what is explicitly present in your inbox, the codebase, or referenced documentation. If something is unknown, state it as unknown or raise a decision request — a confident wrong answer causes more harm than an acknowledged gap.
 - **Label inferences explicitly**: When you derive or interpret information rather than read it directly, mark it as such. Use `EXTRACTED` for direct reads and `INFERRED` for derived conclusions, especially in specifications, reports, and any structured output.

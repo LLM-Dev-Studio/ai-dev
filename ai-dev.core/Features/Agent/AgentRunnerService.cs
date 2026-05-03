@@ -18,11 +18,14 @@ public class AgentRunnerService(
     SessionCompletionProcessor completionProcessor,
     SecretsService secretsService,
     ILogger<AgentRunnerService> logger,
-    ProjectStateChangedNotifier projectStateChangedNotifier) : IAgentRunnerService
+    ProjectStateChangedNotifier projectStateChangedNotifier,
+    FeatureFlagsService featureFlagsService,
+    IEnumerable<ILocalAgentHook> localHooks) : IAgentRunnerService
 {
     private static readonly ActivitySource ActivitySource = new("AiDevNet.AgentRunner");
     private readonly Dictionary<string, IAgentExecutor> _executors =
         executors.GroupBy(e => e.Name).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+    private readonly ILocalAgentHook? _localHook = localHooks.FirstOrDefault();
     private const string AgentPrompt =
         "Read your inbox and action any messages. Follow your CLAUDE.md session protocol.";
     private const string ProjectScopedMcpPrompt =
@@ -381,12 +384,32 @@ public class AgentRunnerService(
 
         try
         {
-            var result = await resolvedExecutor.RunAsync(context, outputChannel.Writer);
-            exitCode = result.ExitCode;
-            isRateLimited = result.IsRateLimited;
-            preserveInbox = result.PreserveInbox;
-            sessionError = result.ErrorMessage;
-            sessionUsage = result.Usage;
+            var useLocalHook = _localHook is not null
+                && featureFlagsService.GetFlags().LocalFunctionalityEnabled
+                && _localHook.IsApplicable(resolvedExecutor.Name);
+
+            if (useLocalHook)
+            {
+                var hookContext = new LocalAgentHookContext(
+                    Goal: context.Prompt,
+                    WorkingDir: context.WorkingDir,
+                    ModelId: context.ModelId,
+                    ExecutorName: resolvedExecutor.Name,
+                    SessionId: Guid.NewGuid());
+
+                var hookResult = await _localHook!.RunAsync(hookContext, outputChannel.Writer, info.Cts.Token);
+                exitCode = hookResult.Succeeded ? 0 : 1;
+                sessionError = hookResult.ErrorMessage;
+            }
+            else
+            {
+                var result = await resolvedExecutor.RunAsync(context, outputChannel.Writer);
+                exitCode = result.ExitCode;
+                isRateLimited = result.IsRateLimited;
+                preserveInbox = result.PreserveInbox;
+                sessionError = result.ErrorMessage;
+                sessionUsage = result.Usage;
+            }
 
             activity?.SetTag("agent.exitCode", exitCode);
             activity?.SetTag("agent.rateLimited", isRateLimited);

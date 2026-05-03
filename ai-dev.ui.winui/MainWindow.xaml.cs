@@ -39,6 +39,8 @@ public sealed partial class MainWindow : Window
         ["codebase"] = typeof(CodebasePage),
         ["project-settings"] = typeof(ProjectSettingsPage),
         ["process"] = typeof(ProcessPage),
+        ["preferences"] = typeof(PreferencesPage),
+        ["planning"] = typeof(PlanningTasksPage),
     };
 
     public MainWindow(MainViewModel viewModel)
@@ -169,6 +171,12 @@ public sealed partial class MainWindow : Window
         });
         RootNavigation.FooterMenuItems.Add(new NavigationViewItem
         {
+            Content = "Preferences",
+            Tag = "preferences",
+            Icon = new SymbolIcon(Symbol.Manage)
+        });
+        RootNavigation.FooterMenuItems.Add(new NavigationViewItem
+        {
             Content = "Settings",
             Tag = "settings",
             Icon = new SymbolIcon(Symbol.Setting)
@@ -224,6 +232,7 @@ public sealed partial class MainWindow : Window
         {
             ("Agents",         Symbol.People,           "agents"),
             ("Board",          Symbol.ViewAll,          "board"),
+            ("Planning",       Symbol.Document,         "planning"),
             ("Messages",       Symbol.Mail,             "messages"),
             ("Decisions",      Symbol.Important,        "decisions"),
             ("Digest",         Symbol.List,             "digest"),
@@ -257,6 +266,12 @@ public sealed partial class MainWindow : Window
             Content = "Templates",
             Tag = "templates",
             Icon = new SymbolIcon(Symbol.Library)
+        });
+        RootNavigation.FooterMenuItems.Add(new NavigationViewItem
+        {
+            Content = "Preferences",
+            Tag = "preferences",
+            Icon = new SymbolIcon(Symbol.Manage)
         });
         RootNavigation.FooterMenuItems.Add(new NavigationViewItem
         {

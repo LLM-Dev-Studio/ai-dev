@@ -46,6 +46,13 @@ public record AgentOutboxDir(string Value) : DirPath(Value);
 public record AgentJournalDir(string Value) : DirPath(Value);
 public record AgentTranscriptsDir(string Value) : DirPath(Value);
 
+public record PlanningSessionsDir(string Value) : DirPath(Value);
+public record PlanningSessionDir(string Value) : DirPath(Value);
+public record PlanningSessionDraftsDir(string Value) : DirPath(Value);
+public record PlanningSessionMetadataFile(string Value) : FilePath(Value);
+public record PlanningSessionConversationFile(string Value) : FilePath(Value);
+public record PlanningSessionDslFile(string Value) : FilePath(Value);
+
 public record TranscriptFile(string Value) : FilePath(Value);
 public record InsightFile(string Value) : FilePath(Value);
 public record SecretsFile(string Value) : FilePath(Value);
@@ -98,6 +105,27 @@ public class WorkspacePaths
     public AgentOutboxDir AgentOutboxDir(ProjectSlug p, AgentSlug a) => AgentDir(p, a).AgentOutboxDir();
     public AgentJournalDir AgentJournalDir(ProjectSlug p, AgentSlug a) => AgentDir(p, a).AgentJournalDir();
     public AgentTranscriptsDir AgentTranscriptsDir(ProjectSlug p, AgentSlug a) => AgentDir(p, a).AgentTranscriptsDir();
+
+    public PlanningSessionsDir PlanningSessionsDir(ProjectSlug p) =>
+        new(Path.Combine(ProjectDir(p).Value, FilePathConstants.SessionsDirName, FilePathConstants.PlanningDirName));
+
+    public PlanningSessionDir PlanningSessionDir(ProjectSlug p, string sessionId) =>
+        new(Path.Combine(PlanningSessionsDir(p).Value, sessionId));
+
+    public PlanningSessionDraftsDir PlanningSessionDraftsDir(ProjectSlug p, string sessionId) =>
+        new(Path.Combine(PlanningSessionDir(p, sessionId).Value, FilePathConstants.DraftsDirName));
+
+    public PlanningSessionMetadataFile PlanningSessionMetadataPath(ProjectSlug p, string sessionId) =>
+        new(Path.Combine(PlanningSessionDir(p, sessionId).Value, FilePathConstants.PlanningMetadataFileName));
+
+    public PlanningSessionConversationFile PlanningSessionConversationPath(ProjectSlug p, string sessionId) =>
+        new(Path.Combine(PlanningSessionDir(p, sessionId).Value, FilePathConstants.PlanningConversationFileName));
+
+    public PlanningSessionDslFile PlanningSessionLockedDslPath(ProjectSlug p, string sessionId, string dslFileName) =>
+        new(Path.Combine(PlanningSessionDir(p, sessionId).Value, dslFileName));
+
+    public PlanningSessionDslFile PlanningSessionDraftDslPath(ProjectSlug p, string sessionId, string dslFileName) =>
+        new(Path.Combine(PlanningSessionDraftsDir(p, sessionId).Value, dslFileName));
 
     public TranscriptFile TranscriptPath(ProjectSlug p, AgentSlug a, TranscriptDate date) => AgentTranscriptsDir(p, a).TranscriptFile(date);
     public InsightFile InsightPath(ProjectSlug p, AgentSlug a, TranscriptDate date) => AgentTranscriptsDir(p, a).InsightFile(date);
