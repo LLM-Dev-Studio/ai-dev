@@ -384,24 +384,29 @@ public sealed class LmStudioAgentExecutor(
             // Detect empty output — two distinct causes:
             // 1. Empty SSE stream (finishReason=""): LM Studio silently drops the request when
             //    the prompt exceeds the loaded context window (n_keep >= n_ctx).
-            // 2. Thinking-model no-op (finishReason="stop"): Qwen3 and similar models route all
-            //    tokens to internal reasoning (reasoning_content) and emit nothing to content.
-            //    The app sees 0 visible chars, 0 tool calls, and a clean "stop" reason.
-            if (textContent.Length == 0 && toolCalls.Count == 0)
+            // 2. Thinking-model no-op: Qwen3 and similar models route tokens to internal
+            //    reasoning (reasoning_content) and emit nothing to the content field. The usage
+            //    event shows OutputTokens > 0 but textContent is empty. A stop chunk with no
+            //    content tokens at all (OutputTokens == 0) is a valid SSE termination pattern.
+            var emptyOutput = textContent.Length == 0 && toolCalls.Count == 0;
+            var isEmptyStream       = emptyOutput && string.IsNullOrEmpty(finishReason);
+            var isThinkingModelNoOp = emptyOutput && sessionUsage is { OutputTokens: > 0 };
+
+            if (isEmptyStream || isThinkingModelNoOp)
             {
                 string msg;
-                if (string.IsNullOrEmpty(finishReason))
+                if (isThinkingModelNoOp)
+                {
+                    msg = $"Model '{context.ModelId}' finished (finish_reason={finishReason}) but produced no usable output. "
+                        + "If this is a reasoning/thinking model (e.g. Qwen3), disable thinking mode in LM Studio "
+                        + "or load a non-thinking variant of the model.";
+                }
+                else
                 {
                     var hint = contextWindow > 0
                         ? $" The model has context_window={contextWindow}; reload it with a larger context or switch models."
                         : " Check LM Studio server logs for details (often n_keep >= n_ctx).";
                     msg = $"LM Studio returned an empty response for '{context.ModelId}'.{hint}";
-                }
-                else
-                {
-                    msg = $"Model '{context.ModelId}' finished (finish_reason={finishReason}) but produced no usable output. "
-                        + "If this is a reasoning/thinking model (e.g. Qwen3), disable thinking mode in LM Studio "
-                        + "or load a non-thinking variant of the model.";
                 }
                 logger.LogError("[lmstudio] {Message}", msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");

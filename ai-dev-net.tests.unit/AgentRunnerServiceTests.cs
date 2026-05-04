@@ -114,6 +114,7 @@ public class AgentRunnerServiceTests
             new AgentPromptBuilder(new KbService(paths, fileWriter, new ProjectMutationCoordinator()), new PlaybookService(paths, fileWriter, new ProjectMutationCoordinator()), NullLogger<AgentPromptBuilder>.Instance),
             new SessionCompletionProcessor(paths, new BoardService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<BoardService>.Instance, projectStateNotifier), new InsightsService([], settings, NullLogger<InsightsService>.Instance), projectStateNotifier, NullLogger<SessionCompletionProcessor>.Instance),
             new SecretsService(paths, fileWriter),
+            new DecisionsService(paths, dispatcher, fileWriter, new ProjectMutationCoordinator(), NullLogger<DecisionsService>.Instance),
             NullLogger<AgentRunnerService>.Instance,
             projectStateNotifier,
             new FeatureFlagsService(),
