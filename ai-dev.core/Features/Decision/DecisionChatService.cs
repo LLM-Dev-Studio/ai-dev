@@ -10,6 +10,7 @@ namespace AiDev.Features.Decision;
 public class DecisionChatService(
     WorkspacePaths paths,
     IAgentRunnerService runner,
+    AgentInboxService inbox,
     ProjectStateChangedNotifier projectStateNotifier,
     ILogger<DecisionChatService> logger)
 {
@@ -65,7 +66,7 @@ public class DecisionChatService(
         var body = $"The human has replied to your decision request (decision-id: {decisionId}):\n\n{content.Trim()}\n\n" +
                    $"Please respond via write_outbox with type: decision-reply and decision-id: {decisionId}.";
 
-        var inboxResult = runner.WriteInboxMessage(
+        var inboxResult = inbox.WriteInboxMessage(
             projectSlug, new(agentSlug),
             from: "human",
             re: $"Re: decision {decisionId}",

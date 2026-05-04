@@ -1,6 +1,6 @@
 namespace AiDev.Features.Git;
 
-public partial class GitService
+public partial class GitService(ILogger<GitService>? logger = null)
 {
     // Only allow hex commit hashes (4–64 chars). Rejects any flag injection.
     private static readonly Regex ValidHashRegex =
@@ -66,7 +66,7 @@ public partial class GitService
         return new GitCommitDetail { Commit = commit, Body = body, Diff = diff };
     }
 
-    private static (int ExitCode, string Output) Run(string workingDir, params string[] args)
+    private (int ExitCode, string Output) Run(string workingDir, params string[] args)
     {
         try
         {
@@ -88,8 +88,9 @@ public partial class GitService
             proc.WaitForExit(10_000);
             return (proc.ExitCode, output);
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning(ex, "[git] Failed to run git {Args} in {Dir}", string.Join(' ', args), workingDir);
             return (-1, string.Empty);
         }
     }

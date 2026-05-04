@@ -17,7 +17,7 @@ public class DecisionChatServiceTests
     public void GetMessages_WhenChatFileContainsIndentedJsonObjects_ParsesAllMessages()
     {
         var paths = CreatePaths();
-        var service = new DecisionChatService(paths, null!, new ProjectStateChangedNotifier(), NullLogger<DecisionChatService>.Instance);
+        var service = new DecisionChatService(paths, null!, null!, new ProjectStateChangedNotifier(), NullLogger<DecisionChatService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
         var decisionId = "20260410-093000-offline-executor-selection";
         var chatDir = paths.DecisionChatsDir(projectSlug).Value;
@@ -43,7 +43,8 @@ public class DecisionChatServiceTests
         var paths = CreatePaths();
         var fileWriter = new AtomicFileWriter();
         var runner = CreateRunner(paths, fileWriter);
-        var service = new DecisionChatService(paths, runner, new ProjectStateChangedNotifier(), NullLogger<DecisionChatService>.Instance);
+        var inbox = new AgentInboxService(paths, new ProjectStateChangedNotifier(), NullLogger<AgentInboxService>.Instance);
+        var service = new DecisionChatService(paths, runner, inbox, new ProjectStateChangedNotifier(), NullLogger<DecisionChatService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
         const string decisionId = "20260410-093000-offline-executor-selection";
         const string agentSlug = "pm-standard";
@@ -79,7 +80,7 @@ public class DecisionChatServiceTests
         var paths = CreatePaths();
         var runner = Substitute.For<IAgentRunnerService>();
         var notifier = new ProjectStateChangedNotifier();
-        var service = new DecisionChatService(paths, runner, notifier, NullLogger<DecisionChatService>.Instance);
+        var service = new DecisionChatService(paths, runner, null!, notifier, NullLogger<DecisionChatService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
         const string decisionId = "20260410-093000-offline-executor-selection";
         const string agentSlug = "pm-standard";
@@ -128,7 +129,7 @@ public class DecisionChatServiceTests
         var paths = CreatePaths();
         var runner = Substitute.For<IAgentRunnerService>();
         var notifier = new ProjectStateChangedNotifier();
-        var service = new DecisionChatService(paths, runner, notifier, NullLogger<DecisionChatService>.Instance);
+        var service = new DecisionChatService(paths, runner, null!, notifier, NullLogger<DecisionChatService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
         const string decisionId = "20260410-093000-offline-executor-selection";
         const string otherDecisionId = "20260410-093000-different";
@@ -182,7 +183,8 @@ public class DecisionChatServiceTests
 
         return new AgentRunnerService(
             paths,
-            settings,
+            new ModelResolver(settings),
+            new AgentStatusWriter(NullLogger<AgentStatusWriter>.Instance),
             [new ImmediateExecutor()],
             modelRegistry,
             new AgentService(paths, new AgentTemplatesService(paths), fileWriter, new ProjectMutationCoordinator(), modelRegistry, NullLogger<AgentService>.Instance),

@@ -1,12 +1,15 @@
 using AiDev.Core.Local.Contracts;
+using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace AiDev.Core.Local.Implementation;
 
-internal sealed class LlmPlanner(IEnumerable<ILlmClient> clients) : ILocalPlanner
+internal sealed class LlmPlanner(IEnumerable<ILlmClient> clients, ILogger<LlmPlanner>? logger = null) : ILocalPlanner
 {
+    private readonly ILogger<LlmPlanner>? _logger = logger;
+
     public async Task<Result<RuntimeActionPlan>> PlanNextAsync(
         LocalRuntimeState state,
         CancellationToken ct = default)
@@ -28,7 +31,7 @@ internal sealed class LlmPlanner(IEnumerable<ILlmClient> clients) : ILocalPlanne
             var response = await client.CompleteAsync(prompt, state.ModelProfile.ModelId, ct);
             if (response is Err<string> err) return new Err<RuntimeActionPlan>(err.Error);
 
-            var plan = TryParsePlan(((Ok<string>)response).Value);
+            var plan = TryParsePlan(((Ok<string>)response).Value, _logger);
             if (plan is not null) return new Ok<RuntimeActionPlan>(plan);
         }
 
@@ -75,7 +78,7 @@ internal sealed class LlmPlanner(IEnumerable<ILlmClient> clients) : ILocalPlanne
         return sb.ToString();
     }
 
-    private static RuntimeActionPlan? TryParsePlan(string response)
+    private static RuntimeActionPlan? TryParsePlan(string response, ILogger? logger)
     {
         var json = ExtractJson(response);
         if (json is null) return null;
@@ -99,7 +102,11 @@ internal sealed class LlmPlanner(IEnumerable<ILlmClient> clients) : ILocalPlanne
                 ExpectedOutcome: dto.ExpectedOutcome,
                 RequiresUserInput: dto.RequiresUserInput);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "[planner] Failed to deserialize LLM plan response");
+            return null;
+        }
     }
 
     // Extracts the first balanced JSON object from the response, handling preamble text.

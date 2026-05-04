@@ -1,14 +1,15 @@
 namespace AiDev.Features.Agent;
 
 internal sealed class TaskAssignedHandler(
-    IAgentRunnerService agentRunner,
+    AgentInboxService inbox,
+    IAgentRunnerService runner,
     ILogger<TaskAssignedHandler> logger) : IDomainEventHandler<TaskAssigned>
 {
     public Task Handle(TaskAssigned domainEvent, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
-        var result = agentRunner.WriteInboxMessage(
+        var result = inbox.WriteInboxMessage(
             projectSlug: domainEvent.ProjectSlug,
             agentSlug: domainEvent.Assignee,
             from: "board",
@@ -20,14 +21,29 @@ internal sealed class TaskAssignedHandler(
 
         if (result is Err<Unit> err)
         {
-            logger.LogError("[board] Failed to dispatch TaskAssigned to {Assignee} for task {TaskId}: {Error}",
+            // Log but do not throw — the agent is still launched below so it can discover
+            // the task via the board. Throwing here would surface to the dispatcher and
+            // swallow the event silently, leaving the task orphaned until OverwatchService.
+            logger.LogError("[board] Failed to write inbox message for {Assignee} task {TaskId}: {Error}",
                 domainEvent.Assignee, domainEvent.TaskId, err.Error.Message);
-            throw new InvalidOperationException(
-                $"Failed to dispatch task to agent '{domainEvent.Assignee}': {err.Error.Message}");
+        }
+        else
+        {
+            logger.LogInformation("[board] Dispatched TaskAssigned to {Assignee} for task {TaskId} ({Title})",
+                domainEvent.Assignee, domainEvent.TaskId, domainEvent.Title);
         }
 
-        logger.LogInformation("[board] Dispatched TaskAssigned to {Assignee} for task {TaskId} ({Title})",
-            domainEvent.Assignee, domainEvent.TaskId, domainEvent.Title);
+        // Always launch — the DispatcherService FSW will also fire if the inbox write
+        // succeeded, but LaunchAgent is idempotent so the double-call is safe.
+        // If the write failed the agent still runs and sees its assigned task in board.json.
+        runner.LaunchAgent(
+            domainEvent.ProjectSlug,
+            domainEvent.Assignee,
+            new AgentLaunchTrigger(
+                Source: "task-assigned",
+                Reason: "task assigned via board",
+                ProjectSlug: domainEvent.ProjectSlug.Value,
+                TaskId: domainEvent.TaskId.ToString()));
 
         return Task.CompletedTask;
     }

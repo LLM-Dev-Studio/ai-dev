@@ -6,7 +6,7 @@ file class ProjectJson
     public string? CreatedAt { get; set; }
 }
 
-public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter)
+public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter, ILogger<WorkspaceService>? logger = null)
 {
     private static readonly DomainError InvalidProjectSlugError = new("WORKSPACE_INVALID_SLUG", "Project slug is invalid.");
     private static readonly DomainError ProjectNotFoundError = new("WORKSPACE_NOT_FOUND", "Project not found.");
@@ -40,7 +40,7 @@ public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter)
                         createdAt = DateTime.TryParse(pData?.CreatedAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var caDate)
                             ? caDate : null;
                     }
-                    catch { /* use defaults */ }
+                    catch (Exception ex) { logger?.LogWarning(ex, "[workspace] Failed to read project.json for {Slug} — using defaults", entrySlug); }
                 }
 
                 var agentsDir = paths.AgentsDir(entrySlug);
@@ -58,7 +58,11 @@ public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter)
 
             return projects;
         }
-        catch { return []; }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "[workspace] Failed to read workspace registry at {Path} — returning empty project list", paths.RegistryPath);
+            return [];
+        }
     }
 
     /// <summary>
@@ -170,7 +174,11 @@ public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter)
                 CreatedAt = DateTime.TryParse(caStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var caDate) ? caDate : null,
             };
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "[workspace] Failed to read project detail for {Slug}", projectSlug);
+            return null;
+        }
     }
 
     public Result<Unit> UpdateProject(ProjectSlug projectSlug, string name, string? description, string? codebasePath)

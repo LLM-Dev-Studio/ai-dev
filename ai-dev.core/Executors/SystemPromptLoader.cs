@@ -18,7 +18,7 @@ public static class SystemPromptLoader
     /// When no compact file exists, the full prompt is used regardless of context window size.
     /// Substitutes <c>{{name}}</c> with the agent's display name from agent.json.
     /// </summary>
-    public static string Load(string workingDir, int contextWindow, int threshold)
+    public static string Load(string workingDir, int contextWindow, int threshold, ILogger? logger = null)
     {
         var fullPath    = Path.Combine(workingDir, "CLAUDE.md");
         var compactPath = Path.Combine(workingDir, "CLAUDE.compact.md");
@@ -26,7 +26,7 @@ public static class SystemPromptLoader
         var full    = File.Exists(fullPath)    ? File.ReadAllText(fullPath, Encoding.UTF8)    : Fallback;
         var compact = File.Exists(compactPath) ? File.ReadAllText(compactPath, Encoding.UTF8) : full;
 
-        var agentName = TryReadAgentName(workingDir);
+        var agentName = TryReadAgentName(workingDir, logger);
         if (agentName != null)
         {
             full    = full.Replace("{{name}}", agentName, StringComparison.Ordinal);
@@ -36,7 +36,7 @@ public static class SystemPromptLoader
         return TokenBudget.SelectSystemPrompt(contextWindow, full, compact, threshold);
     }
 
-    private static string? TryReadAgentName(string workingDir)
+    private static string? TryReadAgentName(string workingDir, ILogger? logger)
     {
         var agentJsonPath = Path.Combine(workingDir, "agent.json");
         if (!File.Exists(agentJsonPath)) return null;
@@ -47,7 +47,11 @@ public static class SystemPromptLoader
                 ? n.GetString()
                 : null;
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "[system-prompt] Failed to read agent name from {Path} — {{{{name}}}} will not be substituted", agentJsonPath);
+            return null;
+        }
     }
 
     /// <summary>

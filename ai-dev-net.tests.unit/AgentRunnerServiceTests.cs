@@ -107,7 +107,8 @@ public class AgentRunnerServiceTests
         var projectStateNotifier = new ProjectStateChangedNotifier();
         return new AgentRunnerService(
             paths,
-            settings,
+            new ModelResolver(settings),
+            new AgentStatusWriter(NullLogger<AgentStatusWriter>.Instance),
             [executor],
             modelRegistry,
             new AgentService(paths, new AgentTemplatesService(paths), fileWriter, new ProjectMutationCoordinator(), modelRegistry, NullLogger<AgentService>.Instance),

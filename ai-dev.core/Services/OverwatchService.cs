@@ -21,6 +21,7 @@ public class OverwatchService(
     WorkspaceService workspace,
     BoardService boardService,
     IAgentRunnerService runner,
+    AgentInboxService inbox,
     AgentService agentService,
     ExecutorHealthMonitor executorHealth,
     DecisionsService decisionsService,
@@ -234,7 +235,7 @@ public class OverwatchService(
             {(string.IsNullOrEmpty(task.Description) ? "" : $"**Description:** {task.Description}\n\n")}Please action this task and move it forward. If you are blocked, raise a decision or message the relevant agent explaining the blocker.
             """;
 
-        var writeResult = runner.WriteInboxMessage(
+        var writeResult = inbox.WriteInboxMessage(
             projectSlug,
             assigneeSlug,
             from: "overwatch",

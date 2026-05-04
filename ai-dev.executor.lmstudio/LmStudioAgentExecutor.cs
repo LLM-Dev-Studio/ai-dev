@@ -275,7 +275,7 @@ public sealed class LmStudioAgentExecutor(
         var toolsJson           = enableTools ? OllamaToolSchemas.GetToolsArray().ToJsonString() : null;
 
         var systemPrompt = SystemPromptLoader.Load(
-            context.WorkingDir, contextWindow, settings.CompactPromptThreshold);
+            context.WorkingDir, contextWindow, settings.CompactPromptThreshold, logger);
         var promptTier = contextWindow > 0 && contextWindow < settings.CompactPromptThreshold ? "compact" : "full";
 
         if (contextWindow > 0)
