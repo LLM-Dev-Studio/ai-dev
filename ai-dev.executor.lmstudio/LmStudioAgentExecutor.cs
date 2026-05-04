@@ -385,9 +385,9 @@ public sealed class LmStudioAgentExecutor(
             // 1. Empty SSE stream (finishReason=""): LM Studio silently drops the request when
             //    the prompt exceeds the loaded context window (n_keep >= n_ctx).
             // 2. Thinking-model no-op: Qwen3 and similar models route tokens to internal
-            //    reasoning (reasoning_content) and emit nothing to the content field. The usage
-            //    event shows OutputTokens > 0 but textContent is empty. A stop chunk with no
-            //    content tokens at all (OutputTokens == 0) is a valid SSE termination pattern.
+            //    reasoning (reasoning_content). StreamSseAsync promotes reasoning_content to
+            //    textContent when content is empty, so this case only fires when BOTH fields
+            //    are empty despite tokens being consumed — an unrecoverable model failure.
             var emptyOutput = textContent.Length == 0 && toolCalls.Count == 0;
             var isEmptyStream       = emptyOutput && string.IsNullOrEmpty(finishReason);
             var isThinkingModelNoOp = emptyOutput && sessionUsage is { OutputTokens: > 0 };
@@ -501,7 +501,8 @@ public sealed class LmStudioAgentExecutor(
         await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         using var reader       = new StreamReader(stream, Encoding.UTF8);
 
-        var textBuilder  = new StringBuilder();
+        var textBuilder      = new StringBuilder();
+        var reasoningBuilder = new StringBuilder(); // reasoning_content from thinking models (Qwen3, DeepSeek-R1, etc.)
         var finishReason = string.Empty;
         var toolCalls    = new Dictionary<int, ToolCall>(); // index -> accumulator
         TokenUsage? capturedUsage = null;
@@ -545,6 +546,14 @@ public sealed class LmStudioAgentExecutor(
                     textBuilder.Append(text);
                     if (text.Length > 0)
                         output.TryWrite($"[{DateTime.UtcNow:o}] {text}");
+                }
+
+                // Thinking/reasoning token (Qwen3, DeepSeek-R1, etc. with thinking mode on).
+                // Captured separately — used as fallback when content is empty.
+                if (delta.TryGetProperty("reasoning_content", out var reasoningProp)
+                    && reasoningProp.ValueKind == JsonValueKind.String)
+                {
+                    reasoningBuilder.Append(reasoningProp.GetString());
                 }
 
                 // Tool call deltas (streamed incrementally by index)
@@ -591,7 +600,13 @@ public sealed class LmStudioAgentExecutor(
             .Where(tc => tc.Name.Length > 0)
             .ToList();
 
-        return (finishReason, textBuilder.ToString(), completedCalls, capturedUsage, streamError);
+        // When a thinking model routes all output to reasoning_content and leaves content empty,
+        // promote the reasoning text so the session doesn't fail with a no-op result.
+        var finalText = textBuilder.Length > 0
+            ? textBuilder.ToString()
+            : reasoningBuilder.ToString();
+
+        return (finishReason, finalText, completedCalls, capturedUsage, streamError);
     }
 
     // -------------------------------------------------------------------------
