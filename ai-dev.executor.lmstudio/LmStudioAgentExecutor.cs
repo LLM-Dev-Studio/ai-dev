@@ -266,8 +266,13 @@ public sealed class LmStudioAgentExecutor(
         // "unknown" and the preflight will skip — we then rely on LM Studio to report errors.
         var contextWindow   = await ResolveContextWindowAsync(context.ModelId, context.CancellationToken)
             .ConfigureAwait(false);
-        var maxOutputTokens = TokenBudget.RecommendMaxOutputTokens(contextWindow, floor: 512, ceiling: DefaultMaxTokens);
-        var toolsJson       = enableTools ? OllamaToolSchemas.GetToolsArray().ToJsonString() : null;
+        // maxOutputTokens drives preflight budget estimates and the max_tokens request field.
+        // When context window is unknown we keep an internal estimate for preflight but omit
+        // max_tokens from the wire request — sending it causes LM Studio to JIT-load the model
+        // with n_ctx=max_tokens (e.g. 4096), which may be far smaller than the model supports.
+        var maxOutputTokens    = TokenBudget.RecommendMaxOutputTokens(contextWindow, floor: 512, ceiling: DefaultMaxTokens);
+        var wireMaxOutputTokens = contextWindow > 0 ? (int?)maxOutputTokens : null;
+        var toolsJson           = enableTools ? OllamaToolSchemas.GetToolsArray().ToJsonString() : null;
 
         var systemPrompt = SystemPromptLoader.Load(
             context.WorkingDir, contextWindow, settings.CompactPromptThreshold);
@@ -283,7 +288,7 @@ public sealed class LmStudioAgentExecutor(
             var refusal = SystemPromptLoader.BuildRefusalMessage(context.ModelId, contextWindow, minRequired);
             logger.LogWarning("[lmstudio] {Refusal}", refusal);
             output.TryWrite($"[{DateTime.UtcNow:o}] {refusal}");
-            return new ExecutorResult(1, ErrorMessage: refusal);
+            return new ExecutorResult(1, ErrorMessage: refusal, RequiresHumanDecision: true);
         }
 
         // Build mutable message history for the tool execution loop.
@@ -319,10 +324,10 @@ public sealed class LmStudioAgentExecutor(
                     : preflight.Error + $" (after {iteration - 1} tool iteration(s))";
                 logger.LogError("[lmstudio] {Message}", msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
-                return new ExecutorResult(1, Usage: totalUsage, ErrorMessage: msg);
+                return new ExecutorResult(1, Usage: totalUsage, ErrorMessage: msg, RequiresHumanDecision: true);
             }
 
-            var requestBody = BuildRequest(context.ModelId, messages, enableTools, maxOutputTokens);
+            var requestBody = BuildRequest(context.ModelId, messages, enableTools, wireMaxOutputTokens);
 
             HttpResponseMessage response;
             try
@@ -358,7 +363,7 @@ public sealed class LmStudioAgentExecutor(
             logger.LogInformation("[lmstudio] Streaming response — iteration {N}", iteration);
 
             // Stream and parse OpenAI SSE response.
-            var (finishReason, textContent, toolCalls, sessionUsage) =
+            var (finishReason, textContent, toolCalls, sessionUsage, streamError) =
                 await StreamSseAsync(response, output, context.CancellationToken).ConfigureAwait(false);
 
             // Accumulate usage across all tool-call iterations.
@@ -366,6 +371,42 @@ public sealed class LmStudioAgentExecutor(
                 totalUsage = totalUsage == null ? sessionUsage : totalUsage + sessionUsage;
 
             logger.LogInformation("[lmstudio] finish_reason={Reason} iteration={N}", finishReason, iteration);
+
+            // Surface provider-level errors returned in the SSE stream.
+            if (streamError != null)
+            {
+                var msg = $"LM Studio returned an error: {streamError}";
+                logger.LogError("[lmstudio] {Message}", msg);
+                output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
+                return new ExecutorResult(1, Usage: totalUsage, ErrorMessage: msg, RequiresHumanDecision: true);
+            }
+
+            // Detect empty output — two distinct causes:
+            // 1. Empty SSE stream (finishReason=""): LM Studio silently drops the request when
+            //    the prompt exceeds the loaded context window (n_keep >= n_ctx).
+            // 2. Thinking-model no-op (finishReason="stop"): Qwen3 and similar models route all
+            //    tokens to internal reasoning (reasoning_content) and emit nothing to content.
+            //    The app sees 0 visible chars, 0 tool calls, and a clean "stop" reason.
+            if (textContent.Length == 0 && toolCalls.Count == 0)
+            {
+                string msg;
+                if (string.IsNullOrEmpty(finishReason))
+                {
+                    var hint = contextWindow > 0
+                        ? $" The model has context_window={contextWindow}; reload it with a larger context or switch models."
+                        : " Check LM Studio server logs for details (often n_keep >= n_ctx).";
+                    msg = $"LM Studio returned an empty response for '{context.ModelId}'.{hint}";
+                }
+                else
+                {
+                    msg = $"Model '{context.ModelId}' finished (finish_reason={finishReason}) but produced no usable output. "
+                        + "If this is a reasoning/thinking model (e.g. Qwen3), disable thinking mode in LM Studio "
+                        + "or load a non-thinking variant of the model.";
+                }
+                logger.LogError("[lmstudio] {Message}", msg);
+                output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
+                return new ExecutorResult(1, Usage: totalUsage, ErrorMessage: msg, RequiresHumanDecision: true);
+            }
 
             // Final response: no tool calls.
             if (toolCalls.Count == 0)
@@ -449,7 +490,7 @@ public sealed class LmStudioAgentExecutor(
     /// <summary>
     /// Streams the OpenAI-format SSE response, emitting text tokens as they arrive.
     /// </summary>
-    private async Task<(string FinishReason, string TextContent, List<ToolCall> ToolCalls, TokenUsage? Usage)>
+    private async Task<(string FinishReason, string TextContent, List<ToolCall> ToolCalls, TokenUsage? Usage, string? StreamError)>
         StreamSseAsync(HttpResponseMessage response, ChannelWriter<string> output, CancellationToken ct)
     {
         await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
@@ -459,6 +500,7 @@ public sealed class LmStudioAgentExecutor(
         var finishReason = string.Empty;
         var toolCalls    = new Dictionary<int, ToolCall>(); // index -> accumulator
         TokenUsage? capturedUsage = null;
+        string? streamError = null;
 
         string? line;
         while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) != null)
@@ -471,6 +513,15 @@ public sealed class LmStudioAgentExecutor(
             JsonElement evt;
             try   { evt = JsonDocument.Parse(json).RootElement; }
             catch { continue; }
+
+            // Capture provider-level errors streamed back by LM Studio.
+            if (evt.TryGetProperty("error", out var errProp))
+            {
+                streamError = errProp.TryGetProperty("message", out var msgProp) && msgProp.ValueKind == JsonValueKind.String
+                    ? msgProp.GetString()
+                    : errProp.ToString();
+                continue;
+            }
 
             if (!evt.TryGetProperty("choices", out var choices)) continue;
 
@@ -535,23 +586,28 @@ public sealed class LmStudioAgentExecutor(
             .Where(tc => tc.Name.Length > 0)
             .ToList();
 
-        return (finishReason, textBuilder.ToString(), completedCalls, capturedUsage);
+        return (finishReason, textBuilder.ToString(), completedCalls, capturedUsage, streamError);
     }
 
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
 
-    private static string BuildRequest(string modelId, List<JsonNode> messages, bool includeTools, int maxOutputTokens)
+    // maxOutputTokens=null means "omit max_tokens from the request" — used when the model's
+    // context window is unknown so LM Studio JIT-loads with its own configured n_ctx rather
+    // than being forced into a 4096-slot window by our output-token ceiling.
+    private static string BuildRequest(string modelId, List<JsonNode> messages, bool includeTools, int? maxOutputTokens)
     {
         var obj = new JsonObject
         {
-            ["model"]      = modelId,
-            ["max_tokens"] = maxOutputTokens,
-            ["messages"]   = new JsonArray(messages.Select(m => m.DeepClone()).ToArray()),
-            ["stream"]     = true,
+            ["model"]    = modelId,
+            ["messages"] = new JsonArray(messages.Select(m => m.DeepClone()).ToArray()),
+            ["stream"]   = true,
             ["stream_options"] = new JsonObject { ["include_usage"] = true },
         };
+
+        if (maxOutputTokens.HasValue)
+            obj["max_tokens"] = maxOutputTokens.Value;
 
         if (includeTools)
             obj["tools"] = OllamaToolSchemas.GetToolsArray();

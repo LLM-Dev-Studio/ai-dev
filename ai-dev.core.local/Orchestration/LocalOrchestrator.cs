@@ -123,9 +123,10 @@ internal sealed class LocalOrchestrator(
                 objective.CorrelationId, state.Iteration, plan.ToolRequests.Count,
                 modelProfile.ModelId, strategy.MaxParallelTools);
 
-            // 6. Enforce tool-call budget (strategy override takes precedence)
+            // 6. Enforce tool-call budget — strategy ceiling and runtime budget are both respected;
+            //    the tighter of the two wins.
             var effectiveBudget = strategy.ToolCallBudget > 0
-                ? strategy.ToolCallBudget
+                ? Math.Min(strategy.ToolCallBudget, state.Budget.MaxToolCalls)
                 : state.Budget.MaxToolCalls;
 
             if (state.Transcript.Observations.Count >= effectiveBudget)

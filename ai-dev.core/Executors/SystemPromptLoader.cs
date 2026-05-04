@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 
 namespace AiDev.Executors;
 
@@ -15,6 +16,7 @@ public static class SystemPromptLoader
     /// then delegates tier selection to <see cref="TokenBudget.SelectSystemPrompt"/>.
     /// Falls back to <see cref="Fallback"/> when neither file exists.
     /// When no compact file exists, the full prompt is used regardless of context window size.
+    /// Substitutes <c>{{name}}</c> with the agent's display name from agent.json.
     /// </summary>
     public static string Load(string workingDir, int contextWindow, int threshold)
     {
@@ -24,7 +26,28 @@ public static class SystemPromptLoader
         var full    = File.Exists(fullPath)    ? File.ReadAllText(fullPath, Encoding.UTF8)    : Fallback;
         var compact = File.Exists(compactPath) ? File.ReadAllText(compactPath, Encoding.UTF8) : full;
 
+        var agentName = TryReadAgentName(workingDir);
+        if (agentName != null)
+        {
+            full    = full.Replace("{{name}}", agentName, StringComparison.Ordinal);
+            compact = compact.Replace("{{name}}", agentName, StringComparison.Ordinal);
+        }
+
         return TokenBudget.SelectSystemPrompt(contextWindow, full, compact, threshold);
+    }
+
+    private static string? TryReadAgentName(string workingDir)
+    {
+        var agentJsonPath = Path.Combine(workingDir, "agent.json");
+        if (!File.Exists(agentJsonPath)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(agentJsonPath, Encoding.UTF8));
+            return doc.RootElement.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String
+                ? n.GetString()
+                : null;
+        }
+        catch { return null; }
     }
 
     /// <summary>

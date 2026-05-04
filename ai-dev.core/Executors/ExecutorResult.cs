@@ -24,4 +24,11 @@ public sealed record ExecutorResult(
     /// <summary>
     /// Token consumption for this session. Null when the executor does not report usage.
     /// </summary>
-    TokenUsage? Usage = null);
+    TokenUsage? Usage = null,
+
+    /// <summary>
+    /// True when the error cannot be resolved automatically and requires the user to act
+    /// (e.g. the model's context window is too small). AgentRunnerService will create a
+    /// Decision item so the user sees an actionable prompt in the Decisions panel.
+    /// </summary>
+    bool RequiresHumanDecision = false);

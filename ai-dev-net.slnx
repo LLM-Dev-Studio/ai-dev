@@ -40,7 +40,6 @@
   <Project Path="ai-dev-net.ServiceDefaults/ai-dev-net.ServiceDefaults.csproj" />
   <Project Path="ai-dev-net.tests.integration/ai-dev-net.tests.integration.csproj" />
   <Project Path="ai-dev-net.tests.unit/ai-dev-net.tests.unit.csproj" />
-  <Project Path="ai-dev-net/ai-dev.ui.web.csproj" />
   <Project Path="ai-dev.core.local/ai-dev.core.local.csproj">
     <Build Solution="Debug|*" Project="false" />
   </Project>

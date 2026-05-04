@@ -1,4 +1,5 @@
 using AiDev.Executors;
+using AiDev.Features.Decision;
 using AiDev.Features.Secrets;
 
 namespace AiDev.Features.Agent;
@@ -17,6 +18,7 @@ public class AgentRunnerService(
     AgentPromptBuilder promptBuilder,
     SessionCompletionProcessor completionProcessor,
     SecretsService secretsService,
+    DecisionsService decisionsService,
     ILogger<AgentRunnerService> logger,
     ProjectStateChangedNotifier projectStateChangedNotifier,
     FeatureFlagsService featureFlagsService,
@@ -29,7 +31,8 @@ public class AgentRunnerService(
     private const string AgentPrompt =
         "Read your inbox and action any messages. Follow your CLAUDE.md session protocol.";
     private const string ProjectScopedMcpPrompt =
-        "Your assigned project slug is '{0}' and your agent slug is '{1}'. " +
+        "Your assigned project slug is '{0}', your agent slug is '{1}', and the current UTC time is {2}. " +
+        "Use {2} as sessionStartedAt when calling UpdateAgentStatus. " +
         "For every MCP workspace tool call, pass projectSlug='{0}'. " +
         "Wherever your CLAUDE.md instructions say '{{your-slug}}', substitute '{1}'.";
 
@@ -342,13 +345,14 @@ public class AgentRunnerService(
         // Build prompt: inject KB context and playbook before the standard instruction.
         var effectivePrompt = promptBuilder.Build(
             projectSlug, agentSlug,
-            string.Format(ProjectScopedMcpPrompt, projectSlug.Value, agentSlug.Value),
+            string.Format(ProjectScopedMcpPrompt, projectSlug.Value, agentSlug.Value, startedAt.ToString("o")),
             AgentPrompt,
             inboxDir, inboxSnapshot);
 
         var exitCode = 0;
         var isRateLimited = false;
         var preserveInbox = false;
+        var requiresHumanDecision = false;
         string? sessionError = null;
         TokenUsage? sessionUsage = null;
 
@@ -409,6 +413,7 @@ public class AgentRunnerService(
                 preserveInbox = result.PreserveInbox;
                 sessionError = result.ErrorMessage;
                 sessionUsage = result.Usage;
+                requiresHumanDecision = result.RequiresHumanDecision;
             }
 
             activity?.SetTag("agent.exitCode", exitCode);
@@ -484,6 +489,20 @@ public class AgentRunnerService(
                 ["lastErrorAt"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : exitedAt.ToString("o"),
             });
             projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
+
+            if (requiresHumanDecision && !string.IsNullOrWhiteSpace(sessionError))
+            {
+                var agent = agentService.LoadAgent(projectSlug, agentSlug);
+                var agentLabel = agent?.Name ?? agentSlug.Value;
+                var model = agent?.Model ?? "unknown model";
+                decisionsService.CreateDecision(
+                    projectSlug,
+                    from: agentSlug.Value,
+                    subject: $"Model too small for {agentLabel}",
+                    priority: "high",
+                    blocks: agentSlug.Value,
+                    body: $"Agent **{agentLabel}** could not run because `{model}` has a context window that is too small.\n\n{sessionError}\n\n**Action required:** In LM Studio, reload `{model}` with a larger context (≥ 8192 tokens), or select a different model for this agent in its settings.");
+            }
 
             _sessions.TryRemove(key, out _);
 
