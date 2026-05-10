@@ -52,7 +52,7 @@ This is the message body.";
 
         result.Count.ShouldBe(1);
         result[0].IsProcessed.ShouldBeFalse();
-        result[0].From.ShouldBe("user@example.com");
+        result[0].From.Value.ShouldBe("user@example.com");
         result[0].Priority.Value.ShouldBe("high");
     }
 
@@ -110,7 +110,7 @@ Body";
         var result = service.ListMessages(projectSlug, agent1);
 
         result.Count.ShouldBe(1);
-        result[0].From.ShouldContain("agent1");
+        result[0].From.Value.ShouldContain("agent1");
     }
 
     [Fact]

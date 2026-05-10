@@ -78,8 +78,8 @@ public class AgentRunnerServiceTests
         var capturedContext = await executor.CapturedContext.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         await WaitForAgentToFinishAsync(runner, projectSlug, agentSlug);
 
-        capturedContext.WorkspaceRoot.ShouldBe(root.Value);
-        capturedContext.ProjectSlug.ShouldBe(projectSlug.Value);
+        capturedContext.WorkspaceRoot.Value.ShouldBe(root.Value);
+        capturedContext.ProjectSlug.Value.ShouldBe(projectSlug.Value);
         capturedContext.Prompt.ShouldContain($"pass projectSlug='{projectSlug.Value}'");
     }
 
@@ -95,9 +95,9 @@ public class AgentRunnerServiceTests
             .Build());
 
         var modelRegistry = Substitute.For<IModelRegistry>();
-        modelRegistry.Find(Arg.Any<string>(), Arg.Any<string>())
+        modelRegistry.Find(Arg.Any<AgentExecutorName>(), Arg.Any<string>())
             .Returns(callInfo => callInfo.ArgAt<string>(1) == "claude-sonnet-4-6"
-                ? new ModelDescriptor("claude-sonnet-4-6", "Claude Sonnet 4.6", AgentExecutorName.AnthropicValue)
+                ? new ModelDescriptor("claude-sonnet-4-6", "Claude Sonnet 4.6", AgentExecutorName.Anthropic)
                 : null);
 
         var dispatcher = Substitute.For<IDomainEventDispatcher>();
@@ -140,12 +140,12 @@ public class AgentRunnerServiceTests
         private readonly TaskCompletionSource<string> _capturedModelId = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource<ExecutorContext> _capturedContext = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public string Name => AgentExecutorName.AnthropicValue;
+        public AgentExecutorName Name => AgentExecutorName.Anthropic;
         public string DisplayName => "Anthropic API";
         public IReadOnlyList<ExecutorSkill> AvailableSkills => [];
         public IReadOnlyList<ModelDescriptor> KnownModels =>
         [
-            new ModelDescriptor("claude-sonnet-4-6", "Claude Sonnet 4.6", AgentExecutorName.AnthropicValue),
+            new ModelDescriptor("claude-sonnet-4-6", "Claude Sonnet 4.6", AgentExecutorName.Anthropic),
         ];
 
         public Task<string> CapturedModelId => _capturedModelId.Task;

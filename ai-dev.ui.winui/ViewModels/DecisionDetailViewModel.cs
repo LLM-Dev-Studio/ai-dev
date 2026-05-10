@@ -44,7 +44,7 @@ public partial class DecisionDetailViewModel : ObservableObject, IDisposable
 
     private ProjectSlug? CurrentSlug => _mainViewModel.ActiveProject?.Slug;
 
-    public void Load(string decisionId)
+    public void Load(DecisionId decisionId)
     {
         if (CurrentSlug is null) return;
         IsLoading = true;
@@ -71,7 +71,7 @@ public partial class DecisionDetailViewModel : ObservableObject, IDisposable
         finally { IsLoading = false; }
     }
 
-    private void RefreshChat(string decisionId)
+    private void RefreshChat(DecisionId decisionId)
     {
         if (CurrentSlug is null) return;
         var msgs = _chatService.GetMessages(CurrentSlug, decisionId);

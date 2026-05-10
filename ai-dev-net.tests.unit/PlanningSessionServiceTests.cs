@@ -23,7 +23,7 @@ public class PlanningSessionServiceTests
 
         session.CurrentPhase.ShouldBe(SessionPhase.Phase1BusinessDiscovery);
         session.State.ShouldBe(PlanningSessionState.Active);
-        session.Id.ShouldNotBeEmpty();
+        session.Id.Value.ShouldNotBeEmpty();
         session.Phase1LockedAt.ShouldBeNull();
     }
 

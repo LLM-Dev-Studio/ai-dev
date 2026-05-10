@@ -80,7 +80,7 @@ public class AgentInfoTests
     public void Executor_DefaultMatchesIAgentExecutorDefault()
     {
         var info = CreateInfo();
-        info.Executor.Value.ShouldBe(IAgentExecutor.Default);
+        info.Executor.ShouldBe(AgentExecutorName.Claude);
     }
 
     [Fact]

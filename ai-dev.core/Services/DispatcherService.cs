@@ -284,7 +284,7 @@ public class DispatcherService(
             var launched = runner.LaunchAgent(projectSlug, agentSlug, new AgentLaunchTrigger(
                 Source: "dispatcher",
                 Reason: source,
-                ProjectSlug: projectSlug.Value,
+                ProjectSlug: projectSlug,
                 MessageFile: fileName,
                 ParentSpanId: activity?.Id));
             activity?.SetTag("dispatch.outcome", launched ? "launched" : "already-launched");
@@ -340,7 +340,7 @@ public class DispatcherService(
             runner.LaunchAgent(projectSlug, agentSlug, new AgentLaunchTrigger(
                 Source: "dispatcher",
                 Reason: source,
-                ProjectSlug: projectSlug.Value));
+                ProjectSlug: projectSlug));
         }
     }
 }

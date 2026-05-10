@@ -8,10 +8,10 @@ public sealed class MessageItem
     public MessageItem(
         string filename,
         AgentSlug agentSlug,
-        string from,
+        MessageSource from,
         string to,
         string re,
-        string type,
+        MessageType type,
         string body,
         DateTime? date = null,
         Priority? priority = null,
@@ -22,14 +22,10 @@ public sealed class MessageItem
         if (string.IsNullOrWhiteSpace(filename))
             throw new ArgumentException("Filename is required.", nameof(filename));
         ArgumentNullException.ThrowIfNull(agentSlug);
-        if (string.IsNullOrWhiteSpace(from))
-            throw new ArgumentException("From is required.", nameof(from));
         if (string.IsNullOrWhiteSpace(to))
             throw new ArgumentException("To is required.", nameof(to));
         if (string.IsNullOrWhiteSpace(re))
             throw new ArgumentException("Message subject is required.", nameof(re));
-        if (string.IsNullOrWhiteSpace(type))
-            throw new ArgumentException("Message type is required.", nameof(type));
         if (string.IsNullOrWhiteSpace(body))
             throw new ArgumentException("Message body is required.", nameof(body));
 
@@ -49,12 +45,12 @@ public sealed class MessageItem
 
     public string Filename { get; }
     public AgentSlug AgentSlug { get; }
-    public string From { get; }
+    public MessageSource From { get; }
     public string To { get; }
     public DateTime? Date { get; }
     public Priority Priority { get; }
     public string Re { get; }
-    public string Type { get; }
+    public MessageType Type { get; }
     public string Body { get; }
     public bool IsProcessed { get; }
     public TaskId? TaskId { get; }

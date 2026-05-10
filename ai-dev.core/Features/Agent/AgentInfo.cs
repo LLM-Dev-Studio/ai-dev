@@ -17,7 +17,7 @@ public sealed class AgentInfo
         IReadOnlyList<string>? skills = null,
         string? lastError = null,
         DateTime? lastErrorAt = null,
-        ThinkingLevel thinkingLevel = ThinkingLevel.Off,
+        ThinkingLevel thinkingLevel = default,
         AgentExecutorName? failoverExecutor = null,
         DateTime? failedOverAt = null)
     {
@@ -77,7 +77,7 @@ public sealed class AgentInfo
     /// <summary>
     /// Updates editable agent metadata while keeping defaults and null handling consistent.
     /// </summary>
-    public void UpdateMetadata(string name, string role, string description, string? model, AgentExecutorName? executor, IReadOnlyList<string>? skills, ThinkingLevel thinkingLevel = ThinkingLevel.Off)
+    public void UpdateMetadata(string name, string role, string description, string? model, AgentExecutorName? executor, IReadOnlyList<string>? skills, ThinkingLevel thinkingLevel = default)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Agent name is required.", nameof(name));

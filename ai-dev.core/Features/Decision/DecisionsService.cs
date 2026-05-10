@@ -11,7 +11,7 @@ public class DecisionsService(
     private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10);
 
     public Result<Unit> CreateDecision(ProjectSlug projectSlug, string from, string subject,
-        string priority, string? blocks, string body)
+        Priority priority, string? blocks, string body)
     {
         return coordinator.Execute(projectSlug, () =>
         {
@@ -30,7 +30,7 @@ public class DecisionsService(
                 {
                     ["from"] = from,
                     ["date"] = now.ToString("o"),
-                    ["priority"] = priority,
+                    ["priority"] = priority.Value,
                     ["subject"] = subject,
                     ["status"] = "pending",
                 };
@@ -51,9 +51,10 @@ public class DecisionsService(
         });
     }
 
-    public List<DecisionItem> ListDecisions(ProjectSlug projectSlug, string status = "pending")
+    public List<DecisionItem> ListDecisions(ProjectSlug projectSlug, DecisionStatus? status = null)
     {
-        string[] dirs = status == "resolved"
+        var effectiveStatus = status ?? DecisionStatus.Pending;
+        string[] dirs = effectiveStatus == DecisionStatus.Resolved
             ? [paths.DecisionsResolvedDir(projectSlug)]
             : [paths.DecisionsPendingDir(projectSlug)];
 
@@ -70,9 +71,9 @@ public class DecisionsService(
         return results;
     }
 
-    public DecisionItem? GetDecision(ProjectSlug projectSlug, string id)
+    public DecisionItem? GetDecision(ProjectSlug projectSlug, DecisionId id)
     {
-        var filename = $"{id}.md";
+        var filename = $"{id.Value}.md";
         var pendingPath = Path.Combine(paths.DecisionsPendingDir(projectSlug), filename);
         if (File.Exists(pendingPath)) return ParseDecisionFile(pendingPath);
         var resolvedPath = Path.Combine(paths.DecisionsResolvedDir(projectSlug), filename);
@@ -80,20 +81,20 @@ public class DecisionsService(
         return null;
     }
 
-    public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, string id, string response)
+    public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, DecisionId id, string response)
         => ResolveDecisionAsync(projectSlug, id, response, CancellationToken.None);
 
-    public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, string id, string response, CancellationToken cancellationToken)
+    public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, DecisionId id, string response, CancellationToken cancellationToken)
         => coordinator.ExecuteAsync(projectSlug, async () =>
         {
             using var activity = AiDevTelemetry.ActivitySource.StartActivity("Decision.Resolve", ActivityKind.Internal);
             activity?.SetTag("project.slug", projectSlug.Value);
-            activity?.SetTag("decision.id", id);
+            activity?.SetTag("decision.id", id.Value);
             return await GetPendingDecision(projectSlug, id)
                 .Then(decision => PersistResolvedDecisionAsync(projectSlug, decision, response, cancellationToken)).ConfigureAwait(false);
         }, cancellationToken);
 
-    private Result<DecisionItem> GetPendingDecision(ProjectSlug projectSlug, string id)
+    private Result<DecisionItem> GetPendingDecision(ProjectSlug projectSlug, DecisionId id)
     {
         var decision = GetDecision(projectSlug, id);
         if (decision == null) return new Err<DecisionItem>(new DomainError("DECISION_NOT_FOUND", "Decision not found."));
@@ -177,7 +178,7 @@ public class DecisionsService(
 
             var (fields, body) = FrontmatterParser.Parse(mainContent);
             var filename = Path.GetFileName(path);
-            var id = Path.GetFileNameWithoutExtension(path);
+            var id = new DecisionId(Path.GetFileNameWithoutExtension(path));
 
             var dateStr = fields.GetValueOrDefault("date");
             var resolvedAtStr = fields.GetValueOrDefault("resolvedAt");

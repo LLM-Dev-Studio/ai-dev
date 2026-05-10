@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
+using AiDev.Models.Types;
 using Microsoft.Extensions.Logging;
 
 namespace AiDev.Executors;
@@ -27,17 +28,17 @@ namespace AiDev.Executors;
 /// </summary>
 public class ClaudeAgentExecutor(ILogger<ClaudeAgentExecutor> logger) : IAgentExecutor
 {
-    public string Name => IAgentExecutor.Default;
+    public AgentExecutorName Name => AgentExecutorName.Claude;
     public string DisplayName => "Claude CLI";
     public IReadOnlyList<ExecutorSkill> AvailableSkills => ClaudeSkills.All;
 
     public IReadOnlyList<ModelDescriptor> KnownModels { get; } =
     [
-        new("claude-sonnet-4-5",              "Claude Sonnet 4.5",  IAgentExecutor.Default, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
-        new("claude-sonnet-4-6",              "Claude Sonnet 4.6",  IAgentExecutor.Default, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
-        new("claude-opus-4-5",               "Claude Opus 4.5",    IAgentExecutor.Default, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
-        new("claude-opus-4-6",               "Claude Opus 4.6",    IAgentExecutor.Default, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
-        new("claude-haiku-4-5-20251001",     "Claude Haiku 4.5",   IAgentExecutor.Default, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 0.80m,  OutputCostPer1MTokens:  4.00m),
+        new("claude-sonnet-4-5",              "Claude Sonnet 4.5",  AgentExecutorName.Claude, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
+        new("claude-sonnet-4-6",              "Claude Sonnet 4.6",  AgentExecutorName.Claude, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
+        new("claude-opus-4-5",               "Claude Opus 4.5",    AgentExecutorName.Claude, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
+        new("claude-opus-4-6",               "Claude Opus 4.6",    AgentExecutorName.Claude, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
+        new("claude-haiku-4-5-20251001",     "Claude Haiku 4.5",   AgentExecutorName.Claude, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 0.80m,  OutputCostPer1MTokens:  4.00m),
     ];
 
     // -------------------------------------------------------------------------

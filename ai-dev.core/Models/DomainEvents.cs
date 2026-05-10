@@ -12,6 +12,6 @@ public sealed record TaskAssigned(
     DateTime OccurredAt) : DomainEvent(OccurredAt);
 
 public sealed record DecisionResolved(
-    string DecisionId,
+    DecisionId DecisionId,
     string ResolvedBy,
     DateTime OccurredAt) : DomainEvent(OccurredAt);

@@ -36,7 +36,7 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string EditDescription { get; set; } = "";
     [ObservableProperty] public partial string EditModel { get; set; } = "";
     [ObservableProperty] public partial string EditExecutor { get; set; } = "";
-    [ObservableProperty] public partial ThinkingLevel EditThinkingLevel { get; set; } = ThinkingLevel.Off;
+    [ObservableProperty] public partial ThinkingLevel EditThinkingLevel { get; set; }
     [ObservableProperty] public partial bool ModelSupportsThinking { get; set; }
     [ObservableProperty] public partial bool HasSkills { get; set; }
 
@@ -145,8 +145,9 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
         if (string.IsNullOrWhiteSpace(EditExecutor))
             return;
 
-        foreach (var model in _modelRegistry.GetModelsForExecutor(EditExecutor))
-            AvailableModels.Add(model.Id);
+        if (AgentExecutorName.TryParse(EditExecutor, out var editExecutor))
+            foreach (var model in _modelRegistry.GetModelsForExecutor(editExecutor))
+                AvailableModels.Add(model.Id);
 
         if (AvailableModels.Count > 0 && !AvailableModels.Contains(EditModel, StringComparer.OrdinalIgnoreCase))
             EditModel = AvailableModels[0];
@@ -163,7 +164,7 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
         }
 
         var health = _healthMonitor.GetExecutorHealth()
-            .FirstOrDefault(e => e.Executor.Name == EditExecutor);
+            .FirstOrDefault(e => e.Executor.Name.Value == EditExecutor);
 
         if (health.Executor != null)
         {
@@ -184,7 +185,9 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
 
     private void UpdateModelCapabilities()
     {
-        var descriptor = _modelRegistry.Find(EditExecutor, EditModel);
+        var descriptor = AgentExecutorName.TryParse(EditExecutor, out var capExecutor)
+            ? _modelRegistry.Find(capExecutor, EditModel)
+            : null;
         ModelSupportsThinking = descriptor?.Capabilities.HasFlag(ModelCapabilities.Reasoning) == true;
     }
 

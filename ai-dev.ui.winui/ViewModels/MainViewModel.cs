@@ -30,7 +30,7 @@ public partial class MainViewModel : ObservableObject
         get => _pendingTaskId;
         set => SetProperty(ref _pendingTaskId, value);
     }
-    [ObservableProperty] public partial string? PendingDecisionId { get; set; }
+    [ObservableProperty] public partial DecisionId? PendingDecisionId { get; set; }
 
     public ObservableCollection<ExecutorStatusItem> ExecutorStatuses { get; } = [];
 
@@ -65,7 +65,7 @@ public partial class MainViewModel : ObservableObject
         }
         try
         {
-            var decisions = _decisionsService.ListDecisions(ActiveProject.Slug, "pending");
+            var decisions = _decisionsService.ListDecisions(ActiveProject.Slug, DecisionStatus.Pending);
             PendingDecisionCount = decisions.Count;
         }
         catch

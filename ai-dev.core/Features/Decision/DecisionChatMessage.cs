@@ -6,7 +6,7 @@ namespace AiDev.Features.Decision;
 /// </summary>
 public sealed record DecisionChatMessage(
     string Id,
-    string DecisionId,
+    DecisionId DecisionId,
     string From,
     bool IsHuman,
     string Content,

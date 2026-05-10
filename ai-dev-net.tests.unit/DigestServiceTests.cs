@@ -69,7 +69,7 @@ public class DigestServiceTests
         var result = service.GetDigest(projectSlug, "2026-01-01");
 
         result.AgentActivity.Count.ShouldBe(1);
-        result.AgentActivity[0].AgentSlug.ShouldBe("agent1");
+        result.AgentActivity[0].AgentSlug.Value.ShouldBe("agent1");
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public class DigestServiceTests
 
         result.AgentActivity.Count.ShouldBe(1);
         result.AgentActivity[0].AgentName.ShouldBe("Agent One");
-        result.AgentActivity[0].Executor.ShouldBe("anthropic");
+        result.AgentActivity[0].Executor.ShouldBe(AgentExecutorName.Anthropic);
         result.AgentActivity[0].Model.ShouldBe("claude-3-opus");
     }
 
@@ -114,7 +114,7 @@ public class DigestServiceTests
         var result = service.GetDigest(projectSlug, "2026-01-01");
 
         result.AgentActivity[0].AgentName.ShouldBe("agent1");
-        result.AgentActivity[0].Executor.ShouldBe(string.Empty);
+        result.AgentActivity[0].Executor.ShouldBeNull();
         result.AgentActivity[0].Model.ShouldBe(string.Empty);
     }
 
@@ -229,7 +229,7 @@ public class DigestServiceTests
         var result = service.GetDigest(projectSlug, "2026-01-01");
 
         result.AgentActivity.Count.ShouldBe(1);
-        result.AgentActivity[0].AgentSlug.ShouldBe("valid-agent");
+        result.AgentActivity[0].AgentSlug.Value.ShouldBe("valid-agent");
     }
 
     private static DigestService CreateService(out WorkspacePaths paths)
@@ -237,7 +237,7 @@ public class DigestServiceTests
         var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
         paths = new WorkspacePaths(root);
         var modelRegistry = Substitute.For<IModelRegistry>();
-        modelRegistry.Find(Arg.Any<string>(), Arg.Any<string>()).Returns((ModelDescriptor?)null);
+        modelRegistry.Find(Arg.Any<AgentExecutorName>(), Arg.Any<string>()).Returns((ModelDescriptor?)null);
         var agentService = new AgentService(
             paths,
             new AgentTemplatesService(paths),

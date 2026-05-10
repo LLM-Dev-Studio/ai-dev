@@ -69,7 +69,7 @@ public sealed class DecisionsViewModelTests : IDisposable
         var (viewModel, decisionsService, _) = CreateViewModel();
         var projectSlug = new ProjectSlug("demo-project");
 
-        var createResult = decisionsService.CreateDecision(projectSlug, "pm-standard", "Need direction", Priority.Normal.Value, null, "Please choose.");
+        var createResult = decisionsService.CreateDecision(projectSlug, "pm-standard", "Need direction", Priority.Normal, null, "Please choose.");
         createResult.ShouldBeOfType<Ok<Unit>>();
 
         var decisionId = Path.GetFileNameWithoutExtension(Directory.GetFiles(_paths.DecisionsPendingDir(projectSlug), "*.md").Single())!;
@@ -104,7 +104,7 @@ public sealed class DecisionsViewModelTests : IDisposable
         var (viewModel, decisionsService, mainViewModel) = CreateViewModel();
         var projectSlug = new ProjectSlug("demo-project");
 
-        var createResult = decisionsService.CreateDecision(projectSlug, "pm-standard", "Need direction", Priority.Normal.Value, null, "Please choose.");
+        var createResult = decisionsService.CreateDecision(projectSlug, "pm-standard", "Need direction", Priority.Normal, null, "Please choose.");
         createResult.ShouldBeOfType<Ok<Unit>>();
 
         var decisionId = Path.GetFileNameWithoutExtension(Directory.GetFiles(_paths.DecisionsPendingDir(projectSlug), "*.md").Single())!;

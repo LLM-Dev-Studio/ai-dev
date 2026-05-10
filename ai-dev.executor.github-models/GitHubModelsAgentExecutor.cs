@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
+using AiDev.Models.Types;
 using AiDev.Services;
 
 using Microsoft.Extensions.Logging;
@@ -32,7 +33,7 @@ public sealed class GitHubModelsAgentExecutor(
     StudioSettingsService settingsService,
     ILogger<GitHubModelsAgentExecutor> logger) : IAgentExecutor
 {
-    public string Name        => "github-models";
+    public AgentExecutorName Name => AgentExecutorName.GitHubModels;
     public string DisplayName => "GitHub Models";
 
     public IReadOnlyList<ExecutorSkill> AvailableSkills { get; } = GitHubModelsSkills.All;
@@ -91,7 +92,7 @@ public sealed class GitHubModelsAgentExecutor(
                         })
                         .Where(t => t.id.Length > 0)
                         .OrderBy(t => t.id, StringComparer.OrdinalIgnoreCase)
-                        .Select(t => new ModelDescriptor(t.id, t.name, "github-models",
+                        .Select(t => new ModelDescriptor(t.id, t.name, AgentExecutorName.GitHubModels,
                             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling))
                         .ToList();
                 }
@@ -393,7 +394,7 @@ public sealed class GitHubModelsAgentExecutor(
     // -------------------------------------------------------------------------
 
     private static string BuildRequest(string modelId, List<JsonNode> messages, bool includeTools,
-        ThinkingLevel thinkingLevel = ThinkingLevel.Off)
+        ThinkingLevel thinkingLevel = default)
     {
         var obj = new JsonObject
         {
@@ -404,10 +405,9 @@ public sealed class GitHubModelsAgentExecutor(
             ["stream_options"] = new JsonObject { ["include_usage"] = true },
         };
 
-        if (thinkingLevel != ThinkingLevel.Off)
+        if (!thinkingLevel.IsOff)
         {
-            var effort = thinkingLevel.ToReasoningEffort();
-            if (effort != null) obj["reasoning_effort"] = effort;
+            if (thinkingLevel.ReasoningEffort != null) obj["reasoning_effort"] = thinkingLevel.ReasoningEffort;
         }
 
         if (includeTools)

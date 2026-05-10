@@ -12,13 +12,13 @@ public interface IModelRegistry
     /// Returns all models available for the specified executor,
     /// merging static KnownModels with any dynamically discovered models.
     /// </summary>
-    IReadOnlyList<ModelDescriptor> GetModelsForExecutor(string executorName);
+    IReadOnlyList<ModelDescriptor> GetModelsForExecutor(AgentExecutorName executorName);
 
     /// <summary>
     /// Finds a specific model by executor name and model id.
     /// Returns null if not found.
     /// </summary>
-    ModelDescriptor? Find(string executorName, string modelId);
+    ModelDescriptor? Find(AgentExecutorName executorName, string modelId);
 
     /// <summary>Returns every model across all executors.</summary>
     IReadOnlyList<ModelDescriptor> GetAll();

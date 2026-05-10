@@ -6,8 +6,8 @@ namespace AiDev.Features.Agent;
 public sealed record AgentLaunchTrigger(
     string Source,
     string Reason,
-    string? ProjectSlug = null,
-    string? TaskId = null,
-    string? DecisionId = null,
+    ProjectSlug? ProjectSlug = null,
+    TaskId? TaskId = null,
+    DecisionId? DecisionId = null,
     string? MessageFile = null,
     string? ParentSpanId = null);

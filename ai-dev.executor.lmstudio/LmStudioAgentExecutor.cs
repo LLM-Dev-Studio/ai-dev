@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
+using AiDev.Models.Types;
 using AiDev.Services;
 using Microsoft.Extensions.Logging;
 
@@ -28,7 +29,7 @@ public sealed class LmStudioAgentExecutor(
     StudioSettingsService settingsService,
     ILogger<LmStudioAgentExecutor> logger) : IAgentExecutor
 {
-    public string Name        => "lmstudio";
+    public AgentExecutorName Name => AgentExecutorName.LmStudio;
     public string DisplayName => "LM Studio";
 
     public IReadOnlyList<ExecutorSkill> AvailableSkills { get; } = LmStudioSkills.All;
@@ -160,7 +161,7 @@ public sealed class LmStudioAgentExecutor(
             if (contextWindow > 0)
                 _contextWindows[id] = contextWindow;
 
-            result.Add(new ModelDescriptor(id, name, "lmstudio", caps, ContextWindow: contextWindow));
+            result.Add(new ModelDescriptor(id, name, AgentExecutorName.LmStudio, caps, ContextWindow: contextWindow));
         }
 
         return result;
@@ -317,11 +318,11 @@ public sealed class LmStudioAgentExecutor(
                 modelId:         context.ModelId,
                 executorName:    DisplayName);
 
-            if (!preflight.Fits)
+            if (preflight is PreflightResult.Exceeded exceeded)
             {
                 var msg = iteration == 1
-                    ? preflight.Error!
-                    : preflight.Error + $" (after {iteration - 1} tool iteration(s))";
+                    ? exceeded.Error
+                    : exceeded.Error + $" (after {iteration - 1} tool iteration(s))";
                 logger.LogError("[lmstudio] {Message}", msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, Usage: totalUsage, ErrorMessage: msg, RequiresHumanDecision: true);

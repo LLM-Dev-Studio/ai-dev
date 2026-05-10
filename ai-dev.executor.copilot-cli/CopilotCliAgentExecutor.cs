@@ -41,40 +41,40 @@ namespace AiDev.Executors;
 /// </summary>
 public class CopilotCliAgentExecutor(ILogger<CopilotCliAgentExecutor> logger) : IAgentExecutor
 {
-    public string Name => AgentExecutorName.CopilotCliValue;
+    public AgentExecutorName Name => AgentExecutorName.CopilotCli;
     public string DisplayName => "Copilot CLI";
     public IReadOnlyList<ExecutorSkill> AvailableSkills => CopilotSkills.All;
 
     public IReadOnlyList<ModelDescriptor> KnownModels { get; } =
     [
         // Claude models (via GitHub Copilot)
-        new("claude-sonnet-4.6", "Claude Sonnet 4.6 (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("claude-sonnet-4.6", "Claude Sonnet 4.6 (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
-        new("claude-sonnet-4.5", "Claude Sonnet 4.5 (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("claude-sonnet-4.5", "Claude Sonnet 4.5 (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling),
-        new("claude-haiku-4.5", "Claude Haiku 4.5 (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("claude-haiku-4.5", "Claude Haiku 4.5 (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling),
-        new("claude-opus-4.6", "Claude Opus 4.6 (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("claude-opus-4.6", "Claude Opus 4.6 (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
-        new("claude-opus-4.5", "Claude Opus 4.5 (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("claude-opus-4.5", "Claude Opus 4.5 (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
-        new("claude-sonnet-4", "Claude Sonnet 4 (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("claude-sonnet-4", "Claude Sonnet 4 (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling),
 
         // GPT models (via GitHub Copilot)
-        new("gpt-5.4", "GPT-5.4 (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("gpt-5.4", "GPT-5.4 (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
-        new("gpt-5.3-codex", "GPT-5.3-Codex (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("gpt-5.3-codex", "GPT-5.3-Codex (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
-        new("gpt-5.2-codex", "GPT-5.2-Codex (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("gpt-5.2-codex", "GPT-5.2-Codex (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
-        new("gpt-5.2", "GPT-5.2 (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("gpt-5.2", "GPT-5.2 (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning),
-        new("gpt-5.4-mini", "GPT-5.4 mini (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("gpt-5.4-mini", "GPT-5.4 mini (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling),
-        new("gpt-5-mini", "GPT-5 mini (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("gpt-5-mini", "GPT-5 mini (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling),
-        new("gpt-4.1", "GPT-4.1 (Copilot)", AgentExecutorName.CopilotCliValue,
+        new("gpt-4.1", "GPT-4.1 (Copilot)", AgentExecutorName.CopilotCli,
             ModelCapabilities.Streaming | ModelCapabilities.ToolCalling),
     ];
 
@@ -289,7 +289,7 @@ public class CopilotCliAgentExecutor(ILogger<CopilotCliAgentExecutor> logger) : 
             psi.ArgumentList.Add(context.ModelId);
         }
 
-        var effort = context.ThinkingLevel.ToReasoningEffort();
+        var effort = context.ThinkingLevel.ReasoningEffort;
         if (effort is not null)
         {
             psi.ArgumentList.Add("--effort");

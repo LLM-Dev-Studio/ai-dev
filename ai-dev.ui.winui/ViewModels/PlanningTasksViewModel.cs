@@ -11,7 +11,7 @@ namespace AiDev.WinUI.ViewModels;
 /// <summary>An item in the recent-sessions list shown in the session menu.</summary>
 public sealed partial class PlanningSessionListItem : ObservableObject
 {
-    public string SessionId { get; init; } = "";
+    public SessionId SessionId { get; init; } = new("00000000000000000000000000000000");
     public string DisplayId  { get; init; } = "";  // truncated UUID
     public string CreatedAt  { get; init; } = "";
     public string Phase      { get; init; } = "";
@@ -45,7 +45,7 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
     [ObservableProperty] public partial bool IsLoading            { get; set; }
     [ObservableProperty] public partial bool HasSession           { get; set; }
     [ObservableProperty] public partial string SessionDisplayId   { get; set; } = "";
-    [ObservableProperty] public partial string? ActiveSessionId   { get; set; }
+    [ObservableProperty] public partial SessionId? ActiveSessionId { get; set; }
 
     // ── Phase state ──────────────────────────────────────────────────────────
     [ObservableProperty] public partial SessionPhase CurrentPhase { get; set; } = SessionPhase.Phase1BusinessDiscovery;
@@ -128,7 +128,7 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
     {
         ActiveSessionId  = session.Id;
         HasSession       = true;
-        SessionDisplayId = TruncateId(session.Id);
+        SessionDisplayId = TruncateId(session.Id.Value);
         CurrentPhase     = session.CurrentPhase;
         Phase1Locked     = session.Phase1LockedAt.HasValue;
         Phase2Locked     = session.Phase2LockedAt.HasValue;
@@ -174,9 +174,9 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
             RecentSessions.Add(new PlanningSessionListItem
             {
                 SessionId  = s.Id,
-                DisplayId  = TruncateId(s.Id),
+                DisplayId  = TruncateId(s.Id.Value),
                 CreatedAt  = s.CreatedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm"),
-                Phase      = s.CurrentPhase.ToString().Replace("Phase", "Ph").Replace("BusinessDiscovery", "1").Replace("SolutionShaping", "2").Replace("PlanningDecomposition", "3"),
+                Phase      = s.CurrentPhase.ShortLabel,
             });
         }
     }
@@ -205,7 +205,7 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
     }
 
     [RelayCommand]
-    public void LoadExistingSession(string sessionId)
+    public void LoadExistingSession(SessionId sessionId)
     {
         if (CurrentSlug is null) return;
         var session = _sessionService.GetSession(CurrentSlug, sessionId);
@@ -261,25 +261,24 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
             var history    = GetCurrentPhaseHistory(excludeLast: 1);
             PlanningChatResponse response;
 
-            switch (CurrentPhase)
+            if (CurrentPhase == SessionPhase.Phase1BusinessDiscovery)
             {
-                case SessionPhase.Phase1BusinessDiscovery:
-                    response = await _chatService.SendPhase1MessageAsync(CurrentSlug!, history, userText, ct);
-                    break;
-
-                case SessionPhase.Phase2SolutionShaping:
-                    var businessDsl2 = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase1BusinessDiscovery) ?? "";
-                    response = await _chatService.SendPhase2MessageAsync(CurrentSlug!, history, businessDsl2, userText, ct);
-                    break;
-
-                case SessionPhase.Phase3PlanningDecomposition:
-                    var businessDsl3 = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase1BusinessDiscovery) ?? "";
-                    var solutionDsl3 = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase2SolutionShaping) ?? "";
-                    response = await _chatService.SendPhase3MessageAsync(CurrentSlug!, history, businessDsl3, solutionDsl3, userText, ct);
-                    break;
-
-                default:
-                    throw new InvalidOperationException($"Unexpected phase: {CurrentPhase}");
+                response = await _chatService.SendPhase1MessageAsync(CurrentSlug!, history, userText, ct);
+            }
+            else if (CurrentPhase == SessionPhase.Phase2SolutionShaping)
+            {
+                var businessDsl2 = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase1BusinessDiscovery) ?? "";
+                response = await _chatService.SendPhase2MessageAsync(CurrentSlug!, history, businessDsl2, userText, ct);
+            }
+            else if (CurrentPhase == SessionPhase.Phase3PlanningDecomposition)
+            {
+                var businessDsl3 = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase1BusinessDiscovery) ?? "";
+                var solutionDsl3 = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase2SolutionShaping) ?? "";
+                response = await _chatService.SendPhase3MessageAsync(CurrentSlug!, history, businessDsl3, solutionDsl3, userText, ct);
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unexpected phase: {CurrentPhase}");
             }
 
             // Update AI placeholder with real response
@@ -338,33 +337,30 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
             string yaml;
             var history = GetCurrentPhaseHistory(excludeLast: 0);
 
-            switch (CurrentPhase)
+            if (CurrentPhase == SessionPhase.Phase1BusinessDiscovery)
             {
-                case SessionPhase.Phase1BusinessDiscovery:
-                    yaml = await _chatService.GenerateBusinessDslAsync(CurrentSlug!, history);
-                    break;
-
-                case SessionPhase.Phase2SolutionShaping:
-                    var businessDsl = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase1BusinessDiscovery) ?? "";
-                    yaml = await _chatService.GenerateSolutionDslAsync(CurrentSlug!, history, businessDsl);
-                    // Validate before displaying
-                    var validation = SolutionDslValidator.Validate(yaml);
-                    if (!validation.IsValid)
-                    {
-                        ErrorMessage = "Generated Solution.dsl has validation errors: " +
-                                       string.Join("; ", validation.Errors.Select(e => e.Message));
-                        // Still show it so user can see the issues
-                    }
-                    break;
-
-                case SessionPhase.Phase3PlanningDecomposition:
-                    var bDsl = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase1BusinessDiscovery) ?? "";
-                    var sDsl = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase2SolutionShaping) ?? "";
-                    yaml = await _chatService.GeneratePlanDslAsync(CurrentSlug!, history, bDsl, sDsl);
-                    break;
-
-                default:
-                    return;
+                yaml = await _chatService.GenerateBusinessDslAsync(CurrentSlug!, history);
+            }
+            else if (CurrentPhase == SessionPhase.Phase2SolutionShaping)
+            {
+                var businessDsl = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase1BusinessDiscovery) ?? "";
+                yaml = await _chatService.GenerateSolutionDslAsync(CurrentSlug!, history, businessDsl);
+                var validation = SolutionDslValidator.Validate(yaml);
+                if (!validation.IsValid)
+                {
+                    ErrorMessage = "Generated Solution.dsl has validation errors: " +
+                                   string.Join("; ", validation.Errors.Select(e => e.Message));
+                }
+            }
+            else if (CurrentPhase == SessionPhase.Phase3PlanningDecomposition)
+            {
+                var bDsl = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase1BusinessDiscovery) ?? "";
+                var sDsl = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, SessionPhase.Phase2SolutionShaping) ?? "";
+                yaml = await _chatService.GeneratePlanDslAsync(CurrentSlug!, history, bDsl, sDsl);
+            }
+            else
+            {
+                return;
             }
 
             DslContent  = yaml;
@@ -415,16 +411,15 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
     /// </summary>
     public void AdvancePhase()
     {
-        switch (CurrentPhase)
+        if (CurrentPhase == SessionPhase.Phase1BusinessDiscovery)
         {
-            case SessionPhase.Phase1BusinessDiscovery:
-                Phase1Locked = true;
-                CurrentPhase = SessionPhase.Phase2SolutionShaping;
-                break;
-            case SessionPhase.Phase2SolutionShaping:
-                Phase2Locked = true;
-                CurrentPhase = SessionPhase.Phase3PlanningDecomposition;
-                break;
+            Phase1Locked = true;
+            CurrentPhase = SessionPhase.Phase2SolutionShaping;
+        }
+        else if (CurrentPhase == SessionPhase.Phase2SolutionShaping)
+        {
+            Phase2Locked = true;
+            CurrentPhase = SessionPhase.Phase3PlanningDecomposition;
         }
 
         DslContent  = "";
@@ -461,12 +456,7 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
 
         ReviewConversation = sb.ToString().Trim();
         ReviewDslContent   = _sessionService.GetLockedDsl(CurrentSlug, ActiveSessionId, phase) ?? "(No DSL locked)";
-        ReviewPhaseTitle   = phase switch
-        {
-            SessionPhase.Phase1BusinessDiscovery     => "Phase 1 — Business Discovery (Read-Only)",
-            SessionPhase.Phase2SolutionShaping       => "Phase 2 — Solution Shaping (Read-Only)",
-            _ => "Phase Review (Read-Only)",
-        };
+        ReviewPhaseTitle   = phase.ReviewTitle;
         IsPhaseReviewOpen = true;
     }
 
@@ -496,21 +486,21 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
 
     private void IncrementTurnCount()
     {
-        switch (CurrentPhase)
-        {
-            case SessionPhase.Phase1BusinessDiscovery:     Phase1TurnCount++; break;
-            case SessionPhase.Phase2SolutionShaping:       Phase2TurnCount++; break;
-            case SessionPhase.Phase3PlanningDecomposition: Phase3TurnCount++; break;
-        }
+        if (CurrentPhase == SessionPhase.Phase1BusinessDiscovery)          Phase1TurnCount++;
+        else if (CurrentPhase == SessionPhase.Phase2SolutionShaping)       Phase2TurnCount++;
+        else if (CurrentPhase == SessionPhase.Phase3PlanningDecomposition) Phase3TurnCount++;
     }
 
-    private int CurrentTurnCount => CurrentPhase switch
+    private int CurrentTurnCount
     {
-        SessionPhase.Phase1BusinessDiscovery     => Phase1TurnCount,
-        SessionPhase.Phase2SolutionShaping       => Phase2TurnCount,
-        SessionPhase.Phase3PlanningDecomposition => Phase3TurnCount,
-        _ => 0,
-    };
+        get
+        {
+            if (CurrentPhase == SessionPhase.Phase1BusinessDiscovery)     return Phase1TurnCount;
+            if (CurrentPhase == SessionPhase.Phase2SolutionShaping)       return Phase2TurnCount;
+            if (CurrentPhase == SessionPhase.Phase3PlanningDecomposition) return Phase3TurnCount;
+            return 0;
+        }
+    }
 
     private void UpdateTurnLimitState()
     {
@@ -524,15 +514,8 @@ public sealed partial class PlanningTasksViewModel : ObservableObject, IDisposab
 
     private void UpdateDslPanelTitle()
     {
-        var phaseName = CurrentPhase switch
-        {
-            SessionPhase.Phase1BusinessDiscovery     => "Phase 1: Business Discovery",
-            SessionPhase.Phase2SolutionShaping       => "Phase 2: Solution Shaping",
-            SessionPhase.Phase3PlanningDecomposition => "Phase 3: Planning & Decomposition",
-            _ => "",
-        };
         var status = HasDraftDsl ? "Draft" : "Empty";
-        DslPanelTitle = $"DSL Output — {phaseName} ({status})";
+        DslPanelTitle = $"DSL Output — {CurrentPhase.DisplayTitle} ({status})";
     }
 
     private IReadOnlyList<ConversationTurn> GetCurrentPhaseHistory(int excludeLast)

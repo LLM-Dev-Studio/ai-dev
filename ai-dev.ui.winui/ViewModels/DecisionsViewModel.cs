@@ -53,13 +53,13 @@ public partial class DecisionsViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var pending = _decisionsService.ListDecisions(CurrentSlug, "pending");
+            var pending = _decisionsService.ListDecisions(CurrentSlug, DecisionStatus.Pending);
             Decisions.Clear();
             foreach (var d in pending) Decisions.Add(d);
 
             if (ShowResolved)
             {
-                var resolved = _decisionsService.ListDecisions(CurrentSlug, "resolved");
+                var resolved = _decisionsService.ListDecisions(CurrentSlug, DecisionStatus.Resolved);
                 foreach (var d in resolved) Decisions.Add(d);
             }
             return Task.CompletedTask;

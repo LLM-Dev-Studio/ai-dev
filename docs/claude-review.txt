@@ -1,0 +1,330 @@
+How a Local Ollama Agent Processes a Prompt
+When you send a prompt to an Ollama-hosted model, here's what happens end-to-end:
+
+1. HTTP Request
+Your client sends a POST request to Ollama's local server (default http://localhost:11434):
+
+/api/generate — raw completion
+/api/chat — chat-style with message history
+2. Ollama Server (Go process)
+The Ollama daemon receives the request and:
+
+Looks up the requested model (e.g., llama3.2, mistral)
+Loads the model weights into memory (RAM or VRAM) if not already loaded
+Applies the model's chat template — transforms your messages into a single formatted string the model understands (e.g., wrapping with [INST]...[/INST] for Mistral, or <|user|>...<|assistant|> for others)
+3. llama.cpp Backend
+Ollama delegates inference to llama.cpp under the hood:
+
+
+Prompt string
+    → Tokenizer  →  token IDs  (e.g., "hello" → [15043])
+    → Context window check     (truncate if > model's context limit)
+    → Forward pass through transformer layers
+    → Logits (raw scores for every token in vocabulary)
+    → Sampler (temperature, top-p, top-k, repeat penalty)
+    → Next token selected
+    → Repeat until [EOS] token or max_tokens reached
+4. Sampling
+Each token is chosen by the sampler, not deterministically:
+
+Temperature — scales logits (0 = greedy/deterministic, 1 = default, >1 = more random)
+Top-p (nucleus sampling) — keeps only tokens whose cumulative probability ≥ p
+Top-k — limits candidates to the top k tokens
+Repeat penalty — discourages repeating recent tokens
+5. Hardware Acceleration
+llama.cpp offloads layers to:
+
+GPU (CUDA/ROCm/Metal) — fastest; each layer is a matrix multiply on VRAM
+CPU — fallback; uses AVX2/AVX-512 SIMD instructions
+Hybrid — num_gpu_layers splits layers between GPU and CPU when VRAM is limited
+6. Streaming Response
+Tokens are sent back as they are generated (streamed by default), so your client receives partial output incrementally rather than waiting for the full response.
+
+7. Context Persistence (for agents)
+For agentic use (tool calls, multi-turn):
+
+The full conversation history is re-submitted each turn (stateless per-request)
+Ollama caches the KV cache for the prompt prefix, so repeated context doesn't re-process from scratch
+Tool call support depends on the model — models like llama3.1 emit structured JSON that the agent framework parses to dispatch tool calls, then re-injects results into the next prompt
+Key constraint: everything runs in your local process — no network call leaves the machine. Latency is dominated by model size, quantisation level (Q4 vs Q8), and available VRAM.
+
+i have an app at M:\ai-dev that is meant to do the same thing via it's M:\ai-dev\ai-dev.executor.ollama project.  but I am not getting any successful calls.  does this project help identify the issues?
+Let me explore that project to understand its structure and identify issues.
+
+Agent:Explore Ollama executor project
+IN
+Explore the project at M:\ai-dev\ai-dev.executor.ollama. I need a thorough understanding of:
+1. The overall file/folder structure
+2. How it connects to Ollama (URLs, ports, endpoints used)
+3. How it builds and sends prompts
+4. Any configuration files (env, config, appsettings, etc.)
+5. Any error handling or logging
+6. How it's called from the rest of the M:\ai-dev solution (look at the broader M:\ai-dev directory for references to this project)
+
+Search breadth: very thorough. Read key source files in full. Report findings in detail — I need to diagnose why Ollama calls are failing.
+Bash
+IN
+Get-ChildItem -Path "M:\ai-dev\ai-dev.executor.ollama" -Recurse -Depth 3 | Select-Object FullName, PSIsContainer | Format-Table -AutoSize
+
+OUT
+Exit code 127
+/usr/bin/bash: line 1: Get-ChildItem: command not found
+/usr/bin/bash: line 1: Select-Object: command not found
+/usr/bin/bash: line 1: Format-Table: command not found
+PowerShell
+IN
+{
+  "command": "Get-ChildItem -Path \"M:\\ai-dev\\ai-dev.executor.ollama\" -Recurse | Select-Object FullName, @{Name='IsDir';Expression={$_.PSIsContainer}} | Format-List"
+}
+OUT
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin
+[32;1mIsDir    : [0mTrue
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\Extensions
+[32;1mIsDir    : [0mTrue
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj
+[32;1mIsDir    : [0mTrue
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\ai-dev.executor.ollama.csproj
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\OllamaAgentExecutor.cs
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\OllamaToolSchemas.cs
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\OllamaToolSupport.cs
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\WorkspaceTools.cs
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin\Debug
+[32;1mIsDir    : [0mTrue
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin\Debug\net10.0
+[32;1mIsDir    : [0mTrue
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin\Debug\net10.0\ai-dev.core.dll
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin\Debug\net10.0\ai-dev.core.pdb
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin\Debug\net10.0\ai-dev.executor.ollama.deps.json
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin\Debug\net10.0\ai-dev.executor.ollama.dll
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin\Debug\net10.0\ai-dev.executor.ollama.pdb
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin\Debug\net10.0\ai-dev.mcp.deps.json
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin\Debug\net10.0\ai-dev.mcp.dll
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin\Debug\net10.0\ai-dev.mcp.exe
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin\Debug\net10.0\ai-dev.mcp.pdb
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\bin\Debug\net10.0\ai-dev.mcp.runtimeconfig.json
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\Extensions\OllamaExecutorExtensions.cs
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug
+[32;1mIsDir    : [0mTrue
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\ai-dev.executor.ollama.csproj.nuget.dgspec.json
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\ai-dev.executor.ollama.csproj.nuget.g.props
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\ai-dev.executor.ollama.csproj.nuget.g.targets
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\project.assets.json
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\project.nuget.cache
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0
+[32;1mIsDir    : [0mTrue
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ref
+[32;1mIsDir    : [0mTrue
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\refint
+[32;1mIsDir    : [0mTrue
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\.NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.e.94090BEA.Up2Date
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.executor.ollama.AssemblyInfo.cs
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.executor.ollama.AssemblyInfoInputs.cache
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.executor.ollama.assets.cache
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.executor.ollama.csproj.AssemblyReference.cache
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.executor.ollama.csproj.BuildWithSkipAnalyzers
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.executor.ollama.csproj.CoreCompileInputs.cache
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.executor.ollama.csproj.FileListAbsolute.txt
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.executor.ollama.dll
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.executor.ollama.GeneratedMSBuildEditorConfig.edito
+           rconfig
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.executor.ollama.GlobalUsings.g.cs
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.executor.ollama.pdb
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ai-dev.executor.ollama.sourcelink.json
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\ref\ai-dev.executor.ollama.dll
+[32;1mIsDir    : [0mFalse
+
+[32;1mFullName : [0mM:\ai-dev\ai-dev.executor.ollama\obj\Debug\net10.0\refint\ai-dev.executor.ollama.dll
+[32;1mIsDir    : [0mFalse
+Read M:\ai-dev\ai-dev.executor.ollama\Extensions\OllamaExecutorExtensions.cs
+Read M:\ai-dev\ai-dev.executor.ollama\WorkspaceTools.cs
+Bash
+IN
+find "M:\ai-dev" -type f -name "*.cs" -o -name "*.csproj" | head -30
+
+OUT
+M:\ai-dev/ai-dev-net.AppHost/ai-dev-net.AppHost.csproj
+M:\ai-dev/ai-dev-net.AppHost/AppHost.cs
+M:\ai-dev/ai-dev-net.AppHost/obj/Debug/net10.0/.NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+M:\ai-dev/ai-dev-net.AppHost/obj/Debug/net10.0/ai-dev-net.AppHost.AssemblyInfo.cs
+M:\ai-dev/ai-dev-net.AppHost/obj/Debug/net10.0/ai-dev-net.AppHost.GlobalUsings.g.cs
+M:\ai-dev/ai-dev-net.AppHost/obj/Debug/net10.0/Aspire/references/ai_dev_mcp.ProjectMetadata.g.cs
+M:\ai-dev/ai-dev-net.AppHost/obj/Debug/net10.0/Aspire/references/ai_dev_ui_winui.ProjectMetadata.g.cs
+M:\ai-dev/ai-dev-net.AppHost/obj/Debug/net10.0/Aspire/references/_AppHost.ProjectMetadata.g.cs
+M:\ai-dev/ai-dev-net.ServiceDefaults/ai-dev-net.ServiceDefaults.csproj
+M:\ai-dev/ai-dev-net.ServiceDefaults/Extensions.cs
+M:\ai-dev/ai-dev-net.ServiceDefaults/obj/Debug/net10.0/.NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+M:\ai-dev/ai-dev-net.ServiceDefaults/obj/Debug/net10.0/ai-dev-net.ServiceDefaults.AssemblyInfo.cs
+M:\ai-dev/ai-dev-net.ServiceDefaults/obj/Debug/net10.0/ai-dev-net.ServiceDefaults.GlobalUsings.g.cs
+M:\ai-dev/ai-dev-net.tests.integration/ai-dev-net.tests.integration.csproj
+M:\ai-dev/ai-dev-net.tests.integration/CancellationPolicyIntegrationTests.cs
+M:\ai-dev/ai-dev-net.tests.integration/ConsistencyUiAndDetectionIntegrationTests.cs
+M:\ai-dev/ai-dev-net.tests.integration/LmStudioExecutorTests.cs
+M:\ai-dev/ai-dev-net.tests.integration/LocalOrchestratorEndToEndTests.cs
+M:\ai-dev/ai-dev-net.tests.integration/obj/Debug/net10.0/.NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+M:\ai-dev/ai-dev-net.tests.integration/obj/Debug/net10.0/ai-dev-net.tests.integration.AssemblyInfo.cs
+M:\ai-dev/ai-dev-net.tests.integration/obj/Debug/net10.0/ai-dev-net.tests.integration.GlobalUsings.g.cs
+M:\ai-dev/ai-dev-net.tests.integration/obj/Debug/net10.0/SelfRegisteredExtensions.cs
+M:\ai-dev/ai-dev-net.tests.integration/obj/Debug/net10.0/XunitAutoGeneratedEntryPoint.cs
+M:\ai-dev/ai-dev-net.tests.integration/OllamaExecutorTests.cs
+M:\ai-dev/ai-dev-net.tests.integration/ProductionReadinessIntegrationTests.cs
+M:\ai-dev/ai-dev-net.tests.unit/AgentInfoTests.cs
+M:\ai-dev/ai-dev-net.tests.unit/AgentRunnerServiceTests.cs
+M:\ai-dev/ai-dev-net.tests.unit/AgentServiceTests.cs
+M:\ai-dev/ai-dev-net.tests.unit/AgentSlugTests.cs
+M:\ai-dev/ai-dev-net.tests.unit/AgentStatusTests.cs
+Grep "OllamaBaseUrl|Ollama.*Url|ollama.*endpoint" (in M:\ai-dev)
+11 lines of output
+Read M:\ai-dev\ai-dev.core\Extensions\CoreServiceExtensions.cs
+Read M:\ai-dev\ai-dev-net.tests.integration\OllamaExecutorTests.cs
+Grep "AddOllamaExecutor|IAgentExecutor" (in M:\ai-dev)
+31 lines of output
+Bash
+IN
+find "M:\ai-dev" -type f -name "*.cs" | xargs grep -l "class.*OllamaLlmClient\|interface.*Executor" | head -10
+
+OUT
+<persisted-output>
+Output too large (39.8KB). Full output saved to: C:\Users\Allan\.claude\projects\m--LocalForge-localforge\773c4a4d-c01e-42cf-bfc7-21068e745d2b\tool-results\bp45750op.txt
+
+Preview (first 2KB):
+grep: M:ai-dev/ai-dev-net.AppHost/AppHost.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.AppHost/obj/Debug/net10.0/.NETCoreApp,Version=v10.0.AssemblyAttributes.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.AppHost/obj/Debug/net10.0/ai-dev-net.AppHost.AssemblyInfo.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.AppHost/obj/Debug/net10.0/ai-dev-net.AppHost.GlobalUsings.g.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.AppHost/obj/Debug/net10.0/Aspire/references/ai_dev_mcp.ProjectMetadata.g.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.AppHost/obj/Debug/net10.0/Aspire/references/ai_dev_ui_winui.ProjectMetadata.g.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.AppHost/obj/Debug/net10.0/Aspire/references/_AppHost.ProjectMetadata.g.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.ServiceDefaults/Extensions.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.ServiceDefaults/obj/Debug/net10.0/.NETCoreApp,Version=v10.0.AssemblyAttributes.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.ServiceDefaults/obj/Debug/net10.0/ai-dev-net.ServiceDefaults.AssemblyInfo.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.ServiceDefaults/obj/Debug/net10.0/ai-dev-net.ServiceDefaults.GlobalUsings.g.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.tests.integration/CancellationPolicyIntegrationTests.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.tests.integration/ConsistencyUiAndDetectionIntegrationTests.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.tests.integration/LmStudioExecutorTests.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.tests.integration/LocalOrchestratorEndToEndTests.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.tests.integration/obj/Debug/net10.0/.NETCoreApp,Version=v10.0.AssemblyAttributes.cs: No such file or directory
+grep: M:ai-dev/ai-dev-net.tests.integration/obj/Debug/net10.0/ai-dev-net.tests.integration.AssemblyInfo.cs: No such file or directory
+...
+</persisted-output>
+Grep "class SystemPromptLoader|class TokenBudget" (in M:\ai-dev)
+5 lines of output
+Read M:\ai-dev\ai-dev.core\Executors\TokenBudget.cs
+Read M:\ai-dev\ai-dev.core\Executors\ExecutorHealthMonitor.cs
+Bash
+IN
+find "M:\ai-dev" -name "ExecutorHealthMonitor.cs" -o -name "IAgentExecutor.cs" -o -name "ExecutorContext.cs"
+
+OUT
+M:\ai-dev/ai-dev.core/Executors/ExecutorContext.cs
+M:\ai-dev/ai-dev.core/Executors/IAgentExecutor.cs
+Read M:\ai-dev\ai-dev.core\Executors\IAgentExecutor.cs
+Read M:\ai-dev\ai-dev.core\Features\Agent\AgentRunnerService.cs
+The explorer found a lot. Here's a focused diagnosis of the most likely failure causes:
+
+What the Project Reveals
+The OllamaAgentExecutor is well-instrumented, so failures should leave clear log traces. Based on the code, here are the ranked likely culprits:
+
+Most Likely Issues
+1. Model name mismatch
+The executor passes the model name from agent.json directly to /api/chat. If the name doesn't exactly match what ollama list shows (including tag, e.g., llama3.2:latest vs llama3.2), it silently fails or returns 404.
+
+2. Ollama not running / wrong port
+The base URL is http://localhost:11434 from appsettings.json. Confirm with:
+
+
+curl http://localhost:11434/api/tags
+3. Tool support blocked
+If your agent has mcp-workspace skill enabled and you're running a Gemma3 model, it's explicitly blocked in OllamaToolSupport.cs before the request is even made.
+
+4. Context window too small
+If CLAUDE.md is large and the model has a small context window (e.g., 2048 tokens), the preflight check in OllamaAgentExecutor.cs will abort with exit code 1 before sending anything.
+
+How to Pinpoint It
+All failures log with [ollama] prefix. Check your application log output for those lines — the error messages are specific about which stage failed (health check, preflight, HTTP error, stream parse).
+
+Can you share:
+
+What model name is in your agent.json?
+What you see in the logs when a run fails (any [ollama] lines)?
+Output of ollama list from your terminal?
+That will let us narrow it down to the exact line.

@@ -103,8 +103,9 @@ public partial class SettingsViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(InsightsExecutor))
             return;
 
-        foreach (var model in _modelRegistry.GetModelsForExecutor(InsightsExecutor))
-            AvailableInsightsModels.Add(model.Id);
+        if (AgentExecutorName.TryParse(InsightsExecutor, out var insightsExecutor))
+            foreach (var model in _modelRegistry.GetModelsForExecutor(insightsExecutor))
+                AvailableInsightsModels.Add(model.Id);
     }
 
     [RelayCommand]

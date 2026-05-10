@@ -42,7 +42,7 @@ public sealed class PlanningSessionService(
     public async Task<PlanningSessionMetadata> CreateSessionAsync(
         ProjectSlug projectSlug, CancellationToken ct = default)
     {
-        var sessionId = Guid.NewGuid().ToString("N");
+        var sessionId = SessionId.New();
         var now = DateTimeOffset.UtcNow;
 
         var metadata = new PlanningSessionMetadata
@@ -74,7 +74,7 @@ public sealed class PlanningSessionService(
         return sessions.FirstOrDefault(s => s.State != PlanningSessionState.Completed);
     }
 
-    public PlanningSessionMetadata? GetSession(ProjectSlug projectSlug, string sessionId)
+    public PlanningSessionMetadata? GetSession(ProjectSlug projectSlug, SessionId sessionId)
     {
         var metadataPath = paths.PlanningSessionMetadataPath(projectSlug, sessionId);
         if (!metadataPath.Exists()) return null;
@@ -103,7 +103,7 @@ public sealed class PlanningSessionService(
     // Conversation
     // -------------------------------------------------------------------------
 
-    public IReadOnlyList<ConversationTurn> GetConversation(ProjectSlug projectSlug, string sessionId)
+    public IReadOnlyList<ConversationTurn> GetConversation(ProjectSlug projectSlug, SessionId sessionId)
     {
         var path = paths.PlanningSessionConversationPath(projectSlug, sessionId);
         if (!path.Exists()) return [];
@@ -111,13 +111,13 @@ public sealed class PlanningSessionService(
     }
 
     public IReadOnlyList<ConversationTurn> GetConversationForPhase(
-        ProjectSlug projectSlug, string sessionId, SessionPhase phase)
+        ProjectSlug projectSlug, SessionId sessionId, SessionPhase phase)
         => GetConversation(projectSlug, sessionId)
             .Where(t => t.Phase == phase)
             .ToList();
 
     public async Task AppendTurnAsync(
-        ProjectSlug projectSlug, string sessionId, ConversationTurn turn, CancellationToken ct = default)
+        ProjectSlug projectSlug, SessionId sessionId, ConversationTurn turn, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -136,13 +136,12 @@ public sealed class PlanningSessionService(
     // -------------------------------------------------------------------------
 
     public async Task SaveDraftDslAsync(
-        ProjectSlug projectSlug, string sessionId, SessionPhase phase,
+        ProjectSlug projectSlug, SessionId sessionId, SessionPhase phase,
         string yamlContent, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
-        var dslFileName = DslFileName(phase);
-        var draftPath   = paths.PlanningSessionDraftDslPath(projectSlug, sessionId, dslFileName);
+        var draftPath   = paths.PlanningSessionDraftDslPath(projectSlug, sessionId, phase.DslFileName);
 
         paths.PlanningSessionDraftsDir(projectSlug, sessionId).Create();
         await WriteYamlAsync(draftPath.Value, yamlContent, ct).ConfigureAwait(false);
@@ -151,7 +150,7 @@ public sealed class PlanningSessionService(
     }
 
     public async Task<Result<Unit>> LockPhaseAsync(
-        ProjectSlug projectSlug, string sessionId, SessionPhase phase,
+        ProjectSlug projectSlug, SessionId sessionId, SessionPhase phase,
         string yamlContent, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -184,8 +183,7 @@ public sealed class PlanningSessionService(
         }
 
         // Write locked DSL (immutable after this point)
-        var dslFileName  = DslFileName(phase);
-        var lockedPath   = paths.PlanningSessionLockedDslPath(projectSlug, sessionId, dslFileName);
+        var lockedPath   = paths.PlanningSessionLockedDslPath(projectSlug, sessionId, phase.DslFileName);
 
         if (lockedPath.Exists())
         {
@@ -202,24 +200,22 @@ public sealed class PlanningSessionService(
 
         // Update metadata state
         var now = DateTimeOffset.UtcNow;
-        switch (phase)
+        if (phase == SessionPhase.Phase1BusinessDiscovery)
         {
-            case SessionPhase.Phase1BusinessDiscovery:
-                metadata.State        = PlanningSessionState.Phase1Locked;
-                metadata.Phase1LockedAt = now;
-                metadata.CurrentPhase = SessionPhase.Phase2SolutionShaping;
-                break;
-
-            case SessionPhase.Phase2SolutionShaping:
-                metadata.State        = PlanningSessionState.Phase2Locked;
-                metadata.Phase2LockedAt = now;
-                metadata.CurrentPhase = SessionPhase.Phase3PlanningDecomposition;
-                break;
-
-            case SessionPhase.Phase3PlanningDecomposition:
-                metadata.State      = PlanningSessionState.Completed;
-                metadata.CompletedAt = now;
-                break;
+            metadata.State          = PlanningSessionState.Phase1Locked;
+            metadata.Phase1LockedAt = now;
+            metadata.CurrentPhase   = SessionPhase.Phase2SolutionShaping;
+        }
+        else if (phase == SessionPhase.Phase2SolutionShaping)
+        {
+            metadata.State          = PlanningSessionState.Phase2Locked;
+            metadata.Phase2LockedAt = now;
+            metadata.CurrentPhase   = SessionPhase.Phase3PlanningDecomposition;
+        }
+        else if (phase == SessionPhase.Phase3PlanningDecomposition)
+        {
+            metadata.State       = PlanningSessionState.Completed;
+            metadata.CompletedAt = now;
         }
 
         await SaveMetadataAsync(projectSlug, sessionId, metadata, ct).ConfigureAwait(false);
@@ -229,7 +225,7 @@ public sealed class PlanningSessionService(
     }
 
     public async Task UpdateTokenCountAsync(
-        ProjectSlug projectSlug, string sessionId, SessionPhase phase,
+        ProjectSlug projectSlug, SessionId sessionId, SessionPhase phase,
         int inputTokens, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -241,9 +237,9 @@ public sealed class PlanningSessionService(
         await SaveMetadataAsync(projectSlug, sessionId, metadata, ct).ConfigureAwait(false);
     }
 
-    public string? GetLockedDsl(ProjectSlug projectSlug, string sessionId, SessionPhase phase)
+    public string? GetLockedDsl(ProjectSlug projectSlug, SessionId sessionId, SessionPhase phase)
     {
-        var path = paths.PlanningSessionLockedDslPath(projectSlug, sessionId, DslFileName(phase));
+        var path = paths.PlanningSessionLockedDslPath(projectSlug, sessionId, phase.DslFileName);
         if (!path.Exists()) return null;
         try { return File.ReadAllText(path.Value, Encoding.UTF8); }
         catch (Exception ex)
@@ -253,9 +249,9 @@ public sealed class PlanningSessionService(
         }
     }
 
-    public string? GetDraftDsl(ProjectSlug projectSlug, string sessionId, SessionPhase phase)
+    public string? GetDraftDsl(ProjectSlug projectSlug, SessionId sessionId, SessionPhase phase)
     {
-        var path = paths.PlanningSessionDraftDslPath(projectSlug, sessionId, DslFileName(phase));
+        var path = paths.PlanningSessionDraftDslPath(projectSlug, sessionId, phase.DslFileName);
         if (!path.Exists()) return null;
         try { return File.ReadAllText(path.Value, Encoding.UTF8); }
         catch (Exception ex)
@@ -267,7 +263,7 @@ public sealed class PlanningSessionService(
 
     public async Task<string> CreateEc4EscalationAsync(
         ProjectSlug projectSlug,
-        string sessionId,
+        SessionId sessionId,
         string unsupportedRequirement,
         string closestAlternative,
         CancellationToken ct = default)
@@ -336,7 +332,7 @@ public sealed class PlanningSessionService(
     // -------------------------------------------------------------------------
 
     private async Task SaveMetadataAsync(
-        ProjectSlug projectSlug, string sessionId,
+        ProjectSlug projectSlug, SessionId sessionId,
         PlanningSessionMetadata metadata, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -442,29 +438,21 @@ public sealed class PlanningSessionService(
         return text[..maxLength].TrimEnd() + "...";
     }
 
-    private static string DslFileName(SessionPhase phase) => phase switch
+    private static bool IsLocked(PlanningSessionMetadata metadata, SessionPhase phase)
     {
-        SessionPhase.Phase1BusinessDiscovery    => FilePathConstants.BusinessDslFileName,
-        SessionPhase.Phase2SolutionShaping      => FilePathConstants.SolutionDslFileName,
-        SessionPhase.Phase3PlanningDecomposition => FilePathConstants.PlanDslFileName,
-        _ => throw new ArgumentOutOfRangeException(nameof(phase), phase, null),
-    };
+        if (phase == SessionPhase.Phase1BusinessDiscovery)     return metadata.Phase1LockedAt.HasValue;
+        if (phase == SessionPhase.Phase2SolutionShaping)       return metadata.Phase2LockedAt.HasValue;
+        if (phase == SessionPhase.Phase3PlanningDecomposition) return metadata.State.IsCompleted;
+        return false;
+    }
 
-    private static bool IsLocked(PlanningSessionMetadata metadata, SessionPhase phase) => phase switch
+    private static bool CanLockPhase(PlanningSessionMetadata metadata, SessionPhase phase)
     {
-        SessionPhase.Phase1BusinessDiscovery    => metadata.Phase1LockedAt.HasValue,
-        SessionPhase.Phase2SolutionShaping      => metadata.Phase2LockedAt.HasValue,
-        SessionPhase.Phase3PlanningDecomposition => metadata.State == PlanningSessionState.Completed,
-        _ => false,
-    };
-
-    private static bool CanLockPhase(PlanningSessionMetadata metadata, SessionPhase phase) => phase switch
-    {
-        SessionPhase.Phase1BusinessDiscovery     => true,
-        SessionPhase.Phase2SolutionShaping       => metadata.Phase1LockedAt.HasValue,
-        SessionPhase.Phase3PlanningDecomposition => metadata.Phase2LockedAt.HasValue,
-        _ => false,
-    };
+        if (phase == SessionPhase.Phase1BusinessDiscovery)     return true;
+        if (phase == SessionPhase.Phase2SolutionShaping)       return metadata.Phase1LockedAt.HasValue;
+        if (phase == SessionPhase.Phase3PlanningDecomposition) return metadata.Phase2LockedAt.HasValue;
+        return false;
+    }
 
     // -------------------------------------------------------------------------
     // DTO mapping
@@ -480,17 +468,17 @@ public sealed class PlanningSessionService(
         int InputTokens, int OutputTokens);
 
     private static PlanningSessionMetadataDto MetadataToDto(PlanningSessionMetadata m) =>
-        new(m.Id, m.CreatedAt, m.CurrentPhase.ToString(), m.State.ToString(),
+        new(m.Id.Value, m.CreatedAt, m.CurrentPhase.ToString(), m.State.ToString(),
             m.Phase1LockedAt, m.Phase2LockedAt, m.CompletedAt,
             m.Phase1InputTokens, m.Phase2InputTokens, m.Phase3InputTokens);
 
     private static PlanningSessionMetadata DtoToMetadata(PlanningSessionMetadataDto dto)
     {
-        Enum.TryParse<SessionPhase>(dto.CurrentPhase, out var phase);
-        Enum.TryParse<PlanningSessionState>(dto.State, out var state);
+        var phase = SessionPhase.Parse(dto.CurrentPhase);
+        var state = PlanningSessionState.Parse(dto.State);
         return new PlanningSessionMetadata
         {
-            Id                  = dto.Id,
+            Id                  = new SessionId(dto.Id),
             CreatedAt           = dto.CreatedAt,
             CurrentPhase        = phase,
             State               = state,
@@ -508,8 +496,8 @@ public sealed class PlanningSessionService(
 
     private static ConversationTurn DtoToTurn(ConversationTurnDto dto)
     {
-        Enum.TryParse<ConversationRole>(dto.Role, out var role);
-        Enum.TryParse<SessionPhase>(dto.Phase, out var phase);
+        var role  = ConversationRole.Parse(dto.Role);
+        var phase = SessionPhase.Parse(dto.Phase);
         return new ConversationTurn(role, dto.Content, dto.Timestamp, phase, dto.InputTokens, dto.OutputTokens);
     }
 }

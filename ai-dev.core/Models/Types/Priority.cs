@@ -26,6 +26,22 @@ public readonly record struct Priority
     public bool IsCritical => this == Critical;
     public bool IsUrgent => IsHigh || IsCritical;
 
+    public string DisplayName => Value switch
+    {
+        "critical" => "Critical",
+        "high"     => "High",
+        "normal"   => "Normal",
+        _          => "Low",
+    };
+
+    public string ColorHex => Value switch
+    {
+        "critical" => "#EF4444",
+        "high"     => "#F59E0B",
+        "normal"   => "#3B82F6",
+        _          => "#6B7280",
+    };
+
     public override string ToString() => Value;
 }
 

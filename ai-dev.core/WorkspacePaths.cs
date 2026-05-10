@@ -109,22 +109,22 @@ public class WorkspacePaths
     public PlanningSessionsDir PlanningSessionsDir(ProjectSlug p) =>
         new(Path.Combine(ProjectDir(p).Value, FilePathConstants.SessionsDirName, FilePathConstants.PlanningDirName));
 
-    public PlanningSessionDir PlanningSessionDir(ProjectSlug p, string sessionId) =>
-        new(Path.Combine(PlanningSessionsDir(p).Value, sessionId));
+    public PlanningSessionDir PlanningSessionDir(ProjectSlug p, SessionId sessionId) =>
+        new(Path.Combine(PlanningSessionsDir(p).Value, sessionId.Value));
 
-    public PlanningSessionDraftsDir PlanningSessionDraftsDir(ProjectSlug p, string sessionId) =>
+    public PlanningSessionDraftsDir PlanningSessionDraftsDir(ProjectSlug p, SessionId sessionId) =>
         new(Path.Combine(PlanningSessionDir(p, sessionId).Value, FilePathConstants.DraftsDirName));
 
-    public PlanningSessionMetadataFile PlanningSessionMetadataPath(ProjectSlug p, string sessionId) =>
+    public PlanningSessionMetadataFile PlanningSessionMetadataPath(ProjectSlug p, SessionId sessionId) =>
         new(Path.Combine(PlanningSessionDir(p, sessionId).Value, FilePathConstants.PlanningMetadataFileName));
 
-    public PlanningSessionConversationFile PlanningSessionConversationPath(ProjectSlug p, string sessionId) =>
+    public PlanningSessionConversationFile PlanningSessionConversationPath(ProjectSlug p, SessionId sessionId) =>
         new(Path.Combine(PlanningSessionDir(p, sessionId).Value, FilePathConstants.PlanningConversationFileName));
 
-    public PlanningSessionDslFile PlanningSessionLockedDslPath(ProjectSlug p, string sessionId, string dslFileName) =>
+    public PlanningSessionDslFile PlanningSessionLockedDslPath(ProjectSlug p, SessionId sessionId, string dslFileName) =>
         new(Path.Combine(PlanningSessionDir(p, sessionId).Value, dslFileName));
 
-    public PlanningSessionDslFile PlanningSessionDraftDslPath(ProjectSlug p, string sessionId, string dslFileName) =>
+    public PlanningSessionDslFile PlanningSessionDraftDslPath(ProjectSlug p, SessionId sessionId, string dslFileName) =>
         new(Path.Combine(PlanningSessionDraftsDir(p, sessionId).Value, dslFileName));
 
     public TranscriptFile TranscriptPath(ProjectSlug p, AgentSlug a, TranscriptDate date) => AgentTranscriptsDir(p, a).TranscriptFile(date);

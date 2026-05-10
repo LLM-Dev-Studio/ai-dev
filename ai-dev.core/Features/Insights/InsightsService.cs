@@ -21,8 +21,8 @@ public class InsightsService(
     StudioSettingsService settingsService,
     ILogger<InsightsService> logger)
 {
-    private readonly Dictionary<string, IAgentExecutor> _executors =
-        executors.GroupBy(e => e.Name).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<AgentExecutorName, IAgentExecutor> _executors =
+        executors.GroupBy(e => e.Name).ToDictionary(g => g.Key, g => g.First());
 
     private const string AnalysisInstructions = """
         You are an expert software-engineering coach analyzing an AI agent session transcript.
@@ -57,7 +57,8 @@ public class InsightsService(
         if (string.IsNullOrWhiteSpace(studioSettings.InsightsExecutor))
             return null;
 
-        if (!_executors.TryGetValue(studioSettings.InsightsExecutor, out var executor))
+        if (!AgentExecutorName.TryParse(studioSettings.InsightsExecutor, out var insightsExecutor)
+            || !_executors.TryGetValue(insightsExecutor, out var executor))
         {
             logger.LogWarning("[insights] Executor '{Executor}' not registered — skipping insights generation",
                 studioSettings.InsightsExecutor);
@@ -92,9 +93,9 @@ public class InsightsService(
         // without affecting any real agent. The directory structure mimics a workspace tree so
         // executors that rely on workspace-root plus project-slug context stay inside the temp directory.
         var tempRoot = Path.Combine(Path.GetTempPath(), $"ai-insights-{Guid.NewGuid():N}");
-        var workspaceRoot = Path.Combine(tempRoot, "workspaces");
-        const string projectSlug = "_insights";
-        var workingDir = Path.Combine(tempRoot, "workspaces", "_insights", "agents", "insights");
+        var workspaceRoot = new RootDir(Path.Combine(tempRoot, "workspaces"));
+        var projectSlug = new ProjectSlug("insights");
+        var workingDir = new AgentDir(Path.Combine(workspaceRoot.Value, "insights", "agents", "insights"));
 
         try
         {

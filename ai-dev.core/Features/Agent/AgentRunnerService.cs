@@ -26,8 +26,8 @@ public class AgentRunnerService(
     IEnumerable<ILocalAgentHook> localHooks) : IAgentRunnerService
 {
     private static readonly ActivitySource ActivitySource = new("AiDevNet.AgentRunner");
-    private readonly Dictionary<string, IAgentExecutor> _executors =
-        executors.GroupBy(e => e.Name).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+    private readonly Dictionary<AgentExecutorName, IAgentExecutor> _executors =
+        executors.GroupBy(e => e.Name).ToDictionary(g => g.Key, g => g.First());
     private readonly ILocalAgentHook? _localHook = localHooks.FirstOrDefault();
     private const string AgentPrompt =
         "Read your inbox and action any messages. Follow your CLAUDE.md session protocol.";
@@ -251,7 +251,7 @@ public class AgentRunnerService(
         var agentThinking = loadedInfo.ThinkingLevel;
         activity?.SetTag("agent.executor", executorName.Value);
 
-        if (!_executors.TryGetValue(executorName.Value, out var resolvedExecutor))
+        if (!_executors.TryGetValue(executorName, out var resolvedExecutor))
         {
             var available = string.Join(", ", _executors.Keys);
             logger.LogError("[runner] Agent {Key} requested executor '{Executor}' which is not registered. Available: {Available}",
@@ -270,7 +270,7 @@ public class AgentRunnerService(
         // Warn if the model is not known to the registry for this executor.
         // For dynamic executors (Ollama, GitHub Models) the registry may not have data until
         // health checks run, so this is advisory only — we do not block launch.
-        if (modelRegistry.Find(executorName.Value, modelId) == null)
+        if (modelRegistry.Find(executorName, modelId) == null)
         {
             logger.LogWarning("[runner] Agent {Key}: model '{Model}' is not registered for executor '{Executor}'. " +
                 "This may cause a runtime failure if the model does not exist.",
@@ -334,7 +334,7 @@ public class AgentRunnerService(
 
         var context = new ExecutorContext(
             WorkspaceRoot: paths.Root,
-            ProjectSlug: projectSlug.Value,
+            ProjectSlug: projectSlug,
             WorkingDir: agentDir,
             ModelId: modelId,
             Prompt: effectivePrompt,
@@ -472,7 +472,7 @@ public class AgentRunnerService(
                     projectSlug,
                     from: agentSlug.Value,
                     subject: $"Model too small for {agentLabel}",
-                    priority: "high",
+                    priority: Priority.High,
                     blocks: agentSlug.Value,
                     body: $"Agent **{agentLabel}** could not run because `{model}` has a context window that is too small.\n\n{sessionError}\n\n**Action required:** In LM Studio, reload `{model}` with a larger context (≥ 8192 tokens), or select a different model for this agent in its settings.");
             }
@@ -512,12 +512,12 @@ public class AgentRunnerService(
 
         activity.SetTag("agent.trigger.source", trigger.Source);
         activity.SetTag("agent.trigger.reason", trigger.Reason);
-        if (!string.IsNullOrWhiteSpace(trigger.ProjectSlug))
-            activity.SetTag("project.slug", trigger.ProjectSlug);
-        if (!string.IsNullOrWhiteSpace(trigger.TaskId))
-            activity.SetTag("task.id", trigger.TaskId);
-        if (!string.IsNullOrWhiteSpace(trigger.DecisionId))
-            activity.SetTag("decision.id", trigger.DecisionId);
+        if (trigger.ProjectSlug is not null)
+            activity.SetTag("project.slug", trigger.ProjectSlug.Value);
+        if (trigger.TaskId is not null)
+            activity.SetTag("task.id", trigger.TaskId.Value);
+        if (trigger.DecisionId is not null)
+            activity.SetTag("decision.id", trigger.DecisionId.Value);
         if (!string.IsNullOrWhiteSpace(trigger.MessageFile))
             activity.SetTag("message.file", trigger.MessageFile);
     }
