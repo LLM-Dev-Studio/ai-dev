@@ -73,6 +73,45 @@ public class AgentServiceTests
         agent.LastErrorAt.ShouldBe(errorAt);
     }
 
+    [Fact]
+    public void CreateAgent_WhenTemplateHasCompactContent_WritesCompactClaudeMd()
+    {
+        var service = CreateService(out var paths);
+        var projectSlug = new ProjectSlug("demo-project");
+        var templateJsonPath = paths.SafeTemplatePath("generic-standard", ".json")!;
+        var templateMdPath = paths.SafeTemplatePath("generic-standard", ".md")!;
+        var templateCompactPath = paths.SafeTemplatePath("generic-standard", ".compact.md")!;
+        Directory.CreateDirectory(Path.GetDirectoryName(templateJsonPath.Value)!);
+        File.WriteAllText(templateJsonPath.Value, "{\"slug\":\"generic-standard\",\"name\":\"Generic\",\"role\":\"Implement features\",\"model\":\"sonnet\",\"description\":\"Generalist\",\"content\":\"\"}");
+        File.WriteAllText(templateMdPath.Value, "# Generic\n\nFull content.");
+        File.WriteAllText(templateCompactPath.Value, "# Generic\n\nCompact content.");
+
+        service.CreateAgent(projectSlug, "backend-dev", "Backend Dev", "generic-standard");
+
+        var agentSlug = new AgentSlug("backend-dev");
+        var compactPath = Path.Combine(paths.AgentDir(projectSlug, agentSlug).Value, "CLAUDE.compact.md");
+        File.Exists(compactPath).ShouldBeTrue();
+        File.ReadAllText(compactPath).ShouldBe("# Generic\n\nCompact content.");
+    }
+
+    [Fact]
+    public void CreateAgent_WhenTemplateHasNoCompactContent_DoesNotWriteCompactClaudeMd()
+    {
+        var service = CreateService(out var paths);
+        var projectSlug = new ProjectSlug("demo-project");
+        var templateJsonPath = paths.SafeTemplatePath("generic-standard", ".json")!;
+        var templateMdPath = paths.SafeTemplatePath("generic-standard", ".md")!;
+        Directory.CreateDirectory(Path.GetDirectoryName(templateJsonPath.Value)!);
+        File.WriteAllText(templateJsonPath.Value, "{\"slug\":\"generic-standard\",\"name\":\"Generic\",\"role\":\"Implement features\",\"model\":\"sonnet\",\"description\":\"Generalist\",\"content\":\"\"}");
+        File.WriteAllText(templateMdPath.Value, "# Generic\n\nFull content.");
+
+        service.CreateAgent(projectSlug, "backend-dev", "Backend Dev", "generic-standard");
+
+        var agentSlug = new AgentSlug("backend-dev");
+        var compactPath = Path.Combine(paths.AgentDir(projectSlug, agentSlug).Value, "CLAUDE.compact.md");
+        File.Exists(compactPath).ShouldBeFalse();
+    }
+
     private static AgentService CreateService(out WorkspacePaths paths)
     {
         var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));

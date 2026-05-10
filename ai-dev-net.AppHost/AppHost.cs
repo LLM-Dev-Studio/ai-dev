@@ -11,8 +11,6 @@ var workspaceRoot = Path.GetFullPath(Path.Combine(
 builder.AddProject<Projects.ai_dev_mcp>("ai-dev-mcp")
     .WithEnvironment("WORKSPACE_ROOT", workspaceRoot);
 
-builder.AddProject<Projects.ai_dev_ui_web>("ai-dev-net");
-
 builder.AddProject<Projects.ai_dev_ui_winui>("ai-dev-winui");
 
 builder.Build().Run();

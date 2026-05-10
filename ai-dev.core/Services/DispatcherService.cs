@@ -198,8 +198,16 @@ public class DispatcherService(
             // Brief delay so the agent folder structure is fully written before watching
             _ = Task.Run(async () =>
             {
-                await Task.Delay(500).ConfigureAwait(false);
-                WatchAgentInbox(projectSlug, agentSlug);
+                try
+                {
+                    await Task.Delay(500).ConfigureAwait(false);
+                    WatchAgentInbox(projectSlug, agentSlug);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "[dispatcher] Failed to set up inbox watcher for new agent {Project}/{Agent}",
+                        projectSlug, agentSlug);
+                }
             });
         };
         _watchers.Add(w);
@@ -217,11 +225,18 @@ public class DispatcherService(
         {
             _ = Task.Run(async () =>
             {
-                await Task.Delay(1000).ConfigureAwait(false);
-                if (!File.Exists(Path.Combine(e.FullPath, "project.json"))) return;
-                if (!ProjectSlug.TryParse(Path.GetFileName(e.FullPath), out var projectSlug)) return;
-                logger.LogInformation("[dispatcher] New project detected: {Project}", projectSlug);
-                WatchProject(projectSlug);
+                try
+                {
+                    await Task.Delay(1000).ConfigureAwait(false);
+                    if (!File.Exists(Path.Combine(e.FullPath, "project.json"))) return;
+                    if (!ProjectSlug.TryParse(Path.GetFileName(e.FullPath), out var projectSlug)) return;
+                    logger.LogInformation("[dispatcher] New project detected: {Project}", projectSlug);
+                    WatchProject(projectSlug);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "[dispatcher] Failed to set up watchers for new project at {Path}", e.FullPath);
+                }
             });
         };
         _watchers.Add(w);

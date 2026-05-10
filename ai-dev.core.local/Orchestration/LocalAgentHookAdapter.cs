@@ -7,7 +7,7 @@ namespace AiDev.Core.Local.Orchestration;
 internal sealed class LocalAgentHookAdapter(ILocalOrchestrator orchestrator) : ILocalAgentHook
 {
     private static readonly HashSet<string> LocalExecutors =
-        new(StringComparer.OrdinalIgnoreCase) { "ollama", "lmstudio" };
+        new(StringComparer.OrdinalIgnoreCase) { "ollama" };
 
     public bool IsApplicable(string executorName) => LocalExecutors.Contains(executorName);
 

@@ -1,4 +1,5 @@
 using AiDev.Executors;
+using AiDev.Features.Decision;
 using AiDev.Features.Secrets;
 
 namespace AiDev.Features.Agent;
@@ -10,13 +11,15 @@ namespace AiDev.Features.Agent;
 /// </summary>
 public class AgentRunnerService(
     WorkspacePaths paths,
-    StudioSettingsService settings,
+    ModelResolver modelResolver,
+    AgentStatusWriter statusWriter,
     IEnumerable<IAgentExecutor> executors,
     IModelRegistry modelRegistry,
     AgentService agentService,
     AgentPromptBuilder promptBuilder,
     SessionCompletionProcessor completionProcessor,
     SecretsService secretsService,
+    DecisionsService decisionsService,
     ILogger<AgentRunnerService> logger,
     ProjectStateChangedNotifier projectStateChangedNotifier,
     FeatureFlagsService featureFlagsService,
@@ -29,7 +32,8 @@ public class AgentRunnerService(
     private const string AgentPrompt =
         "Read your inbox and action any messages. Follow your CLAUDE.md session protocol.";
     private const string ProjectScopedMcpPrompt =
-        "Your assigned project slug is '{0}' and your agent slug is '{1}'. " +
+        "Your assigned project slug is '{0}', your agent slug is '{1}', and the current UTC time is {2}. " +
+        "Use {2} as sessionStartedAt when calling UpdateAgentStatus. " +
         "For every MCP workspace tool call, pass projectSlug='{0}'. " +
         "Wherever your CLAUDE.md instructions say '{{your-slug}}', substitute '{1}'.";
 
@@ -93,7 +97,7 @@ public class AgentRunnerService(
                         "[runner] Recovering stale running state for {Project}/{Agent} — resetting to idle",
                         project.Value, slug.Value);
 
-                    await UpdateAgentStatusAsync(agentDir, new()
+                    await statusWriter.UpdateAsync(agentDir, new()
                     {
                         ["status"] = "idle",
                         ["pid"] = null,
@@ -158,7 +162,7 @@ public class AgentRunnerService(
 
                 // Best-effort status update so the UI shows the error.
                 var agentDir = paths.AgentDir(info.ProjectSlug, info.AgentSlug);
-                _ = UpdateAgentStatusAsync(agentDir, new()
+                _ = statusWriter.UpdateAsync(agentDir, new()
                 {
                     ["status"] = "error",
                     ["lastError"] = $"Agent session faulted: {ex?.Message ?? "unknown error"}",
@@ -192,7 +196,7 @@ public class AgentRunnerService(
             _sessions.TryRemove(key, out _);
 
             var agentDir = paths.AgentDir(projectSlug, agentSlug);
-            _ = UpdateAgentStatusAsync(agentDir, new()
+            _ = statusWriter.UpdateAsync(agentDir, new()
             {
                 ["status"] = "idle",
                 ["pid"] = (object?)null,
@@ -203,41 +207,6 @@ public class AgentRunnerService(
         }
 
         return true;
-    }
-
-    /// <summary>
-    /// Returns the token usage from the most recent session for this agent, or null if none exists.
-    /// </summary>
-    public TokenUsage? GetLastSessionUsage(ProjectSlug projectSlug, AgentSlug agentSlug)
-    {
-        var transcriptDir = paths.AgentTranscriptsDir(projectSlug, agentSlug);
-        if (!Directory.Exists(transcriptDir)) return null;
-
-        var usageFile = Directory.GetFiles(transcriptDir, "*.usage.json")
-            .OrderByDescending(f => f)
-            .FirstOrDefault();
-
-        if (usageFile == null) return null;
-
-        try
-        {
-            var json = File.ReadAllText(usageFile);
-            return System.Text.Json.JsonSerializer.Deserialize<TokenUsage>(json, JsonDefaults.Read);
-        }
-        catch { return null; }
-    }
-
-    public TokenUsage? GetSessionUsage(ProjectSlug projectSlug, AgentSlug agentSlug, TranscriptDate date)
-    {
-        var transcriptDir = paths.AgentTranscriptsDir(projectSlug, agentSlug);
-        var usagePath = Path.Combine(transcriptDir, $"{date.Value}.usage.json");
-        if (!File.Exists(usagePath)) return null;
-        try
-        {
-            var json = File.ReadAllText(usagePath);
-            return System.Text.Json.JsonSerializer.Deserialize<TokenUsage>(json, JsonDefaults.Read);
-        }
-        catch { return null; }
     }
 
     private async Task RunSessionAsync(string key, SessionInfo info, DateTime startedAt, string? parentActivityId = null)
@@ -254,12 +223,10 @@ public class AgentRunnerService(
         var agentDir = paths.AgentDir(projectSlug, agentSlug);
         var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
 
+        // Declared here so the finally block (completionProcessor.ProcessAsync) can reference it
+        // even if we abort before the snapshot is taken. The actual read happens immediately before
+        // promptBuilder.Build() to minimise the window in which a newly-arrived message is missed.
         var inboxSnapshot = Array.Empty<string>();
-        if (Directory.Exists(inboxDir))
-        {
-            try { inboxSnapshot = Directory.GetFiles(inboxDir, "*.md").Select(Path.GetFileName).OfType<string>().OrderBy(f => f).ToArray(); }
-            catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to read inbox directory {InboxDir}", inboxDir); }
-        }
 
         // Load agent config — fail fast on missing or malformed agent.json rather than
         // silently defaulting to a different executor/model.
@@ -267,7 +234,7 @@ public class AgentRunnerService(
         if (loadedInfo == null)
         {
             logger.LogError("[runner] Agent {Key} has missing or malformed agent.json; aborting launch", key);
-            await UpdateAgentStatusAsync(agentDir, new()
+            await statusWriter.UpdateAsync(agentDir, new()
             {
                 ["lastError"] = "Missing or malformed agent.json; cannot determine executor and model.",
                 ["lastErrorAt"] = startedAt.ToString("o"),
@@ -278,7 +245,7 @@ public class AgentRunnerService(
             return;
         }
 
-        var modelId = ResolveModelId(loadedInfo.Model ?? string.Empty, loadedInfo.Executor);
+        var modelId = modelResolver.Resolve(loadedInfo.Model ?? string.Empty, loadedInfo.Executor);
         var executorName = loadedInfo.Executor;
         var agentSkills = (IReadOnlyList<string>)loadedInfo.Skills;
         var agentThinking = loadedInfo.ThinkingLevel;
@@ -289,7 +256,7 @@ public class AgentRunnerService(
             var available = string.Join(", ", _executors.Keys);
             logger.LogError("[runner] Agent {Key} requested executor '{Executor}' which is not registered. Available: {Available}",
                 key, executorName.Value, available);
-            await UpdateAgentStatusAsync(agentDir, new()
+            await statusWriter.UpdateAsync(agentDir, new()
             {
                 ["lastError"] = $"Executor '{executorName.Value}' is not registered. Available: {available}",
                 ["lastErrorAt"] = startedAt.ToString("o"),
@@ -310,7 +277,7 @@ public class AgentRunnerService(
                 key, modelId, executorName.Value);
         }
 
-        await UpdateAgentStatusAsync(agentDir, new()
+        await statusWriter.UpdateAsync(agentDir, new()
         {
             ["status"] = "running",
             ["lastRunAt"] = startedAt.ToString("o"),
@@ -339,16 +306,26 @@ public class AgentRunnerService(
             }
         });
 
+        // Snapshot the inbox immediately before building the prompt so any message that
+        // arrived during setup is included. Messages that arrive after this point will
+        // trigger a relaunch via completionProcessor.
+        if (Directory.Exists(inboxDir))
+        {
+            try { inboxSnapshot = Directory.GetFiles(inboxDir, "*.md").Select(Path.GetFileName).OfType<string>().OrderBy(f => f).ToArray(); }
+            catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to read inbox directory {InboxDir}", inboxDir); }
+        }
+
         // Build prompt: inject KB context and playbook before the standard instruction.
         var effectivePrompt = promptBuilder.Build(
             projectSlug, agentSlug,
-            string.Format(ProjectScopedMcpPrompt, projectSlug.Value, agentSlug.Value),
+            string.Format(ProjectScopedMcpPrompt, projectSlug.Value, agentSlug.Value, startedAt.ToString("o")),
             AgentPrompt,
             inboxDir, inboxSnapshot);
 
         var exitCode = 0;
         var isRateLimited = false;
         var preserveInbox = false;
+        var requiresHumanDecision = false;
         string? sessionError = null;
         TokenUsage? sessionUsage = null;
 
@@ -366,7 +343,7 @@ public class AgentRunnerService(
             ReportPid: pid =>
             {
                 info.Pid = pid;
-                _ = UpdateAgentStatusAsync(agentDir, new() { ["pid"] = pid })
+                _ = statusWriter.UpdateAsync(agentDir, new() { ["pid"] = pid })
                     .ContinueWith(t => logger.LogWarning(t.Exception, "[runner] Failed to write PID for {Key}", key),
                         CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
                 logger.LogInformation("[runner] Launched {Key} PID={Pid}", key, pid);
@@ -379,7 +356,7 @@ public class AgentRunnerService(
             ReportWarning: warning =>
             {
                 logger.LogWarning("[runner] {Key}: {Warning}", key, warning);
-                _ = UpdateAgentStatusAsync(agentDir, new() { ["lastWarning"] = warning });
+                _ = statusWriter.UpdateAsync(agentDir, new() { ["lastWarning"] = warning });
             });
 
         try
@@ -409,6 +386,7 @@ public class AgentRunnerService(
                 preserveInbox = result.PreserveInbox;
                 sessionError = result.ErrorMessage;
                 sessionUsage = result.Usage;
+                requiresHumanDecision = result.RequiresHumanDecision;
             }
 
             activity?.SetTag("agent.exitCode", exitCode);
@@ -475,7 +453,7 @@ public class AgentRunnerService(
 
             // Write final status to agent.json — wrapped so a disk error can't abort
             // inbox archival or the relaunch check below.
-            await UpdateAgentStatusAsync(agentDir, new()
+            await statusWriter.UpdateAsync(agentDir, new()
             {
                 ["status"] = exitCode is 0 or 130 ? "idle" : "error",
                 ["pid"] = null,
@@ -484,6 +462,20 @@ public class AgentRunnerService(
                 ["lastErrorAt"] = exitCode == 0 || exitCode == 130 || string.IsNullOrWhiteSpace(sessionError) ? null : exitedAt.ToString("o"),
             });
             projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
+
+            if (requiresHumanDecision && !string.IsNullOrWhiteSpace(sessionError))
+            {
+                var agent = agentService.LoadAgent(projectSlug, agentSlug);
+                var agentLabel = agent?.Name ?? agentSlug.Value;
+                var model = agent?.Model ?? "unknown model";
+                decisionsService.CreateDecision(
+                    projectSlug,
+                    from: agentSlug.Value,
+                    subject: $"Model too small for {agentLabel}",
+                    priority: "high",
+                    blocks: agentSlug.Value,
+                    body: $"Agent **{agentLabel}** could not run because `{model}` has a context window that is too small.\n\n{sessionError}\n\n**Action required:** In LM Studio, reload `{model}` with a larger context (≥ 8192 tokens), or select a different model for this agent in its settings.");
+            }
 
             _sessions.TryRemove(key, out _);
 
@@ -529,103 +521,4 @@ public class AgentRunnerService(
         if (!string.IsNullOrWhiteSpace(trigger.MessageFile))
             activity.SetTag("message.file", trigger.MessageFile);
     }
-
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
-
-    private string ResolveModelId(string modelOrAlias, AgentExecutorName executor)
-    {
-        if (string.IsNullOrWhiteSpace(modelOrAlias))
-            return modelOrAlias;
-
-        var configuredModels = settings.GetSettings().Models;
-        if (configuredModels.TryGetValue(modelOrAlias, out var configuredModelId)
-            && !string.IsNullOrWhiteSpace(configuredModelId))
-            return configuredModelId;
-
-        return LegacyModelAliases.Resolve(modelOrAlias, executor.Value) ?? modelOrAlias;
-    }
-
-    private async Task UpdateAgentStatusAsync(string agentDir, Dictionary<string, object?> updates)
-    {
-        var path = Path.Combine(agentDir, "agent.json");
-        try
-        {
-            // If the file is corrupt, skip the update entirely — better to leave it unchanged
-            // than to overwrite it with only status fields, which would destroy slug/model/executor config.
-            Dictionary<string, JsonElement> existing = [];
-            if (File.Exists(path))
-            {
-                existing = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
-                    await File.ReadAllTextAsync(path), JsonDefaults.Read) ?? [];
-            }
-
-            var merged = existing.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
-            foreach (var (k, v) in updates)
-            {
-                if (v == null) merged.Remove(k);
-                // Serialize each value to JsonElement to guarantee proper JSON escaping
-                // (avoids issues with special characters in strings going through object? boxing).
-                else merged[k] = System.Text.Json.JsonSerializer.SerializeToElement(v);
-            }
-
-            await File.WriteAllTextAsync(path, System.Text.Json.JsonSerializer.Serialize(merged, JsonDefaults.Write));
-        }
-        catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to update agent status in {AgentDir}", agentDir); }
-    }
-
-    /// <summary>
-    /// Writes a human-readable message to an agent's inbox.
-    /// </summary>
-    public Result<Unit> WriteInboxMessage(ProjectSlug projectSlug, AgentSlug agentSlug,
-        string from, string re, string type, string priority, string body, TaskId? taskId = null, string? decisionId = null)
-    {
-        using var activity = ActivitySource.StartActivity("Agent.WriteInboxMessage", ActivityKind.Internal);
-        activity?.SetTag("agent.project", projectSlug);
-        activity?.SetTag("agent.slug", agentSlug);
-        activity?.SetTag("message.from", from);
-        activity?.SetTag("message.type", type);
-        activity?.SetTag("message.priority", priority);
-
-        var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
-        activity?.SetTag("message.inboxDir", inboxDir);
-
-        try
-        {
-            Directory.CreateDirectory(inboxDir);
-            var now = DateTime.UtcNow;
-            var unique = $"{now:yyyyMMdd-HHmmss}-{now.Millisecond:D3}-{Guid.NewGuid().ToString("N")[..6]}-from-{from}.md";
-            var filePath = Path.Combine(inboxDir, unique);
-            var fields = new Dictionary<string, string>
-            {
-                ["from"] = from,
-                ["to"] = agentSlug,
-                ["date"] = now.ToString("o"),
-                ["priority"] = priority,
-                ["re"] = re,
-                ["type"] = type,
-            };
-            if (taskId != null) fields["task-id"] = taskId.ToString();
-            if (decisionId != null) fields["decision-id"] = decisionId;
-            var content = FrontmatterParser.Stringify(fields, body);
-            File.WriteAllText(filePath, content);
-            projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Messages | ProjectStateChangeKind.Agents);
-            activity?.SetTag("message.filename", unique);
-            activity?.SetTag("message.success", true);
-            logger.LogInformation("[runner] Inbox message written: {Project}/{Agent} ← {From} ({Type}) [{File}]",
-                projectSlug, agentSlug, from, type, unique);
-            return new Ok<Unit>(Unit.Value);
-        }
-        catch (Exception ex)
-        {
-            activity?.SetTag("message.success", false);
-            activity?.SetTag("message.error", ex.Message);
-            logger.LogError(ex, "[runner] Failed to write inbox message to {Project}/{Agent} from {From}: {Error}",
-                projectSlug, agentSlug, from, ex.Message);
-            return new Err<Unit>(new DomainError("INBOX_WRITE_FAILED", ex.Message));
-        }
-    }
 }
-
-

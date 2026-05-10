@@ -28,4 +28,10 @@ public class StudioSettings
     /// When omitted, InsightsService picks the first known model for the configured executor.
     /// </summary>
     public string? InsightsModel { get; set; }
+
+    /// <summary>
+    /// Context window size threshold (in tokens) below which local executors load CLAUDE.compact.md
+    /// instead of the full CLAUDE.md. Defaults to 16384 (16k tokens).
+    /// </summary>
+    public int CompactPromptThreshold { get; set; } = 16_384;
 }

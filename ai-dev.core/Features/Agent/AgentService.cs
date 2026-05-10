@@ -271,6 +271,8 @@ public class AgentService(
                 paths.AgentJournalDir(projectSlug, slug).Create();
                 fileWriter.WriteAllText(paths.AgentJsonPath(projectSlug, slug), JsonSerializer.Serialize(agentJsonDict, JsonDefaults.Write));
                 fileWriter.WriteAllText(paths.AgentClaudeMdPath(projectSlug, slug), claudeContent ?? $"# {name}\n\nYou are {name}.\n");
+                if (!string.IsNullOrEmpty(tmpl.CompactContent))
+                    fileWriter.WriteAllText(Path.Combine(agentDir.Value, "CLAUDE.compact.md"), tmpl.CompactContent);
 
                 return new Ok<Unit>(Unit.Value);
             }

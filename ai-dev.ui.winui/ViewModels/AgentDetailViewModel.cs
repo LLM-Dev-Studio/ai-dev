@@ -13,7 +13,8 @@ namespace AiDev.WinUI.ViewModels;
 public partial class AgentDetailViewModel : ObservableObject, IDisposable
 {
     private readonly AgentService _agentService;
-    private readonly AgentRunnerService _agentRunnerService;
+    private readonly IAgentRunnerService _agentRunnerService;
+    private readonly AgentTranscriptService _transcriptService;
     private readonly MessagesService _messagesService;
     private readonly ExecutorHealthMonitor _healthMonitor;
     private readonly IModelRegistry _modelRegistry;
@@ -56,7 +57,8 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
 
     public AgentDetailViewModel(
         AgentService agentService,
-        AgentRunnerService agentRunnerService,
+        IAgentRunnerService agentRunnerService,
+        AgentTranscriptService transcriptService,
         MessagesService messagesService,
         ExecutorHealthMonitor healthMonitor,
         IModelRegistry modelRegistry,
@@ -64,6 +66,7 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
     {
         _agentService = agentService;
         _agentRunnerService = agentRunnerService;
+        _transcriptService = transcriptService;
         _messagesService = messagesService;
         _healthMonitor = healthMonitor;
         _modelRegistry = modelRegistry;
@@ -88,7 +91,7 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
             EditExecutor = Agent.Executor.Value;
             EditThinkingLevel = Agent.ThinkingLevel;
             ClaudeContent = _agentService.GetClaudeMd(CurrentSlug, agentSlug);
-            LastSessionUsage = _agentRunnerService.GetLastSessionUsage(CurrentSlug, agentSlug);
+            LastSessionUsage = _transcriptService.GetLastSessionUsage(CurrentSlug, agentSlug);
             IsRunning = _agentRunnerService.IsRunning(CurrentSlug, agentSlug);
 
             PopulateExecutorList();

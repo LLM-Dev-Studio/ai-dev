@@ -2,6 +2,8 @@ namespace AiDev.Features.Agent;
 
 public class AgentTemplatesService(WorkspacePaths paths)
 {
+    private readonly TemplateComposer _composer = new();
+
     public List<AgentTemplate> ListTemplates()
     {
         var dir = paths.AgentTemplatesDir;
@@ -14,6 +16,17 @@ public class AgentTemplatesService(WorkspacePaths paths)
             .ToList();
     }
 
+    private IReadOnlyDictionary<string, string> LoadPartials()
+    {
+        var sharedDir = Path.Combine(paths.AgentTemplatesDir.Value, "shared");
+        if (!Directory.Exists(sharedDir)) return new Dictionary<string, string>();
+
+        return Directory.GetFiles(sharedDir, "*.md")
+            .ToDictionary(
+                f => $"shared/{Path.GetFileNameWithoutExtension(f)}",
+                f => File.ReadAllText(f));
+    }
+
     private AgentTemplate? LoadTemplateFile(string jsonPath)
     {
         try
@@ -22,9 +35,17 @@ public class AgentTemplatesService(WorkspacePaths paths)
             var t = JsonSerializer.Deserialize<AgentTemplate>(json, JsonDefaults.Write);
             if (t is null) return null;
 
+            var partials = LoadPartials();
+
             var mdPath = Path.ChangeExtension(jsonPath, ".md");
             if (File.Exists(mdPath))
-                t.Content = File.ReadAllText(mdPath);
+                t.Content = _composer.Compose(File.ReadAllText(mdPath), partials);
+
+            var compactPath = Path.Combine(
+                Path.GetDirectoryName(jsonPath)!,
+                $"{Path.GetFileNameWithoutExtension(jsonPath)}.compact.md");
+            if (File.Exists(compactPath))
+                t.CompactContent = _composer.Compose(File.ReadAllText(compactPath), partials);
 
             return t;
         }

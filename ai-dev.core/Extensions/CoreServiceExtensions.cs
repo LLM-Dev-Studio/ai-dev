@@ -49,6 +49,10 @@ public static class CoreServiceExtensions
         services.AddSingleton<PromptEnhancerService>();
         services.AddSingleton<InsightsService>();
         services.AddSingleton<AgentPromptBuilder>();
+        services.AddSingleton<AgentInboxService>();
+        services.AddSingleton<AgentTranscriptService>();
+        services.AddSingleton<ModelResolver>();
+        services.AddSingleton<AgentStatusWriter>();
         services.AddSingleton<IPlanningSessionService, PlanningSessionService>();
         services.AddSingleton<IPlanningChatService, PlanningChatService>();
         services.AddSingleton<SessionCompletionProcessor>();
