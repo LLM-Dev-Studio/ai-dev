@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
+using AiDev.Models.Types;
 using AiDev.Services;
 using Microsoft.Extensions.Logging;
 
@@ -29,7 +30,7 @@ public class OllamaAgentExecutor(
     StudioSettingsService settingsService,
     ILogger<OllamaAgentExecutor> logger) : IAgentExecutor
 {
-    public string Name        => "ollama";
+    public AgentExecutorName Name => AgentExecutorName.Ollama;
     public string DisplayName => "Ollama";
 
     public IReadOnlyList<ExecutorSkill> AvailableSkills { get; } =
@@ -101,7 +102,7 @@ public class OllamaAgentExecutor(
                     _contextWindows[name] = ctxLen;
 
                 discovered.Add(new ModelDescriptor(
-                    name, name, "ollama",
+                    name, name, AgentExecutorName.Ollama,
                     ModelCapabilities.Streaming | ModelCapabilities.ToolCalling,
                     ContextWindow: ctxLen));
             }
@@ -270,11 +271,11 @@ public class OllamaAgentExecutor(
                 modelId:         context.ModelId,
                 executorName:    DisplayName);
 
-            if (!preflight.Fits)
+            if (preflight is PreflightResult.Exceeded exceeded)
             {
                 var msg = iteration == 1
-                    ? preflight.Error!
-                    : preflight.Error + $" (after {iteration - 1} tool iteration(s))";
+                    ? exceeded.Error
+                    : exceeded.Error + $" (after {iteration - 1} tool iteration(s))";
                 logger.LogError("[ollama] {Message}", msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, Usage: totalUsage, ErrorMessage: msg);

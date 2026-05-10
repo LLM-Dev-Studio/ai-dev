@@ -15,7 +15,7 @@ internal sealed class TaskAssignedHandler(
             from: "board",
             re: domainEvent.Title,
             type: "task-assigned",
-            priority: domainEvent.Priority.Value,
+            priority: domainEvent.Priority,
             body: $"You have been assigned a new task: {domainEvent.Title}{(string.IsNullOrWhiteSpace(domainEvent.Description) ? string.Empty : $"\n\n{domainEvent.Description}")}",
             taskId: domainEvent.TaskId);
 
@@ -42,8 +42,8 @@ internal sealed class TaskAssignedHandler(
             new AgentLaunchTrigger(
                 Source: "task-assigned",
                 Reason: "task assigned via board",
-                ProjectSlug: domainEvent.ProjectSlug.Value,
-                TaskId: domainEvent.TaskId.ToString()));
+                ProjectSlug: domainEvent.ProjectSlug,
+                TaskId: domainEvent.TaskId));
 
         return Task.CompletedTask;
     }

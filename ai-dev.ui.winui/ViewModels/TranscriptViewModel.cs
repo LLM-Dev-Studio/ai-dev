@@ -87,7 +87,7 @@ public partial class TranscriptViewModel : ObservableObject
         }
         else
         {
-            var model = _modelRegistry.Find(Agent.Executor.Value, Agent.Model);
+            var model = _modelRegistry.Find(Agent.Executor, Agent.Model);
             var cost = usage.EstimatedCost(model);
             var parts = new System.Text.StringBuilder();
             parts.Append($"in: {usage.InputTokens:N0}  out: {usage.OutputTokens:N0}");

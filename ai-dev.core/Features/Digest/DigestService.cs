@@ -23,7 +23,6 @@ public class DigestService(WorkspacePaths paths, AgentService agentService)
 
                 var agentInfo = agentService.LoadAgent(projectSlug, agentSlug);
                 var name = agentInfo?.Name ?? agentSlug.Value;
-                var executor = agentInfo?.Executor.Value ?? string.Empty;
                 var model = agentInfo?.Model ?? string.Empty;
 
                 var sent = CountFilesForDate(paths.AgentOutboxDir(projectSlug, agentSlug), date);
@@ -32,9 +31,9 @@ public class DigestService(WorkspacePaths paths, AgentService agentService)
 
                 agentActivity.Add(new()
                 {
-                    AgentSlug = agentSlug.Value,
+                    AgentSlug = agentSlug,
                     AgentName = name,
-                    Executor = executor,
+                    Executor = agentInfo?.Executor,
                     Model = model,
                     MessagesSent = sent,
                     MessagesReceived = received,

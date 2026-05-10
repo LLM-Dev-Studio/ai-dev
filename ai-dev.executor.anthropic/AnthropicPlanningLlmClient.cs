@@ -23,7 +23,7 @@ public sealed class AnthropicPlanningLlmClient(
     private const string AnthropicApiUrl = "https://api.anthropic.com/v1/messages";
     private const int MaxTokens = 8192;
 
-    public string ExecutorName => AgentExecutorName.AnthropicValue;
+    public AgentExecutorName ExecutorName => AgentExecutorName.Anthropic;
 
     public async Task<PlanningLlmResponse> ChatAsync(
         string modelId,

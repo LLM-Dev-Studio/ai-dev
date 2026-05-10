@@ -216,7 +216,7 @@ public class OverwatchService(
         // If the agent's executor is unhealthy, warn the human rather than nudging —
         // the agent would fail immediately on launch anyway.
         var agentInfo = agentService.LoadAgent(projectSlug, assigneeSlug);
-        var executorName = agentInfo?.Executor ?? IAgentExecutor.Default;
+        var executorName = agentInfo?.Executor ?? AgentExecutorName.Default;
         var health = executorHealth.GetHealth(executorName);
         if (!health.IsHealthy)
         {
@@ -241,7 +241,7 @@ public class OverwatchService(
             from: "overwatch",
             re: $"Stalled task: {task.Title}",
             type: "overwatch-nudge",
-            priority: task.Priority.IsUrgent ? task.Priority.Value : Priority.High.Value,
+            priority: task.Priority.IsUrgent ? task.Priority : Priority.High,
             body: body,
             taskId: task.Id);
 
@@ -273,7 +273,7 @@ public class OverwatchService(
             projectSlug,
             from: "overwatch",
             subject: $"Unassigned stalled task: {task.Title}",
-            priority: task.Priority.IsUrgent ? task.Priority.Value : Priority.High.Value,
+            priority: task.Priority.IsUrgent ? task.Priority : Priority.High,
             blocks: task.Id,
             body: body);
 
@@ -291,7 +291,7 @@ public class OverwatchService(
     }
 
     private string RaiseExecutorOfflineDecision(ProjectSlug projectSlug, BoardTask task,
-        AgentSlug agentSlug, string executorName, string healthMessage)
+        AgentSlug agentSlug, AgentExecutorName executorName, string healthMessage)
     {
         var body = $"""
             Agent **{agentSlug}** uses the **{executorName}** executor, which is currently unavailable.
@@ -310,7 +310,7 @@ public class OverwatchService(
             projectSlug,
             from: "overwatch",
             subject: $"Executor offline — {agentSlug} ({executorName}) cannot process \"{task.Title}\"",
-            priority: task.Priority.IsUrgent ? task.Priority.Value : Priority.High.Value,
+            priority: task.Priority.IsUrgent ? task.Priority : Priority.High,
             blocks: task.Id,
             body: body);
 

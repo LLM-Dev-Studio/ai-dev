@@ -175,7 +175,7 @@ public partial class ProjectSettingsViewModel : ObservableObject
         BulkTargetModelOverride = modelOverride ?? "";
         try
         {
-            var executorModels = _modelRegistry.GetModelsForExecutor(targetExecutor.Value);
+            var executorModels = _modelRegistry.GetModelsForExecutor(targetExecutor);
             ModelDescriptor? overrideModel = null;
 
             if (!string.IsNullOrWhiteSpace(modelOverride))
@@ -243,7 +243,7 @@ public partial class ProjectSettingsViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(executorValue)) return [];
 
         return [..
-            _modelRegistry.GetModelsForExecutor(executorValue)
+            (AgentExecutorName.TryParse(executorValue, out var parsedEx) ? _modelRegistry.GetModelsForExecutor(parsedEx) : [])
                 .Select(model => model.Id)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(model => model, StringComparer.OrdinalIgnoreCase)];
@@ -262,8 +262,7 @@ public partial class ProjectSettingsViewModel : ObservableObject
 
         foreach (var entry in _executorHealthMonitor.GetExecutorHealth().Where(e => e.Health.IsHealthy))
         {
-            if (AgentExecutorName.TryParse(entry.Executor.Name, out var executorName))
-                AvailableExecutors.Add(executorName.Value);
+            AvailableExecutors.Add(entry.Executor.Name.Value);
         }
 
         if (AvailableExecutors.Count == 0)

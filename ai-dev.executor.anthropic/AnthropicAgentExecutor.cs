@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
+using AiDev.Models.Types;
 using AiDev.Services;
 
 using Microsoft.Extensions.Logging;
@@ -29,18 +30,18 @@ public sealed class AnthropicAgentExecutor(
     StudioSettingsService settingsService,
     ILogger<AnthropicAgentExecutor> logger) : IAgentExecutor
 {
-    public string Name        => "anthropic";
+    public AgentExecutorName Name => AgentExecutorName.Anthropic;
     public string DisplayName => "Anthropic (API)";
 
     public IReadOnlyList<ExecutorSkill> AvailableSkills { get; } = AnthropicSkills.All;
 
     public IReadOnlyList<ModelDescriptor> KnownModels { get; } =
     [
-        new("claude-sonnet-4-5",              "Claude Sonnet 4.5",              "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
-        new("claude-sonnet-4-6",              "Claude Sonnet 4.6",              "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
-        new("claude-opus-4-5",               "Claude Opus 4.5",               "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
-        new("claude-opus-4-6",               "Claude Opus 4.6",               "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
-        new("claude-haiku-4-5-20251001",     "Claude Haiku 4.5",              "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 0.80m,  OutputCostPer1MTokens:  4.00m),
+        new("claude-sonnet-4-5",              "Claude Sonnet 4.5",              AgentExecutorName.Anthropic, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
+        new("claude-sonnet-4-6",              "Claude Sonnet 4.6",              AgentExecutorName.Anthropic, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
+        new("claude-opus-4-5",               "Claude Opus 4.5",               AgentExecutorName.Anthropic, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
+        new("claude-opus-4-6",               "Claude Opus 4.6",               AgentExecutorName.Anthropic, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
+        new("claude-haiku-4-5-20251001",     "Claude Haiku 4.5",              AgentExecutorName.Anthropic, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 0.80m,  OutputCostPer1MTokens:  4.00m),
     ];
 
     private const int MaxToolIterations = 30;
@@ -80,7 +81,7 @@ public sealed class AnthropicAgentExecutor(
                     .EnumerateArray()
                     .Select(m => m.GetProperty("id").GetString() ?? string.Empty)
                     .Where(id => id.Length > 0)
-                    .Select(id => new ModelDescriptor(id, id, "anthropic"))
+                    .Select(id => new ModelDescriptor(id, id, AgentExecutorName.Anthropic))
                     .ToList() ?? [];
             }
             catch { /* model list is best-effort */ }
@@ -398,9 +399,9 @@ public sealed class AnthropicAgentExecutor(
 
     private static string BuildRequest(
         string modelId, string systemPrompt, List<JsonNode> messages, bool includeTools,
-        ThinkingLevel thinkingLevel = ThinkingLevel.Off)
+        ThinkingLevel thinkingLevel = default)
     {
-        var budget = thinkingLevel.BudgetTokens();
+        var budget = thinkingLevel.BudgetTokens;
         var maxTokens = budget > 0 ? DefaultMaxTokens + budget : DefaultMaxTokens;
 
         var obj = new JsonObject

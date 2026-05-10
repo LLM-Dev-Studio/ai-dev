@@ -12,6 +12,6 @@ public class ModelResolver(StudioSettingsService settings)
             && !string.IsNullOrWhiteSpace(configuredModelId))
             return configuredModelId;
 
-        return LegacyModelAliases.Resolve(modelOrAlias, executor.Value) ?? modelOrAlias;
+        return LegacyModelAliases.Resolve(modelOrAlias, executor) ?? modelOrAlias;
     }
 }

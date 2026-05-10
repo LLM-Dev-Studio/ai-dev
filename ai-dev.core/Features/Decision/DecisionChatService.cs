@@ -18,7 +18,7 @@ public class DecisionChatService(
     // Read
     // -------------------------------------------------------------------------
 
-    public IReadOnlyList<DecisionChatMessage> GetMessages(ProjectSlug projectSlug, string decisionId)
+    public IReadOnlyList<DecisionChatMessage> GetMessages(ProjectSlug projectSlug, DecisionId decisionId)
     {
         var chatPath = ChatPath(projectSlug, decisionId);
         if (!File.Exists(chatPath)) return [];
@@ -47,7 +47,7 @@ public class DecisionChatService(
     /// <summary>
     /// Sends a human message: appends to JSONL, writes to agent's inbox, auto-launches agent.
     /// </summary>
-    public string? SendHumanMessage(ProjectSlug projectSlug, string decisionId, string agentSlug, string content)
+    public string? SendHumanMessage(ProjectSlug projectSlug, DecisionId decisionId, AgentSlug agentSlug, string content)
     {
         if (string.IsNullOrWhiteSpace(content)) return "Message cannot be empty.";
 
@@ -67,11 +67,11 @@ public class DecisionChatService(
                    $"Please respond via write_outbox with type: decision-reply and decision-id: {decisionId}.";
 
         var inboxResult = inbox.WriteInboxMessage(
-            projectSlug, new(agentSlug),
+            projectSlug, agentSlug,
             from: "human",
             re: $"Re: decision {decisionId}",
             type: "decision-chat",
-            priority: "high",
+            priority: Priority.High,
             body: body,
             decisionId: decisionId);
 
@@ -82,7 +82,7 @@ public class DecisionChatService(
         }
 
         // Auto-launch the agent so it processes the message.
-        runner.LaunchAgent(projectSlug, new(agentSlug));
+        runner.LaunchAgent(projectSlug, agentSlug);
 
         return null;
     }
@@ -95,9 +95,9 @@ public class DecisionChatService(
     /// Scans the agent's outbox for decision-reply messages matching this decision,
     /// appends them to the JSONL, archives the outbox files, and fires the notifier.
     /// </summary>
-    public bool FlushAgentReplies(ProjectSlug projectSlug, string decisionId, string agentSlug)
+    public bool FlushAgentReplies(ProjectSlug projectSlug, DecisionId decisionId, AgentSlug agentSlug)
     {
-        var outboxDir = paths.AgentOutboxDir(projectSlug, new(agentSlug));
+        var outboxDir = paths.AgentOutboxDir(projectSlug, agentSlug);
         if (!Directory.Exists(outboxDir)) return false;
 
         // Use a per-decision claiming folder so concurrent pollers can't double-process files.
@@ -116,7 +116,7 @@ public class DecisionChatService(
                 var (fields, body) = FrontmatterParser.Parse(text);
 
                 if (!fields.TryGetValue("type", out var type) || type != "decision-reply") continue;
-                if (!fields.TryGetValue("decision-id", out var msgDecisionId) || msgDecisionId != decisionId) continue;
+                if (!fields.TryGetValue("decision-id", out var msgDecisionId) || msgDecisionId != decisionId.Value) continue;
 
                 // Atomically claim the file by moving it to the claiming folder.
                 // If another poller already claimed it, File.Move throws and we skip.
@@ -124,7 +124,7 @@ public class DecisionChatService(
                 try { File.Move(file, claimedPath); }
                 catch { continue; } // another poller claimed it first
 
-                var from = fields.TryGetValue("from", out var f) ? f : agentSlug;
+                var from = fields.TryGetValue("from", out var f) ? f : agentSlug.Value;
                 var timestamp = fields.TryGetValue("date", out var d)
                     && DateTime.TryParse(d, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : DateTime.UtcNow;
 
@@ -171,7 +171,7 @@ public class DecisionChatService(
     // Helpers
     // -------------------------------------------------------------------------
 
-    private string? AppendMessage(ProjectSlug projectSlug, string decisionId, DecisionChatMessage msg)
+    private string? AppendMessage(ProjectSlug projectSlug, DecisionId decisionId, DecisionChatMessage msg)
     {
         try
         {
@@ -188,10 +188,10 @@ public class DecisionChatService(
         }
     }
 
-    private string ChatPath(ProjectSlug projectSlug, string decisionId) =>
+    private string ChatPath(ProjectSlug projectSlug, DecisionId decisionId) =>
         Path.Combine(paths.DecisionChatsDir(projectSlug), $"{decisionId}.jsonl");
 
-    private IReadOnlyList<DecisionChatMessage> ParseMessages(string json, string decisionId)
+    private IReadOnlyList<DecisionChatMessage> ParseMessages(string json, DecisionId decisionId)
     {
         if (string.IsNullOrWhiteSpace(json))
             return [];

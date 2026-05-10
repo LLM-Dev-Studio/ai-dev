@@ -21,6 +21,20 @@ public readonly record struct AgentStatus
     public bool IsRunning => this == Running;
     public bool IsError => this == Error;
 
+    public string DisplayName => Value switch
+    {
+        "running" => "Running",
+        "error"   => "Error",
+        _         => "Idle",
+    };
+
+    public string ColorHex => Value switch
+    {
+        "running" => "#22C55E",
+        "error"   => "#EF4444",
+        _         => "#6B7280",
+    };
+
     public (string DotClass, string TextClass) BadgeClasses => Value switch
     {
         "running" => ("bg-emerald-400 animate-pulse", "text-emerald-400"),

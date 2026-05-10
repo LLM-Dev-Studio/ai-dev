@@ -7,13 +7,10 @@ namespace AiDev.Executors;
 /// </summary>
 public interface IAgentExecutor
 {
-    /// <summary>The executor used when no executor is specified in agent.json.</summary>
-    public const string Default = AgentExecutorName.ClaudeValue;
-
     /// <summary>
     /// Unique identifier for this executor, matched against the "executor" field in agent.json.
     /// </summary>
-    string Name { get; }
+    AgentExecutorName Name { get; }
 
     /// <summary>Display name shown in the UI (e.g. "Claude CLI", "Ollama").</summary>
     string DisplayName { get; }

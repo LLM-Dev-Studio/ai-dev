@@ -39,9 +39,8 @@ public class TokenBudgetTests
             modelId:         "test-model",
             executorName:    "Test");
 
-        result.Fits.ShouldBeTrue();
-        result.Error.ShouldBeNull();
-        result.Required.ShouldBeLessThan(8192);
+        var fits = result.ShouldBeOfType<PreflightResult.Fits>();
+        fits.Required.ShouldBeLessThan(8192);
     }
 
     [Fact]
@@ -56,12 +55,12 @@ public class TokenBudgetTests
             modelId:         "qwen/qwen3.5-9b",
             executorName:    "LM Studio");
 
-        result.Fits.ShouldBeFalse();
-        result.Required.ShouldBeGreaterThan(4096);
-        result.Error.ShouldNotBeNullOrEmpty();
-        result.Error!.ShouldContain("qwen/qwen3.5-9b");
-        result.Error.ShouldContain("LM Studio");
-        result.Error.ShouldContain("context_length=4096");
+        var exceeded = result.ShouldBeOfType<PreflightResult.Exceeded>();
+        exceeded.Required.ShouldBeGreaterThan(4096);
+        exceeded.Error.ShouldNotBeNullOrEmpty();
+        exceeded.Error.ShouldContain("qwen/qwen3.5-9b");
+        exceeded.Error.ShouldContain("LM Studio");
+        exceeded.Error.ShouldContain("context_length=4096");
     }
 
     [Fact]
@@ -76,8 +75,7 @@ public class TokenBudgetTests
             modelId:         "unknown-model",
             executorName:    "Test");
 
-        result.Fits.ShouldBeTrue();
-        result.Error.ShouldBeNull();
+        result.ShouldBeOfType<PreflightResult.Fits>();
     }
 
     [Theory]

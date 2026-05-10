@@ -74,7 +74,7 @@ public class AgentService(
                 skills: data.Skills ?? [],
                 lastError: data.LastError,
                 lastErrorAt: DateTime.TryParse(data.LastErrorAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastErrorAt) ? lastErrorAt : null,
-                thinkingLevel: ThinkingLevelExtensions.Parse(data.Thinking),
+                thinkingLevel: ThinkingLevel.Parse(data.Thinking),
                 failoverExecutor: AgentExecutorName.TryParse(data.FailoverExecutor, out var failoverExecutor) ? failoverExecutor : null,
                 failedOverAt: DateTime.TryParse(data.FailedOverAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var failedOverAt) ? failedOverAt : null);
         }
@@ -97,10 +97,10 @@ public class AgentService(
         if (string.IsNullOrWhiteSpace(storedModel)) return storedModel;
 
         // Already a known real model ID — nothing to do.
-        if (modelRegistry.Find(executor.Value, storedModel) != null) return storedModel;
+        if (modelRegistry.Find(executor, storedModel) != null) return storedModel;
 
         // Try the deterministic legacy alias map, scoped to the correct executor.
-        var resolved = LegacyModelAliases.Resolve(storedModel, executor.Value);
+        var resolved = LegacyModelAliases.Resolve(storedModel, executor);
         if (resolved != null)
         {
             PatchModelInJson(jsonPath, resolved);
@@ -125,7 +125,7 @@ public class AgentService(
     }
 
     public Result<Unit> SaveAgentMeta(ProjectSlug projectSlug, AgentSlug agentSlug, string name, string description,
-        string model, AgentExecutorName executor, IReadOnlyList<string>? skills = null, ThinkingLevel thinkingLevel = ThinkingLevel.Off)
+        string model, AgentExecutorName executor, IReadOnlyList<string>? skills = null, ThinkingLevel thinkingLevel = default)
     {
         try { _ = paths.AgentDir(projectSlug, agentSlug); }
         catch (ArgumentException) { return new Err<Unit>(InvalidAgentSlugError); }

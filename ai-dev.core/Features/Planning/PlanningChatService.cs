@@ -16,7 +16,7 @@ public sealed class PlanningChatService(
     IEnumerable<IPlanningLlmClient> llmClients,
     ILogger<PlanningChatService> logger) : IPlanningChatService
 {
-    private const string FallbackExecutor = AgentExecutorName.ClaudeValue;
+    private static readonly AgentExecutorName FallbackExecutor = AgentExecutorName.Claude;
     private const string DefaultModel     = "claude-sonnet-4-6";
 
     // -------------------------------------------------------------------------
@@ -131,12 +131,12 @@ public sealed class PlanningChatService(
 
     private (IPlanningLlmClient Client, string ModelId) Resolve(ProjectSlug projectSlug)
     {
-        var clientMap = llmClients.ToDictionary(c => c.ExecutorName, StringComparer.OrdinalIgnoreCase);
+        var clientMap = llmClients.ToDictionary(c => c.ExecutorName);
 
         var analyst = agentService.ListAgents(projectSlug)
             .FirstOrDefault(a => a.Slug.Value.StartsWith("analyst", StringComparison.OrdinalIgnoreCase));
 
-        var executorName = analyst?.Executor?.Value ?? FallbackExecutor;
+        var executorName = analyst?.Executor ?? FallbackExecutor;
         var modelId = string.IsNullOrWhiteSpace(analyst?.Model)
             ? DefaultModel
             : analyst!.Model;
@@ -171,7 +171,7 @@ public sealed class PlanningChatService(
     private static IReadOnlyList<ConversationMessage> ToMessages(IReadOnlyList<ConversationTurn> turns) =>
         turns.Select(t => new ConversationMessage
         {
-            Role    = t.Role == ConversationRole.User ? "user" : "assistant",
+            Role    = t.Role.ApiRole,
             Content = t.Content,
         }).ToList();
 

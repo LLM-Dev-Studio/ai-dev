@@ -5,7 +5,7 @@ namespace AiDev.Features.Planning;
 /// </summary>
 public sealed class PlanningSessionMetadata
 {
-    public required string Id { get; init; }
+    public required SessionId Id { get; init; }
     public required DateTimeOffset CreatedAt { get; init; }
     public required SessionPhase CurrentPhase { get; set; }
     public required PlanningSessionState State { get; set; }
@@ -23,28 +23,19 @@ public sealed class PlanningSessionMetadata
     public int Phase3InputTokens { get; set; }
 
     /// <summary>Returns the current phase's running input token count.</summary>
-    public int GetCurrentPhaseTokens() => CurrentPhase switch
+    public int GetCurrentPhaseTokens()
     {
-        SessionPhase.Phase1BusinessDiscovery => Phase1InputTokens,
-        SessionPhase.Phase2SolutionShaping   => Phase2InputTokens,
-        SessionPhase.Phase3PlanningDecomposition => Phase3InputTokens,
-        _ => 0,
-    };
+        if (CurrentPhase == SessionPhase.Phase1BusinessDiscovery)     return Phase1InputTokens;
+        if (CurrentPhase == SessionPhase.Phase2SolutionShaping)       return Phase2InputTokens;
+        if (CurrentPhase == SessionPhase.Phase3PlanningDecomposition) return Phase3InputTokens;
+        return 0;
+    }
 
     /// <summary>Updates the token count for the given phase.</summary>
     public void SetPhaseTokens(SessionPhase phase, int tokens)
     {
-        switch (phase)
-        {
-            case SessionPhase.Phase1BusinessDiscovery:
-                Phase1InputTokens = tokens;
-                break;
-            case SessionPhase.Phase2SolutionShaping:
-                Phase2InputTokens = tokens;
-                break;
-            case SessionPhase.Phase3PlanningDecomposition:
-                Phase3InputTokens = tokens;
-                break;
-        }
+        if (phase == SessionPhase.Phase1BusinessDiscovery)          Phase1InputTokens = tokens;
+        else if (phase == SessionPhase.Phase2SolutionShaping)       Phase2InputTokens = tokens;
+        else if (phase == SessionPhase.Phase3PlanningDecomposition) Phase3InputTokens = tokens;
     }
 }

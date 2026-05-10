@@ -117,8 +117,8 @@ public class AgentServiceTests
         var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
         paths = new WorkspacePaths(root);
         var modelRegistry = Substitute.For<IModelRegistry>();
-        modelRegistry.Find(Arg.Any<string>(), Arg.Any<string>()).Returns((ModelDescriptor?)null);
-        modelRegistry.GetModelsForExecutor(Arg.Any<string>()).Returns([]);
+        modelRegistry.Find(Arg.Any<AgentExecutorName>(), Arg.Any<string>()).Returns((ModelDescriptor?)null);
+        modelRegistry.GetModelsForExecutor(Arg.Any<AgentExecutorName>()).Returns([]);
         return new AgentService(
             paths,
             new AgentTemplatesService(paths),

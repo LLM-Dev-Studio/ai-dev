@@ -20,7 +20,7 @@ public class ProjectStateSnapshotService(
     public ProjectStateSnapshot GetSnapshot(ProjectSlug projectSlug)
     {
         var unreadMessages = SafeCount(() => messagesService.ListMessages(projectSlug).Count(m => !m.IsProcessed), logger, "unread-messages");
-        var pendingDecisions = SafeCount(() => decisionsService.ListDecisions(projectSlug, "pending").Count, logger, "pending-decisions");
+        var pendingDecisions = SafeCount(() => decisionsService.ListDecisions(projectSlug, DecisionStatus.Pending).Count, logger, "pending-decisions");
 
         var board = SafeGet(() => boardService.LoadBoard(projectSlug), logger, "board");
         var openBoardTasks = 0;

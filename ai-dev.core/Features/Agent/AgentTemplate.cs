@@ -13,5 +13,5 @@ public class AgentTemplate
     public string Description { get; set; } = "";
     public string Content { get; set; } = "";
     public string CompactContent { get; set; } = "";
-    public ThinkingLevel ThinkingLevel { get; set; } = ThinkingLevel.Off;
+    public ThinkingLevel ThinkingLevel { get; set; }
 }

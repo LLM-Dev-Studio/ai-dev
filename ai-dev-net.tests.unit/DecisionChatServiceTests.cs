@@ -174,8 +174,8 @@ public class DecisionChatServiceTests
         var settings = new StudioSettingsService(new ConfigurationBuilder().Build());
         var projectStateNotifier = new ProjectStateChangedNotifier();
         var modelRegistry = Substitute.For<IModelRegistry>();
-        modelRegistry.Find(Arg.Any<string>(), Arg.Any<string>())
-            .Returns(new ModelDescriptor("claude-sonnet-4-6", "Claude Sonnet 4.6", AgentExecutorName.ClaudeValue));
+        modelRegistry.Find(Arg.Any<AgentExecutorName>(), Arg.Any<string>())
+            .Returns(new ModelDescriptor("claude-sonnet-4-6", "Claude Sonnet 4.6", AgentExecutorName.Claude));
 
         var dispatcher = Substitute.For<IDomainEventDispatcher>();
         dispatcher.Dispatch(Arg.Any<IReadOnlyList<DomainEvent>>(), Arg.Any<CancellationToken>())
@@ -213,12 +213,12 @@ public class DecisionChatServiceTests
 
     private sealed class ImmediateExecutor : IAgentExecutor
     {
-        public string Name => AgentExecutorName.ClaudeValue;
+        public AgentExecutorName Name => AgentExecutorName.Claude;
         public string DisplayName => "Claude CLI";
         public IReadOnlyList<ExecutorSkill> AvailableSkills => [];
         public IReadOnlyList<ModelDescriptor> KnownModels =>
         [
-            new ModelDescriptor("claude-sonnet-4-6", "Claude Sonnet 4.6", AgentExecutorName.ClaudeValue),
+            new ModelDescriptor("claude-sonnet-4-6", "Claude Sonnet 4.6", AgentExecutorName.Claude),
         ];
 
         public Task<ExecutorHealthResult> CheckHealthAsync(CancellationToken ct = default)

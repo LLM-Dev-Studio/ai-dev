@@ -112,7 +112,7 @@ public class ProductionReadinessIntegrationTests : IDisposable
         var service = new DecisionsService(_paths, dispatcher, _fileWriter, _coordinator, NullLogger<DecisionsService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
 
-        var createResult = service.CreateDecision(projectSlug, "overwatch", "Need input", Priority.Normal.Value, null, "Please decide");
+        var createResult = service.CreateDecision(projectSlug, "overwatch", "Need input", Priority.Normal, null, "Please decide");
         createResult.ShouldBeOfType<Ok<Unit>>();
 
         var id = Path.GetFileNameWithoutExtension(Directory.GetFiles(_paths.DecisionsPendingDir(projectSlug), "*.md").Single())!;
@@ -149,8 +149,8 @@ public class ProductionReadinessIntegrationTests : IDisposable
     public void AgentService_CreateAgent_WritesFilesAtomically()
     {
         var modelRegistry = Substitute.For<IModelRegistry>();
-        modelRegistry.Find(Arg.Any<string>(), Arg.Any<string>()).Returns((ModelDescriptor?)null);
-        modelRegistry.GetModelsForExecutor(Arg.Any<string>()).Returns([]);
+        modelRegistry.Find(Arg.Any<AgentExecutorName>(), Arg.Any<string>()).Returns((ModelDescriptor?)null);
+        modelRegistry.GetModelsForExecutor(Arg.Any<AgentExecutorName>()).Returns([]);
         var service = new AgentService(
             _paths,
             new AgentTemplatesService(_paths),

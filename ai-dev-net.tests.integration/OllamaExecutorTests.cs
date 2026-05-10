@@ -1,5 +1,6 @@
 using AiDev;
 using AiDev.Executors;
+using AiDev.Models.Types;
 using AiDev.Services;
 
 using Microsoft.Extensions.Configuration;
@@ -147,9 +148,9 @@ public sealed class OllamaAgentExecutorUnitTests : IDisposable
     // -------------------------------------------------------------------------
 
     private static ExecutorContext Ctx(string? workingDir = null) =>
-        new(WorkspaceRoot: Path.GetTempPath(),
-            ProjectSlug: "demo-project",
-            WorkingDir: workingDir ?? Path.GetTempPath(),
+        new(WorkspaceRoot: new RootDir(Path.GetTempPath()),
+            ProjectSlug: new ProjectSlug("demo-project"),
+            WorkingDir: new AgentDir(workingDir ?? Path.GetTempPath()),
             ModelId: "test-model",
             Prompt: "Hello",
             EnabledSkills: [],
@@ -542,9 +543,9 @@ public sealed class OllamaAgentExecutorIntegrationTests : IDisposable
 
         var channel = Channel.CreateUnbounded<string>(new() { SingleReader = true });
         var ctx = new ExecutorContext(
-            WorkspaceRoot: Path.GetTempPath(),
-            ProjectSlug: "demo-project",
-            WorkingDir: Path.GetTempPath(),
+            WorkspaceRoot: new RootDir(Path.GetTempPath()),
+            ProjectSlug: new ProjectSlug("demo-project"),
+            WorkingDir: new AgentDir(Path.GetTempPath()),
             ModelId: model,
             Prompt: "Reply with exactly the text: OLLAMA_OK",
             EnabledSkills: [],

@@ -14,7 +14,7 @@ public interface ILocalAgentHook
 
 public sealed record LocalAgentHookContext(
     string Goal,
-    string WorkingDir,
+    AgentDir WorkingDir,
     string ModelId,
     string ExecutorName,
     Guid SessionId);

@@ -44,14 +44,6 @@ public static class TokenBudget
     }
 
     /// <summary>
-    /// Result of a preflight budget check.
-    /// </summary>
-    /// <param name="Fits">True when the request is expected to fit the context window (or the window is unknown).</param>
-    /// <param name="Required">Estimated tokens the request needs.</param>
-    /// <param name="Error">When <see cref="Fits"/> is false, a human-readable error suitable for surfacing to the user.</param>
-    public readonly record struct PreflightResult(bool Fits, int Required, string? Error);
-
-    /// <summary>
     /// Check whether a chat request is expected to fit the model's loaded context window.
     ///
     /// When <paramref name="contextWindow"/> is 0 (unknown), this returns Fits=true
@@ -71,7 +63,7 @@ public static class TokenBudget
         var required      = messageTokens + toolTokens + maxOutputTokens + SafetyMargin;
 
         if (contextWindow <= 0 || required <= contextWindow)
-            return new PreflightResult(true, required, null);
+            return new PreflightResult.Fits(required);
 
         var suggestion = SuggestContextWindow(required);
         var error =
@@ -81,7 +73,7 @@ public static class TokenBudget
           + $"Reload the model in {executorName} with a larger context window "
           + $"(recommended: {suggestion}) or reduce the agent's CLAUDE.md / disable workspace tools.";
 
-        return new PreflightResult(false, required, error);
+        return new PreflightResult.Exceeded(required, error);
     }
 
     /// <summary>

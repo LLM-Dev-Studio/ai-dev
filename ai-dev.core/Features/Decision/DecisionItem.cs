@@ -9,7 +9,7 @@ public sealed class DecisionItem
     /// </summary>
     public DecisionItem(
         string filename,
-        string id,
+        DecisionId id,
         string from,
         string subject,
         string body,
@@ -23,8 +23,7 @@ public sealed class DecisionItem
     {
         if (string.IsNullOrWhiteSpace(filename))
             throw new ArgumentException("Filename is required.", nameof(filename));
-        if (string.IsNullOrWhiteSpace(id))
-            throw new ArgumentException("Decision id is required.", nameof(id));
+        ArgumentNullException.ThrowIfNull(id);
         if (string.IsNullOrWhiteSpace(from))
             throw new ArgumentException("Decision source is required.", nameof(from));
         if (string.IsNullOrWhiteSpace(subject))
@@ -47,7 +46,7 @@ public sealed class DecisionItem
     }
 
     public string Filename { get; }
-    public string Id { get; }
+    public DecisionId Id { get; }
     public string From { get; }
     public DateTime? Date { get; }
     public Priority Priority { get; private set; }

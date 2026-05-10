@@ -1,4 +1,5 @@
 using AiDev.Executors;
+using AiDev.Models.Types;
 
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -79,19 +80,7 @@ public class StringHexToBrushConverter : IValueConverter
 public class PriorityColorConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
-    {
-        if (value is Priority p)
-        {
-            return p.Value switch
-            {
-                "critical" => new SolidColorBrush(Color.FromArgb(255, 239, 68, 68)),
-                "high"     => new SolidColorBrush(Color.FromArgb(255, 245, 158, 11)),
-                "normal"   => new SolidColorBrush(Color.FromArgb(255, 59, 130, 246)),
-                _          => new SolidColorBrush(Color.FromArgb(255, 107, 114, 128)),
-            };
-        }
-        return new SolidColorBrush(Colors.Gray);
-    }
+        => value is Priority p ? ConverterHelpers.BrushFromHex(p.ColorHex) : new SolidColorBrush(Colors.Gray);
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => DependencyProperty.UnsetValue;
@@ -100,17 +89,7 @@ public class PriorityColorConverter : IValueConverter
 public class PriorityTextConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
-    {
-        if (value is Priority p)
-            return p.Value switch
-            {
-                "critical" => "Critical",
-                "high" => "High",
-                "normal" => "Normal",
-                _ => "Low"
-            };
-        return "";
-    }
+        => value is Priority p ? p.DisplayName : "";
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => DependencyProperty.UnsetValue;
@@ -119,18 +98,7 @@ public class PriorityTextConverter : IValueConverter
 public class AgentStatusColorConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
-    {
-        if (value is AgentStatus s)
-        {
-            return s.Value switch
-            {
-                "running" => new SolidColorBrush(Color.FromArgb(255, 34, 197, 94)),
-                "error"   => new SolidColorBrush(Color.FromArgb(255, 239, 68, 68)),
-                _         => new SolidColorBrush(Color.FromArgb(255, 107, 114, 128)),
-            };
-        }
-        return new SolidColorBrush(Colors.Gray);
-    }
+        => value is AgentStatus s ? ConverterHelpers.BrushFromHex(s.ColorHex) : new SolidColorBrush(Colors.Gray);
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => DependencyProperty.UnsetValue;
@@ -139,16 +107,7 @@ public class AgentStatusColorConverter : IValueConverter
 public class AgentStatusTextConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
-    {
-        if (value is AgentStatus s)
-            return s.Value switch
-            {
-                "running" => "Running",
-                "error"   => "Error",
-                _ => "Idle"
-            };
-        return "Idle";
-    }
+        => value is AgentStatus s ? s.DisplayName : "Idle";
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => DependencyProperty.UnsetValue;
@@ -202,8 +161,27 @@ public class LongToFormattedStringConverter : IValueConverter
 public class ThinkingLevelToDisplayNameConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
-        => value is ThinkingLevel level ? level.ToDisplayName() : "";
+        => value is ThinkingLevel level ? level.DisplayName : "";
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => DependencyProperty.UnsetValue;
+}
+
+file static class ConverterHelpers
+{
+    public static SolidColorBrush BrushFromHex(string hex)
+    {
+        try
+        {
+            if (hex.StartsWith('#') && hex.Length == 7)
+            {
+                var r = System.Convert.ToByte(hex.Substring(1, 2), 16);
+                var g = System.Convert.ToByte(hex.Substring(3, 2), 16);
+                var b = System.Convert.ToByte(hex.Substring(5, 2), 16);
+                return new SolidColorBrush(Color.FromArgb(255, r, g, b));
+            }
+        }
+        catch { }
+        return new SolidColorBrush(Colors.Gray);
+    }
 }

@@ -26,18 +26,18 @@ public class ModelRegistryTests : IDisposable
     {
         // Arrange
         var executor = Substitute.For<IAgentExecutor>();
-        executor.Name.Returns("claude");
+        executor.Name.Returns(AgentExecutorName.Claude);
         var known = new[]
         {
-            new ModelDescriptor("claude-opus", "Claude Opus", "claude"),
-            new ModelDescriptor("claude-sonnet", "Claude Sonnet", "claude")
+            new ModelDescriptor("claude-opus", "Claude Opus", AgentExecutorName.Claude),
+            new ModelDescriptor("claude-sonnet", "Claude Sonnet", AgentExecutorName.Claude)
         };
         executor.KnownModels.Returns(known);
 
         var registry = new ModelRegistry(new[] { executor }, _healthMonitor);
 
         // Act
-        var models = registry.GetModelsForExecutor("claude");
+        var models = registry.GetModelsForExecutor(AgentExecutorName.Claude);
 
         // Assert
         models.Count.ShouldBe(2);
@@ -49,13 +49,13 @@ public class ModelRegistryTests : IDisposable
     {
         // Arrange
         var executor = Substitute.For<IAgentExecutor>();
-        executor.Name.Returns("claude");
+        executor.Name.Returns(AgentExecutorName.Claude);
         executor.KnownModels.Returns(Array.Empty<ModelDescriptor>());
 
         var registry = new ModelRegistry(new[] { executor }, _healthMonitor);
 
         // Act
-        var models = registry.GetModelsForExecutor("ollama");
+        var models = registry.GetModelsForExecutor(AgentExecutorName.Ollama);
 
         // Assert
         models.ShouldBeEmpty();
@@ -66,24 +66,24 @@ public class ModelRegistryTests : IDisposable
     {
         // Arrange
         var executor1 = Substitute.For<IAgentExecutor>();
-        executor1.Name.Returns("executor1");
+        executor1.Name.Returns(AgentExecutorName.Claude);
         executor1.KnownModels.Returns(new[]
         {
-            new ModelDescriptor("model1", "Model 1", "executor1")
+            new ModelDescriptor("model1", "Model 1", AgentExecutorName.Claude)
         });
 
         var executor2 = Substitute.For<IAgentExecutor>();
-        executor2.Name.Returns("executor2");
+        executor2.Name.Returns(AgentExecutorName.Anthropic);
         executor2.KnownModels.Returns(new[]
         {
-            new ModelDescriptor("model2", "Model 2", "executor2")
+            new ModelDescriptor("model2", "Model 2", AgentExecutorName.Anthropic)
         });
 
         var registry = new ModelRegistry(new[] { executor1, executor2 }, _healthMonitor);
 
         // Act
-        var models1 = registry.GetModelsForExecutor("executor1");
-        var models2 = registry.GetModelsForExecutor("executor2");
+        var models1 = registry.GetModelsForExecutor(AgentExecutorName.Claude);
+        var models2 = registry.GetModelsForExecutor(AgentExecutorName.Anthropic);
 
         // Assert
         models1.Count.ShouldBe(1);
@@ -101,19 +101,19 @@ public class ModelRegistryTests : IDisposable
     {
         // Arrange
         var executor = Substitute.For<IAgentExecutor>();
-        executor.Name.Returns("ollama");
+        executor.Name.Returns(AgentExecutorName.Ollama);
         var initialModels = new[]
         {
-            new ModelDescriptor("mistral", "Mistral", "ollama"),
-            new ModelDescriptor("llama2", "Llama 2", "ollama")
+            new ModelDescriptor("mistral", "Mistral", AgentExecutorName.Ollama),
+            new ModelDescriptor("llama2", "Llama 2", AgentExecutorName.Ollama)
         };
         executor.KnownModels.Returns(initialModels);
 
         // Dynamic models from health check — includes new model and duplicate Id
         var dynamicModels = new[]
         {
-            new ModelDescriptor("neural-chat", "Neural Chat", "ollama"),
-            new ModelDescriptor("llama2", "Llama 2 (Dynamic)", "ollama") // Same Id, should lose
+            new ModelDescriptor("neural-chat", "Neural Chat", AgentExecutorName.Ollama),
+            new ModelDescriptor("llama2", "Llama 2 (Dynamic)", AgentExecutorName.Ollama) // Same Id, should lose
         };
 
         // Simulate health monitor returning dynamic models for this executor
@@ -127,7 +127,7 @@ public class ModelRegistryTests : IDisposable
         var registry = new ModelRegistry(new[] { executor }, _healthMonitor);
 
         // Act
-        var models = registry.GetModelsForExecutor("ollama");
+        var models = registry.GetModelsForExecutor(AgentExecutorName.Ollama);
 
         // Assert — should have initial static models sorted by DisplayName
         models.Count.ShouldBe(2);
@@ -139,14 +139,14 @@ public class ModelRegistryTests : IDisposable
     {
         // Arrange — verify that if KnownModels has a model, it's used as-is
         var executor = Substitute.For<IAgentExecutor>();
-        executor.Name.Returns("test");
-        var staticModel = new ModelDescriptor("model-x", "Static Model", "test", MaxTokens: 1000);
+        executor.Name.Returns(AgentExecutorName.Claude);
+        var staticModel = new ModelDescriptor("model-x", "Static Model", AgentExecutorName.Claude, MaxTokens: 1000);
         executor.KnownModels.Returns(new[] { staticModel });
 
         var registry = new ModelRegistry(new[] { executor }, _healthMonitor);
 
         // Act
-        var models = registry.GetModelsForExecutor("test");
+        var models = registry.GetModelsForExecutor(AgentExecutorName.Claude);
 
         // Assert — static entry is used
         models.Count.ShouldBe(1);
@@ -162,16 +162,16 @@ public class ModelRegistryTests : IDisposable
     {
         // Arrange
         var executor = Substitute.For<IAgentExecutor>();
-        executor.Name.Returns("claude");
+        executor.Name.Returns(AgentExecutorName.Claude);
         executor.KnownModels.Returns(new[]
         {
-            new ModelDescriptor("claude-opus", "Claude Opus", "claude")
+            new ModelDescriptor("claude-opus", "Claude Opus", AgentExecutorName.Claude)
         });
 
         var registry = new ModelRegistry(new[] { executor }, _healthMonitor);
 
         // Act
-        var found = registry.Find("claude", "CLAUDE-OPUS");
+        var found = registry.Find(AgentExecutorName.Claude, "CLAUDE-OPUS");
 
         // Assert
         found.ShouldNotBeNull();
@@ -183,16 +183,16 @@ public class ModelRegistryTests : IDisposable
     {
         // Arrange
         var executor = Substitute.For<IAgentExecutor>();
-        executor.Name.Returns("claude");
+        executor.Name.Returns(AgentExecutorName.Claude);
         executor.KnownModels.Returns(new[]
         {
-            new ModelDescriptor("claude-opus", "Claude Opus", "claude")
+            new ModelDescriptor("claude-opus", "Claude Opus", AgentExecutorName.Claude)
         });
 
         var registry = new ModelRegistry(new[] { executor }, _healthMonitor);
 
         // Act
-        var found = registry.Find("claude", "gpt-4");
+        var found = registry.Find(AgentExecutorName.Claude, "gpt-4");
 
         // Assert
         found.ShouldBeNull();
@@ -203,13 +203,13 @@ public class ModelRegistryTests : IDisposable
     {
         // Arrange
         var executor = Substitute.For<IAgentExecutor>();
-        executor.Name.Returns("claude");
+        executor.Name.Returns(AgentExecutorName.Claude);
         executor.KnownModels.Returns(Array.Empty<ModelDescriptor>());
 
         var registry = new ModelRegistry(new[] { executor }, _healthMonitor);
 
         // Act
-        var found = registry.Find("ollama", "mistral");
+        var found = registry.Find(AgentExecutorName.Ollama, "mistral");
 
         // Assert
         found.ShouldBeNull();
@@ -224,18 +224,18 @@ public class ModelRegistryTests : IDisposable
     {
         // Arrange
         var executor1 = Substitute.For<IAgentExecutor>();
-        executor1.Name.Returns("executor1");
+        executor1.Name.Returns(AgentExecutorName.Claude);
         executor1.KnownModels.Returns(new[]
         {
-            new ModelDescriptor("model1", "Model 1", "executor1"),
-            new ModelDescriptor("model2", "Model 2", "executor1")
+            new ModelDescriptor("model1", "Model 1", AgentExecutorName.Claude),
+            new ModelDescriptor("model2", "Model 2", AgentExecutorName.Claude)
         });
 
         var executor2 = Substitute.For<IAgentExecutor>();
-        executor2.Name.Returns("executor2");
+        executor2.Name.Returns(AgentExecutorName.Anthropic);
         executor2.KnownModels.Returns(new[]
         {
-            new ModelDescriptor("model3", "Model 3", "executor2")
+            new ModelDescriptor("model3", "Model 3", AgentExecutorName.Anthropic)
         });
 
         var registry = new ModelRegistry(new[] { executor1, executor2 }, _healthMonitor);
@@ -272,7 +272,7 @@ public class ModelRegistryTests : IDisposable
     {
         // Arrange
         var executor = Substitute.For<IAgentExecutor>();
-        executor.Name.Returns("test");
+        executor.Name.Returns(AgentExecutorName.Claude);
         executor.KnownModels.Returns(Array.Empty<ModelDescriptor>());
 
         var registry = new ModelRegistry(new[] { executor }, _healthMonitor);

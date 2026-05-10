@@ -249,7 +249,8 @@ public partial class TemplatesViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(executor))
             return;
 
-        foreach (var model in _modelRegistry.GetModelsForExecutor(executor))
-            AvailableModels.Add(model.Id);
+        if (AgentExecutorName.TryParse(executor, out var parsedExecutor))
+            foreach (var model in _modelRegistry.GetModelsForExecutor(parsedExecutor))
+                AvailableModels.Add(model.Id);
     }
 }
