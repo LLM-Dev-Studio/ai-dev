@@ -279,9 +279,20 @@ public sealed class LmStudioAgentExecutor(
             context.WorkingDir, contextWindow, settings.CompactPromptThreshold, logger);
         var promptTier = contextWindow > 0 && contextWindow < settings.CompactPromptThreshold ? "compact" : "full";
 
+        var estimatedSystemTokens = TokenBudget.EstimateTokens(systemPrompt);
+        var estimatedUserTokens   = TokenBudget.EstimateTokens(context.Prompt);
+        var estimatedPromptTokens = estimatedSystemTokens + estimatedUserTokens;
+
         if (contextWindow > 0)
+        {
+            var headroom = contextWindow - estimatedPromptTokens - maxOutputTokens;
             output.TryWrite(
-                $"[{DateTime.UtcNow:o}] [lmstudio] context_window={contextWindow} max_output_tokens={maxOutputTokens} prompt_tier={promptTier}");
+                $"[{DateTime.UtcNow:o}] [lmstudio] context_window={contextWindow} prompt_est={estimatedPromptTokens} max_output={maxOutputTokens} headroom={headroom} tier={promptTier}");
+            if (headroom < 256)
+                logger.LogWarning(
+                    "[lmstudio] Low headroom: context_window={Ctx} prompt_est={Prompt} max_output={Out} headroom={Headroom} — reload '{Model}' with a larger context window",
+                    contextWindow, estimatedPromptTokens, maxOutputTokens, headroom, context.ModelId);
+        }
 
         if (!TokenBudget.CanFitCompact(contextWindow, systemPrompt, maxOutputTokens))
         {
@@ -382,32 +393,35 @@ public sealed class LmStudioAgentExecutor(
                 return new ExecutorResult(1, Usage: totalUsage, ErrorMessage: msg, RequiresHumanDecision: true);
             }
 
-            // Detect empty output — two distinct causes:
+            // Detect empty output — three distinct causes:
             // 1. Empty SSE stream (finishReason=""): LM Studio silently drops the request when
             //    the prompt exceeds the loaded context window (n_keep >= n_ctx).
-            // 2. Thinking-model no-op: Qwen3 and similar models route tokens to internal
-            //    reasoning (reasoning_content). StreamSseAsync promotes reasoning_content to
-            //    textContent when content is empty, so this case only fires when BOTH fields
-            //    are empty despite tokens being consumed — an unrecoverable model failure.
-            var emptyOutput = textContent.Length == 0 && toolCalls.Count == 0;
+            // 2. Context starvation: the model loaded with a tiny context window barely fits the
+            //    prompt, leaving almost no room for generation. LM Studio generates 1-2 tokens
+            //    immediately and stops. Shows as finish_reason=stop, OutputTokens<=3, 0ms eval.
+            // 3. Thinking-model no-op: LM Studio's server-side thinking intercepts all output.
+            //    Shows as finish_reason=stop, OutputTokens>>0 (many thinking tokens consumed).
+            var emptyOutput         = textContent.Length == 0 && toolCalls.Count == 0;
             var isEmptyStream       = emptyOutput && string.IsNullOrEmpty(finishReason);
-            var isThinkingModelNoOp = emptyOutput && sessionUsage is { OutputTokens: > 0 };
+            var outputTokenCount    = sessionUsage?.OutputTokens ?? 0;
+            var isContextStarved    = emptyOutput && outputTokenCount is > 0 and <= 3;
+            var isThinkingModelNoOp = emptyOutput && outputTokenCount > 3;
 
-            if (isEmptyStream || isThinkingModelNoOp)
+            if (isEmptyStream || isContextStarved || isThinkingModelNoOp)
             {
                 string msg;
-                if (isThinkingModelNoOp)
+                if (isContextStarved || isEmptyStream)
                 {
-                    msg = $"Model '{context.ModelId}' finished (finish_reason={finishReason}) but produced no usable output. "
-                        + "If this is a reasoning/thinking model (e.g. Qwen3), disable thinking mode in LM Studio "
-                        + "or load a non-thinking variant of the model.";
+                    var ctxDetail = contextWindow > 0
+                        ? $"context_window={contextWindow}, estimated prompt tokens={estimatedPromptTokens}, available for response≈{contextWindow - estimatedPromptTokens}"
+                        : "context_window unknown";
+                    msg = $"Model '{context.ModelId}' produced no usable output — context window is likely too small ({ctxDetail}). "
+                        + $"Reload the model in LM Studio with a larger context window (recommended: {TokenBudget.SuggestContextWindow(estimatedPromptTokens + maxOutputTokens)}).";
                 }
                 else
                 {
-                    var hint = contextWindow > 0
-                        ? $" The model has context_window={contextWindow}; reload it with a larger context or switch models."
-                        : " Check LM Studio server logs for details (often n_keep >= n_ctx).";
-                    msg = $"LM Studio returned an empty response for '{context.ModelId}'.{hint}";
+                    msg = $"Model '{context.ModelId}' finished (finish_reason={finishReason}) but produced no usable output ({outputTokenCount} tokens consumed, likely all internal reasoning). "
+                        + "If thinking mode is enabled in LM Studio, disable it for this model or load a non-thinking variant.";
                 }
                 logger.LogError("[lmstudio] {Message}", msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");

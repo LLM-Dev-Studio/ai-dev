@@ -150,6 +150,15 @@ public partial class DecisionsViewModel : ObservableObject
             return;
         }
 
+        // Replace the item in Decisions with the fresh fetch before assigning SelectedDecision.
+        // The ListView's TwoWay SelectedItem binding uses reference equality; setting SelectedDecision
+        // to a new object not present in the collection coerces SelectedItem to null, which fires back
+        // through the binding and clears SelectedDecision — silently breaking subsequent sends.
+        var idx = -1;
+        for (var i = 0; i < Decisions.Count; i++)
+            if (Decisions[i].Id == latest.Id) { idx = i; break; }
+        if (idx >= 0) Decisions[idx] = latest;
+
         SelectedDecision = latest;
         RefreshChat(latest);
 

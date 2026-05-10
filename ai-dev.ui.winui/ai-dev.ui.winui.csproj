@@ -71,6 +71,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ai-dev-net.ServiceDefaults\ai-dev-net.ServiceDefaults.csproj" />
     <ProjectReference Include="..\ai-dev.core\ai-dev.core.csproj" />
     <ProjectReference Include="..\ai-dev.core.local\ai-dev.core.local.csproj" />
     <ProjectReference Include="..\ai-dev.executor.claude\ai-dev.executor.claude.csproj" />

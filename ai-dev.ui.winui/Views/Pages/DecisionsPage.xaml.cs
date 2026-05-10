@@ -54,7 +54,9 @@ public sealed partial class DecisionsPage : Page
     private async void Decisions_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (ViewModel is null) return;
-        if (ViewModel.SelectedDecision is { } decision)
+        // Read from event args — TwoWay binding may not have updated ViewModel.SelectedDecision yet
+        // when this handler fires, so reading the property risks acting on stale state.
+        if (e.AddedItems.FirstOrDefault() is DecisionItem decision)
         {
             await ViewModel.SelectDecisionAsync(decision);
             RenderDecisionConversation();

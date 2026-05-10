@@ -87,6 +87,24 @@ public class InsightsService(
         if (string.IsNullOrWhiteSpace(transcriptContent))
             return null;
 
+        // Insights uses a small system prompt (~50 tokens) and needs output room (~512 tokens).
+        // The transcript is the only variable-size input. Cap it so the total fits a 4096-token
+        // model — the smallest common local model context. Keeps the tail (most recent output).
+        const int MaxTranscriptChars = 12_000; // ~3000 tokens, leaves headroom in a 4096 ctx
+        var estimatedTokens = (transcriptContent.Length + 3) / 4;
+        if (transcriptContent.Length > MaxTranscriptChars)
+        {
+            logger.LogWarning(
+                "[insights] Transcript is ~{Tokens} tokens ({Chars} chars) — truncating to last {Max} chars to fit model context",
+                estimatedTokens, transcriptContent.Length, MaxTranscriptChars);
+            transcriptContent = transcriptContent[^MaxTranscriptChars..];
+        }
+        else
+        {
+            logger.LogInformation("[insights] Transcript is ~{Tokens} tokens ({Chars} chars)",
+                estimatedTokens, transcriptContent.Length);
+        }
+
         logger.LogInformation("[insights] Generating insights using {Executor}/{Model}", executor.Name, modelId);
 
         // Create an isolated working directory so we can control the system prompt (CLAUDE.md)
