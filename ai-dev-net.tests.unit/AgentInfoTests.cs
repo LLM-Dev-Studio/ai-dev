@@ -2,136 +2,145 @@ namespace AiDevNet.Tests.Unit;
 
 public class AgentInfoTests
 {
-    private static AgentInfo CreateInfo() => new(
-        slug: new AgentSlug("my-agent"),
-        name: "My Agent",
-        role: "Assistant",
-        description: "Handles agent workflows");
+    private static AgentInfoIdle CreateIdle(DateTime? previousRunAt = null) => new()
+    {
+        Slug          = new AgentSlug("my-agent"),
+        Name          = "My Agent",
+        Role          = "Assistant",
+        Description   = "Handles agent workflows",
+        Model         = "sonnet",
+        Executor      = AgentExecutorName.Default,
+        Skills        = [],
+        ThinkingLevel = default,
+        InboxCount    = 0,
+        PreviousRunAt = previousRunAt,
+    };
 
-    // -------------------------------------------------------------------------
-    // Defaults
-    // -------------------------------------------------------------------------
+    // ── AgentInfoIdle ────────────────────────────────────────────────────────
 
     [Fact]
-    public void Defaults_AreCorrect()
+    public void AgentInfoIdle_DefaultProperties_AreCorrect()
     {
-        var info = CreateInfo();
+        var info = CreateIdle();
 
         info.Name.ShouldBe("My Agent");
         info.Role.ShouldBe("Assistant");
         info.Model.ShouldBe("sonnet");
-        info.Status.ShouldBe(AgentStatus.Idle);
         info.Description.ShouldBe("Handles agent workflows");
-        info.LastRunAt.ShouldBeNull();
         info.InboxCount.ShouldBe(0);
-        info.Executor.ShouldBe(AgentExecutorName.Default);
-    }
-
-    // -------------------------------------------------------------------------
-    // Status
-    // -------------------------------------------------------------------------
-
-    [Fact]
-    public void Status_CanBeSetToRunning()
-    {
-        var info = CreateInfo();
-        info.MarkRunning(DateTime.UtcNow);
-        info.Status.IsRunning.ShouldBeTrue();
+        info.Executor.ShouldBe(AgentExecutorName.Claude);
+        info.PreviousRunAt.ShouldBeNull();
     }
 
     [Fact]
-    public void Status_CanBeSetToError()
+    public void AgentInfoIdle_Status_IsIdle()
     {
-        var info = CreateInfo();
-        info.MarkError();
-        info.Status.IsError.ShouldBeTrue();
+        var info = CreateIdle();
+        info.Status.ShouldBe(AgentStatus.Idle);
     }
 
-    // -------------------------------------------------------------------------
-    // LastRunAt
-    // -------------------------------------------------------------------------
-
     [Fact]
-    public void LastRunAt_WhenSet_ReturnsCorrectDateTime()
+    public void AgentInfoIdle_LastRunAt_ReturnsPreviousRunAt()
     {
-        var now = DateTime.UtcNow;
-        var info = CreateInfo();
-        info.MarkRunning(now);
+        var now  = DateTime.UtcNow;
+        var info = CreateIdle(previousRunAt: now);
         info.LastRunAt.ShouldBe(now);
     }
 
-    // -------------------------------------------------------------------------
-    // InboxCount
-    // -------------------------------------------------------------------------
-
     [Fact]
-    public void InboxCount_ReflectsAssignedValue()
+    public void AgentInfoIdle_LastError_IsNull()
     {
-        var info = CreateInfo();
-        info.SetInboxCount(5);
-        info.InboxCount.ShouldBe(5);
-    }
-
-    // -------------------------------------------------------------------------
-    // Executor default
-    // -------------------------------------------------------------------------
-
-    [Fact]
-    public void Executor_DefaultMatchesIAgentExecutorDefault()
-    {
-        var info = CreateInfo();
-        info.Executor.ShouldBe(AgentExecutorName.Claude);
-    }
-
-    [Fact]
-    public void UpdateMetadata_WhenExecutorProvided_StoresSupportedExecutor()
-    {
-        var info = CreateInfo();
-
-        info.UpdateMetadata("My Agent", "Assistant", "Handles agent workflows", "sonnet", AgentExecutorName.Anthropic, []);
-
-        info.Executor.ShouldBe(AgentExecutorName.Anthropic);
-    }
-
-    [Fact]
-    public void SetLastError_WhenProvided_StoresMessageAndTimestamp()
-    {
-        var occurredAt = DateTime.UtcNow;
-        var info = CreateInfo();
-
-        info.SetLastError("Unsupported Ollama tools", occurredAt);
-
-        info.LastError.ShouldBe("Unsupported Ollama tools");
-        info.LastErrorAt.ShouldBe(occurredAt);
-    }
-
-    [Fact]
-    public void SetLastError_WhenCleared_RemovesTimestamp()
-    {
-        var info = CreateInfo();
-        info.SetLastError("Unsupported Ollama tools", DateTime.UtcNow);
-
-        info.SetLastError(null, DateTime.UtcNow);
-
+        var info = CreateIdle();
         info.LastError.ShouldBeNull();
         info.LastErrorAt.ShouldBeNull();
     }
 
+    // ── AgentInfoRunning ─────────────────────────────────────────────────────
+
     [Fact]
-    public void Constructor_WhenNameMissing_ThrowsArgumentException()
+    public void AgentInfoRunning_Status_IsRunning()
     {
-        Should.Throw<ArgumentException>(() => new AgentInfo(
-            slug: new AgentSlug("my-agent"),
-            name: " ",
-            role: "Assistant",
-            description: "Handles agent workflows"));
+        var info = CreateIdle() with { } as AgentInfo;
+        var running = new AgentInfoRunning
+        {
+            Slug = new AgentSlug("my-agent"), Name = "My Agent", Role = "Assistant",
+            Description = "Handles agent workflows", Model = "sonnet",
+            Executor = AgentExecutorName.Default, Skills = [], ThinkingLevel = default,
+            InboxCount = 0, StartedAt = DateTime.UtcNow,
+        };
+
+        running.Status.IsRunning.ShouldBeTrue();
     }
 
     [Fact]
-    public void SetInboxCount_WhenNegative_ThrowsArgumentOutOfRangeException()
+    public void AgentInfoRunning_LastRunAt_ReturnsStartedAt()
     {
-        var info = CreateInfo();
+        var now     = DateTime.UtcNow;
+        var running = new AgentInfoRunning
+        {
+            Slug = new AgentSlug("my-agent"), Name = "My Agent", Role = "Assistant",
+            Description = "", Model = "sonnet", Executor = AgentExecutorName.Default,
+            Skills = [], ThinkingLevel = default, InboxCount = 0, StartedAt = now,
+        };
 
-        Should.Throw<ArgumentOutOfRangeException>(() => info.SetInboxCount(-1));
+        running.LastRunAt.ShouldBe(now);
+        running.StartedAt.ShouldBe(now);
+    }
+
+    // ── AgentInfoFailed ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void AgentInfoFailed_Status_IsError()
+    {
+        var failed = new AgentInfoFailed
+        {
+            Slug = new AgentSlug("my-agent"), Name = "My Agent", Role = "Assistant",
+            Description = "", Model = "sonnet", Executor = AgentExecutorName.Default,
+            Skills = [], ThinkingLevel = default, InboxCount = 0,
+            Failure = new AgentFailure("Something broke", DateTime.UtcNow),
+        };
+
+        failed.Status.IsError.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void AgentInfoFailed_FailureAlwaysPresent()
+    {
+        var occurredAt = DateTime.UtcNow;
+        var failed = new AgentInfoFailed
+        {
+            Slug = new AgentSlug("my-agent"), Name = "My Agent", Role = "Assistant",
+            Description = "", Model = "sonnet", Executor = AgentExecutorName.Default,
+            Skills = [], ThinkingLevel = default, InboxCount = 0,
+            Failure = new AgentFailure("Unsupported Ollama tools", occurredAt),
+        };
+
+        failed.Failure.Error.ShouldBe("Unsupported Ollama tools");
+        failed.Failure.OccurredAt.ShouldBe(occurredAt);
+        failed.LastError.ShouldBe("Unsupported Ollama tools");
+        failed.LastErrorAt.ShouldBe(occurredAt);
+    }
+
+    // ── with expressions ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void WithExpression_CanUpdateInboxCount()
+    {
+        var info    = CreateIdle();
+        var updated = info with { InboxCount = 5 };
+
+        updated.InboxCount.ShouldBe(5);
+        info.InboxCount.ShouldBe(0); // original unchanged
+    }
+
+    [Fact]
+    public void WithExpression_CanSetFailover()
+    {
+        var info    = CreateIdle();
+        var failover = new AgentFailover(AgentExecutorName.Anthropic, DateTime.UtcNow);
+        var updated  = info with { Failover = failover };
+
+        updated.Failover.ShouldBe(failover);
+        info.Failover.ShouldBeNull(); // original unchanged
     }
 }

@@ -1,7 +1,17 @@
 namespace AiDev.Features.Agent;
 
+/// <summary>
+/// Composes agent templates by expanding named partial includes.
+/// </summary>
 public partial class TemplateComposer
 {
+    /// <summary>
+    /// Replaces all partial include markers in the template with the provided partial content.
+    /// </summary>
+    /// <param name="template">The template text to compose.</param>
+    /// <param name="partials">The partial content keyed by partial name.</param>
+    /// <returns>The composed template text.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the template references an unknown partial.</exception>
     public string Compose(string template, IReadOnlyDictionary<string, string> partials)
     {
         foreach (var (key, content) in partials)

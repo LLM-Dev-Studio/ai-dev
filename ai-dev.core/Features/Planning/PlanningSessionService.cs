@@ -21,7 +21,7 @@ namespace AiDev.Features.Planning;
 ///       Solution.dsl
 ///       Plan.dsl
 /// </summary>
-public sealed class PlanningSessionService(
+public sealed partial class PlanningSessionService(
     WorkspacePaths paths,
     AtomicFileWriter fileWriter,
     ILogger<PlanningSessionService> logger) : IPlanningSessionService
@@ -62,8 +62,7 @@ public sealed class PlanningSessionService(
 
         await SaveMetadataAsync(projectSlug, sessionId, metadata, ct).ConfigureAwait(false);
 
-        logger.LogInformation("[planning] Created session {SessionId} for project {ProjectSlug}",
-            sessionId, projectSlug.Value);
+        LogCreatedSession(sessionId, projectSlug.Value);
 
         return metadata;
     }
@@ -112,9 +111,7 @@ public sealed class PlanningSessionService(
 
     public IReadOnlyList<ConversationTurn> GetConversationForPhase(
         ProjectSlug projectSlug, SessionId sessionId, SessionPhase phase)
-        => GetConversation(projectSlug, sessionId)
-            .Where(t => t.Phase == phase)
-            .ToList();
+        => [.. GetConversation(projectSlug, sessionId).Where(t => t.Phase == phase)];
 
     public async Task AppendTurnAsync(
         ProjectSlug projectSlug, SessionId sessionId, ConversationTurn turn, CancellationToken ct = default)
@@ -146,8 +143,32 @@ public sealed class PlanningSessionService(
         paths.PlanningSessionDraftsDir(projectSlug, sessionId).Create();
         await WriteYamlAsync(draftPath.Value, yamlContent, ct).ConfigureAwait(false);
 
-        logger.LogDebug("[planning] Saved draft {Phase} DSL for session {SessionId}", phase, sessionId);
+        LogSavedDraftDsl(phase, sessionId);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[planning] Created session {SessionId} for project {ProjectSlug}")]
+    private partial void LogCreatedSession(SessionId sessionId, string projectSlug);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[planning] Saved draft {Phase} DSL for session {SessionId}")]
+    private partial void LogSavedDraftDsl(SessionPhase phase, SessionId sessionId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[planning] Solution.dsl validation failed for session {SessionId}: {Errors}")]
+    private partial void LogSolutionDslValidationFailed(SessionId sessionId, string errors);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[planning] Attempt to overwrite locked {Phase} DSL for session {SessionId} — rejected")]
+    private partial void LogAttemptToOverwriteLockedDsl(SessionPhase phase, SessionId sessionId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[planning] Failed to read locked {Phase} DSL for session {SessionId}")]
+    private partial void LogFailedToReadLockedDsl(Exception ex, SessionPhase phase, SessionId sessionId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[planning] Failed to read draft {Phase} DSL for session {SessionId}")]
+    private partial void LogFailedToReadDraftDsl(Exception ex, SessionPhase phase, SessionId sessionId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[planning] Session directory created with user-only permissions: {Path}")]
+    private partial void LogSessionDirectoryPermissionsApplied(string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[planning] Could not set user-only ACL on session directory {Path} — proceeding without ACL")]
+    private partial void LogSessionDirectoryAclFailed(Exception ex, string path);
 
     public async Task<Result<Unit>> LockPhaseAsync(
         ProjectSlug projectSlug, SessionId sessionId, SessionPhase phase,
@@ -173,8 +194,7 @@ public sealed class PlanningSessionService(
             var validationResult = SolutionDslValidator.Validate(yamlContent);
             if (!validationResult.IsValid)
             {
-                logger.LogWarning("[planning] Solution.dsl validation failed for session {SessionId}: {Errors}",
-                    sessionId, string.Join("; ", validationResult.Errors.Select(e => e.Message)));
+                LogSolutionDslValidationFailed(sessionId, string.Join("; ", validationResult.Errors.Select(e => e.Message)));
                 return new Err<Unit>(SolutionDslInvalidError with
                 {
                     Message = string.Join(" | ", validationResult.Errors.Select(e => e.Message)),
@@ -188,8 +208,7 @@ public sealed class PlanningSessionService(
         if (lockedPath.Exists())
         {
             // Locked file already exists — reject silently to preserve immutability.
-            logger.LogWarning("[planning] Attempt to overwrite locked {Phase} DSL for session {SessionId} — rejected",
-                phase, sessionId);
+            LogAttemptToOverwriteLockedDsl(phase, sessionId);
             return new Err<Unit>(PhaseAlreadyLockedError);
         }
 
@@ -220,9 +239,15 @@ public sealed class PlanningSessionService(
 
         await SaveMetadataAsync(projectSlug, sessionId, metadata, ct).ConfigureAwait(false);
 
-        logger.LogInformation("[planning] Locked {Phase} for session {SessionId}", phase, sessionId);
+        LogLockedPhase(phase, sessionId);
         return new Ok<Unit>(Unit.Value);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[planning] Locked {Phase} for session {SessionId}")]
+    private partial void LogLockedPhase(SessionPhase phase, SessionId sessionId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[planning] Failed to lock {Phase} for session {SessionId}: {Error}")]
+    private partial void LogFailedToLockPhase(SessionPhase phase, SessionId sessionId, string error);
 
     public async Task UpdateTokenCountAsync(
         ProjectSlug projectSlug, SessionId sessionId, SessionPhase phase,
@@ -244,7 +269,7 @@ public sealed class PlanningSessionService(
         try { return File.ReadAllText(path.Value, Encoding.UTF8); }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[planning] Failed to read locked {Phase} DSL for session {SessionId}", phase, sessionId);
+            LogFailedToReadLockedDsl(ex, phase, sessionId);
             return null;
         }
     }
@@ -256,7 +281,7 @@ public sealed class PlanningSessionService(
         try { return File.ReadAllText(path.Value, Encoding.UTF8); }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[planning] Failed to read draft {Phase} DSL for session {SessionId}", phase, sessionId);
+            LogFailedToReadDraftDsl(ex, phase, sessionId);
             return null;
         }
     }
@@ -323,9 +348,12 @@ public sealed class PlanningSessionService(
         await File.WriteAllTextAsync(filePath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), ct)
             .ConfigureAwait(false);
 
-        logger.LogInformation("[planning] Created EC-4 escalation decision file: {FilePath}", filePath);
+        LogCreatedEc4EscalationDecisionFile(filePath);
         return filePath;
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[planning] Created EC-4 escalation decision file: {FilePath}")]
+    private partial void LogCreatedEc4EscalationDecisionFile(string filePath);
 
     // -------------------------------------------------------------------------
     // Private helpers
@@ -352,10 +380,13 @@ public sealed class PlanningSessionService(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[planning] Failed to read session metadata from {Path}", filePath);
+            LogFailedToReadSessionMetadata(filePath, ex.Message);
             return null;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[planning] Failed to read session metadata from {Path}: {Error}")]
+    private partial void LogFailedToReadSessionMetadata(string path, string error);
 
     private static IReadOnlyList<ConversationTurn> ReadConversation(string filePath)
     {
@@ -407,12 +438,12 @@ public sealed class PlanningSessionService(
                 AccessControlType.Allow));
 
             dirInfo.SetAccessControl(dirSecurity);
-            logger.LogInformation("[planning] Session directory created with user-only permissions: {Path}", directoryPath);
+            LogSessionDirectoryPermissionsApplied(directoryPath);
         }
         catch (Exception ex)
         {
             // Non-critical: log warning and continue (e.g. network drives do not support ACLs).
-            logger.LogWarning(ex, "[planning] Could not set user-only ACL on session directory {Path} — proceeding without ACL", directoryPath);
+            LogSessionDirectoryAclFailed(ex, directoryPath);
         }
     }
 

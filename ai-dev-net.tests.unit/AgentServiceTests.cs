@@ -67,10 +67,9 @@ public class AgentServiceTests
 
         var agent = service.LoadAgent(projectSlug, agentSlug);
 
-        agent.ShouldNotBeNull();
-        agent!.Status.IsError.ShouldBeTrue();
-        agent.LastError!.ShouldContain("does not support workspace tools");
-        agent.LastErrorAt.ShouldBe(errorAt);
+        var failed = agent.ShouldBeOfType<AgentInfoFailed>();
+        failed.Failure.Error.ShouldContain("does not support workspace tools");
+        failed.Failure.OccurredAt.ShouldBe(errorAt);
     }
 
     [Fact]

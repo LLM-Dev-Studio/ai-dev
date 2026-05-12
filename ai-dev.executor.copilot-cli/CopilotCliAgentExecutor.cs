@@ -39,7 +39,7 @@ namespace AiDev.Executors;
 ///   counter in the final <c>result.usage</c>. We sum output tokens across messages and
 ///   leave input at zero.
 /// </summary>
-public class CopilotCliAgentExecutor(ILogger<CopilotCliAgentExecutor> logger) : IAgentExecutor
+public partial class CopilotCliAgentExecutor(ILogger<CopilotCliAgentExecutor> logger) : IAgentExecutor
 {
     public AgentExecutorName Name => AgentExecutorName.CopilotCli;
     public string DisplayName => "Copilot CLI";
@@ -159,19 +159,19 @@ public class CopilotCliAgentExecutor(ILogger<CopilotCliAgentExecutor> logger) : 
             if (!isRateLimited && IsRateLimitLine(e.Data))
             {
                 isRateLimited = true;
-                logger.LogWarning("[copilot] Rate limit detected in output");
+                LogRateLimitDetected();
             }
 
             var (visibleText, usage, failure) = ParseJsonLine(e.Data);
 
             if (failure is not null)
             {
-                logger.LogError("[copilot] {FailureMessage}", failure);
+                LogOutputFailure(failure);
                 Interlocked.CompareExchange(ref errorMessage, failure, null);
             }
             else
             {
-                logger.LogDebug("[copilot] {Line}", e.Data);
+                LogOutputLine(e.Data);
             }
 
             if (usage != null)
@@ -191,12 +191,12 @@ public class CopilotCliAgentExecutor(ILogger<CopilotCliAgentExecutor> logger) : 
 
             if (IsBenignStderrLine(e.Data))
             {
-                logger.LogDebug("[copilot] [stderr/warn] {Line}", e.Data);
+                LogStderrWarn(e.Data);
                 return;
             }
 
             var failureMessage = $"stderr: {e.Data}";
-            logger.LogError("[copilot] {FailureMessage}", failureMessage);
+            LogStderrFailure(failureMessage);
             Interlocked.CompareExchange(ref errorMessage, failureMessage, null);
             output.TryWrite($"[{DateTime.UtcNow:o}] [stderr] {e.Data}");
         };
@@ -220,7 +220,7 @@ public class CopilotCliAgentExecutor(ILogger<CopilotCliAgentExecutor> logger) : 
                 if (silentFor.TotalSeconds >= StallCheckInterval)
                 {
                     var msg = $"[stall-check] no output for {silentFor.TotalMinutes:F0}m — process PID={process.Id} still running";
-                    logger.LogWarning("[copilot] {Message}", msg);
+                    LogStallDetected(msg);
                     output.TryWrite($"[{DateTime.UtcNow:o}] {msg}");
                     context.ReportWarning?.Invoke(msg);
                 }
@@ -492,4 +492,26 @@ public class CopilotCliAgentExecutor(ILogger<CopilotCliAgentExecutor> logger) : 
         // session.*, user.*, assistant.turn_* and unknown events — suppress.
         return (null, null, null);
     }
+
+    // -------------------------------------------------------------------------
+    // Logger messages
+    // -------------------------------------------------------------------------
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[copilot] Rate limit detected in output")]
+    private partial void LogRateLimitDetected();
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[copilot] {FailureMessage}")]
+    private partial void LogOutputFailure(string failureMessage);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[copilot] {Line}")]
+    private partial void LogOutputLine(string line);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[copilot] [stderr/warn] {Line}")]
+    private partial void LogStderrWarn(string line);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[copilot] {FailureMessage}")]
+    private partial void LogStderrFailure(string failureMessage);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[copilot] {Message}")]
+    private partial void LogStallDetected(string message);
 }

@@ -1,17 +1,7 @@
 namespace AiDev.Models;
 
+/// <summary>
+/// Base type for domain events raised by aggregates and services.
+/// </summary>
+/// <param name="OccurredAt">The UTC timestamp when the event occurred.</param>
 public abstract record DomainEvent(DateTime OccurredAt);
-
-public sealed record TaskAssigned(
-    ProjectSlug ProjectSlug,
-    TaskId TaskId,
-    AgentSlug Assignee,
-    string Title,
-    string? Description,
-    Priority Priority,
-    DateTime OccurredAt) : DomainEvent(OccurredAt);
-
-public sealed record DecisionResolved(
-    DecisionId DecisionId,
-    string ResolvedBy,
-    DateTime OccurredAt) : DomainEvent(OccurredAt);

@@ -7,8 +7,15 @@ namespace AiDev.Models.Types;
 [JsonConverter(typeof(ProjectSlugJsonConverter))]
 public sealed partial record ProjectSlug : IParsable<ProjectSlug>
 {
+    /// <summary>
+    /// Gets the validated slug value.
+    /// </summary>
     public string Value { get; }
 
+    /// <summary>
+    /// Initializes a project slug from a validated value.
+    /// </summary>
+    /// <param name="value">The project slug value.</param>
     public ProjectSlug(string value)
     {
         if (!IsValid(value))
@@ -18,6 +25,12 @@ public sealed partial record ProjectSlug : IParsable<ProjectSlug>
         Value = value;
     }
 
+    /// <summary>
+    /// Attempts to parse a validated project slug.
+    /// </summary>
+    /// <param name="value">The raw slug value.</param>
+    /// <param name="slug">The parsed slug when successful.</param>
+    /// <returns><see langword="true"/> when parsing succeeds; otherwise, <see langword="false"/>.</returns>
     public static bool TryParse(string? value, [NotNullWhen(true)] out ProjectSlug? slug)
     {
         if (!IsValid(value)) { slug = null; return false; }
@@ -30,7 +43,7 @@ public sealed partial record ProjectSlug : IParsable<ProjectSlug>
     static bool IParsable<ProjectSlug>.TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, [MaybeNullWhen(false)] out ProjectSlug result)
         => TryParse(s, out result);
 
-    public static implicit operator string(ProjectSlug slug) => slug.Value;
+    public static implicit operator string(ProjectSlug slug) => slug?.Value ?? string.Empty;
     public static implicit operator ProjectSlug(string value) => new(value);
 
     public override string ToString() => Value;
@@ -44,16 +57,4 @@ public sealed partial record ProjectSlug : IParsable<ProjectSlug>
 
     [System.Text.RegularExpressions.GeneratedRegex(@"^[a-z0-9][a-z0-9\-]*[a-z0-9]$")]
     private static partial System.Text.RegularExpressions.Regex SlugPattern();
-}
-
-internal sealed class ProjectSlugJsonConverter : JsonConverter<ProjectSlug>
-{
-    public override ProjectSlug? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        var value = reader.GetString();
-        return ProjectSlug.TryParse(value, out var slug) ? slug : null;
-    }
-
-    public override void Write(Utf8JsonWriter writer, ProjectSlug value, JsonSerializerOptions options)
-        => writer.WriteStringValue(value.Value);
 }

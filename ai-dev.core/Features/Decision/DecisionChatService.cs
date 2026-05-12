@@ -7,7 +7,7 @@ namespace AiDev.Features.Decision;
 /// Chat history is persisted as append-only JSONL at decisions/chats/{decisionId}.jsonl.
 /// Human messages are routed into the agent's inbox; agent replies arrive via outbox.
 /// </summary>
-public class DecisionChatService(
+public partial class DecisionChatService(
     WorkspacePaths paths,
     IAgentRunnerService runner,
     AgentInboxService inbox,
@@ -30,11 +30,11 @@ public class DecisionChatService(
         }
         catch (IOException ex)
         {
-            logger.LogDebug(ex, "[decision-chat] Failed to read chat for {DecisionId}", decisionId);
+            LogReadChatFailed(ex, decisionId);
         }
         catch (UnauthorizedAccessException ex)
         {
-            logger.LogWarning(ex, "[decision-chat] Failed to read chat for {DecisionId}", decisionId);
+            LogReadChatUnauthorized(ex, decisionId);
         }
 
         return [];
@@ -77,7 +77,7 @@ public class DecisionChatService(
 
         if (inboxResult is Err<Unit> inboxErr)
         {
-            logger.LogWarning("[decision-chat] Inbox write failed for {DecisionId}: {Error}", decisionId, inboxErr.Error.Message);
+            LogInboxWriteFailed(decisionId, inboxErr.Error.Message);
             return $"Failed to deliver message to agent: {inboxErr.Error.Message}";
         }
 
@@ -139,7 +139,7 @@ public class DecisionChatService(
                 var appendError = AppendMessage(projectSlug, decisionId, msg);
                 if (appendError != null)
                 {
-                    logger.LogWarning("[decision-chat] Failed to append agent reply: {Error}", appendError);
+                    LogAppendAgentReplyFailed(appendError);
                     // Move back to outbox so it can be retried.
                     try { File.Move(claimedPath, file); } catch { /* best-effort */ }
                     claimedPath = null;
@@ -155,7 +155,7 @@ public class DecisionChatService(
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "[decision-chat] Error processing outbox file {File}", file);
+                LogOutboxFileProcessingError(ex, file);
                 // Return claimed file to outbox on unexpected error.
                 if (claimedPath != null && File.Exists(claimedPath))
                     try { File.Move(claimedPath, file); } catch { /* best-effort */ }
@@ -183,7 +183,7 @@ public class DecisionChatService(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "[decision-chat] Failed to append message to {DecisionId}", decisionId);
+            LogAppendMessageFailed(ex, decisionId);
             return ex.Message;
         }
     }
@@ -216,12 +216,32 @@ public class DecisionChatService(
             }
             catch (JsonException ex)
             {
-                logger.LogWarning(ex, "[decision-chat] Failed to parse chat history for {DecisionId}; returning {MessageCount} message(s)",
-                    decisionId, messages.Count);
+                LogParseChatHistoryFailed(ex, decisionId, messages.Count);
                 break;
             }
         }
 
         return messages;
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[decision-chat] Failed to read chat for {DecisionId}")]
+    private partial void LogReadChatFailed(Exception ex, DecisionId decisionId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[decision-chat] Failed to read chat for {DecisionId}")]
+    private partial void LogReadChatUnauthorized(Exception ex, DecisionId decisionId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[decision-chat] Inbox write failed for {DecisionId}: {Error}")]
+    private partial void LogInboxWriteFailed(DecisionId decisionId, string error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[decision-chat] Failed to append agent reply: {Error}")]
+    private partial void LogAppendAgentReplyFailed(string error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[decision-chat] Error processing outbox file {File}")]
+    private partial void LogOutboxFileProcessingError(Exception ex, string file);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[decision-chat] Failed to append message to {DecisionId}")]
+    private partial void LogAppendMessageFailed(Exception ex, DecisionId decisionId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[decision-chat] Failed to parse chat history for {DecisionId}; returning {MessageCount} message(s)")]
+    private partial void LogParseChatHistoryFailed(Exception ex, DecisionId decisionId, int messageCount);
 }

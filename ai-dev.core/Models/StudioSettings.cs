@@ -1,7 +1,13 @@
 namespace AiDev.Models;
 
+/// <summary>
+/// Represents persisted application settings for executor and model configuration.
+/// </summary>
 public class StudioSettings
 {
+    /// <summary>
+    /// Gets or sets legacy model aliases retained only for migration.
+    /// </summary>
     public Dictionary<string, string> Models { get; set; } = new();  // Legacy — kept for migration only; not used for model resolution.
 
     /// <summary>Base URL for the Ollama HTTP API. Defaults to http://localhost:11434.</summary>

@@ -9,7 +9,7 @@ namespace AiDev.Features.Agent;
 /// Selects the appropriate IAgentExecutor, builds the ExecutorContext (prompt, skills, model),
 /// streams output to a transcript file, and handles inbox archiving and rate-limit suppression.
 /// </summary>
-public class AgentRunnerService(
+public partial class AgentRunnerService(
     WorkspacePaths paths,
     ModelResolver modelResolver,
     AgentStatusWriter statusWriter,
@@ -59,17 +59,27 @@ public class AgentRunnerService(
     public bool IsRunning(ProjectSlug projectSlug, AgentSlug agentSlug) =>
         _sessions.ContainsKey(Key(projectSlug, agentSlug));
 
+/// <summary>
+/// Returns true if the specified agent is currently rate-limited, meaning it has recently hit a rate limit and should suppress launches until the cooldown expires. Rate-limited agents are not automatically re-launched when new inbox messages arrive, but they can be manually launched by the user and will check the rate limit again at that time.
+/// </summary>
+/// <param name="projectSlug">The slug of the project.</param>
+/// <param name="agentSlug">The slug of the agent.</param>
+/// <returns>True if the agent is rate-limited; otherwise, false.</returns>
     public bool IsRateLimited(ProjectSlug projectSlug, AgentSlug agentSlug) =>
         _rateLimitedUntil.TryGetValue(Key(projectSlug, agentSlug), out var until) && DateTime.UtcNow < until;
 
+/// <summary>
+/// Gets a list of currently running agent sessions, including their project slug, agent slug, process ID, and start time. This can be used to display active sessions in the UI or for monitoring purposes.
+/// </summary>
+/// <returns>A list of running sessions.</returns>
     public IReadOnlyList<RunningSession> GetRunningSessions() =>
-        _sessions.Values.Select(s => new RunningSession
+        [.. _sessions.Values.Select(s => new RunningSession
         {
             ProjectSlug = s.ProjectSlug,
             AgentSlug = s.AgentSlug,
             Pid = s.Pid,
             StartedAt = s.StartedAt,
-        }).ToList();
+        })];
 
     /// <summary>
     /// Resets any agent.json still showing status="running" that has no live session in
@@ -90,12 +100,10 @@ public class AgentRunnerService(
                 try
                 {
                     var info = agentService.LoadAgent(project, slug);
-                    if (info?.Status != AgentStatus.Running) continue;
+                    if (info is not AgentInfoRunning) continue;
                     if (_sessions.ContainsKey(Key(project, slug))) continue;
 
-                    logger.LogWarning(
-                        "[runner] Recovering stale running state for {Project}/{Agent} — resetting to idle",
-                        project.Value, slug.Value);
+                    LogRecoveringStaleSession(project.Value, slug.Value);
 
                     await statusWriter.UpdateAsync(agentDir, new()
                     {
@@ -107,13 +115,11 @@ public class AgentRunnerService(
                 }
                 catch (Exception ex)
                 {
-                    logger.LogWarning(ex, "[runner] Failed to inspect agent {Project}/{Agent} during stale-session recovery",
-                        project.Value, slug.Value);
+                    LogStaleSessionRecoveryFailed(ex, project.Value, slug.Value);
                 }
             }
         }
     }
-
 
     /// Launches an agent. Returns false if already running or rate-limited.
     /// The process runs in the background — this method returns quickly.
@@ -123,13 +129,13 @@ public class AgentRunnerService(
         var key = Key(projectSlug, agentSlug);
         if (_sessions.ContainsKey(key))
         {
-            logger.LogInformation("[runner] Agent already running: {Key}", key);
+            LogAgentAlreadyRunning(key);
             return false;
         }
 
         if (_rateLimitedUntil.TryGetValue(key, out var until) && DateTime.UtcNow < until)
         {
-            logger.LogInformation("[runner] Agent rate-limited until {Until}, skipping launch: {Key}", until, key);
+            LogAgentRateLimitedSkippingLaunch(until, key);
             return false;
         }
 
@@ -157,7 +163,7 @@ public class AgentRunnerService(
             .ContinueWith(t =>
             {
                 var ex = t.Exception?.InnerException ?? t.Exception;
-                logger.LogError(ex, "[runner] RunSessionAsync faulted for {Key} before session try-catch", key);
+                LogRunSessionFaulted(ex, key);
                 _sessions.TryRemove(key, out _);
 
                 // Best-effort status update so the UI shows the error.
@@ -183,7 +189,7 @@ public class AgentRunnerService(
     {
         var key = Key(projectSlug, agentSlug);
         if (!_sessions.TryGetValue(key, out var info)) return false;
-        logger.LogInformation("[runner] Stopping agent: {Key}", key);
+        LogStoppingAgent(key);
         info.Cts.Cancel();
         projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Agents);
 
@@ -192,7 +198,7 @@ public class AgentRunnerService(
         // agent can be re-launched.
         if (info.Pid == 0)
         {
-            logger.LogWarning("[runner] Session {Key} has no PID — forcibly removing orphaned session", key);
+            LogOrphanedSessionRemoved(key);
             _sessions.TryRemove(key, out _);
 
             var agentDir = paths.AgentDir(projectSlug, agentSlug);
@@ -233,7 +239,7 @@ public class AgentRunnerService(
         var loadedInfo = agentService.LoadAgent(projectSlug, agentSlug);
         if (loadedInfo == null)
         {
-            logger.LogError("[runner] Agent {Key} has missing or malformed agent.json; aborting launch", key);
+            LogAgentJsonMissingOrMalformed(key);
             await statusWriter.UpdateAsync(agentDir, new()
             {
                 ["lastError"] = "Missing or malformed agent.json; cannot determine executor and model.",
@@ -254,8 +260,7 @@ public class AgentRunnerService(
         if (!_executors.TryGetValue(executorName, out var resolvedExecutor))
         {
             var available = string.Join(", ", _executors.Keys);
-            logger.LogError("[runner] Agent {Key} requested executor '{Executor}' which is not registered. Available: {Available}",
-                key, executorName.Value, available);
+            LogExecutorNotRegistered(key, executorName.Value, available);
             await statusWriter.UpdateAsync(agentDir, new()
             {
                 ["lastError"] = $"Executor '{executorName.Value}' is not registered. Available: {available}",
@@ -272,9 +277,7 @@ public class AgentRunnerService(
         // health checks run, so this is advisory only — we do not block launch.
         if (modelRegistry.Find(executorName, modelId) == null)
         {
-            logger.LogWarning("[runner] Agent {Key}: model '{Model}' is not registered for executor '{Executor}'. " +
-                "This may cause a runtime failure if the model does not exist.",
-                key, modelId, executorName.Value);
+            LogModelNotRegistered(key, modelId, executorName.Value);
         }
 
         await statusWriter.UpdateAsync(agentDir, new()
@@ -311,8 +314,8 @@ public class AgentRunnerService(
         // trigger a relaunch via completionProcessor.
         if (Directory.Exists(inboxDir))
         {
-            try { inboxSnapshot = Directory.GetFiles(inboxDir, "*.md").Select(Path.GetFileName).OfType<string>().OrderBy(f => f).ToArray(); }
-            catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to read inbox directory {InboxDir}", inboxDir); }
+            try { inboxSnapshot = [.. Directory.GetFiles(inboxDir, "*.md").Select(Path.GetFileName).OfType<string>().OrderBy(f => f)]; }
+            catch (Exception ex) { LogReadInboxDirectoryFailed(ex, inboxDir); }
         }
 
         // Build prompt: inject KB context and playbook before the standard instruction.
@@ -344,9 +347,9 @@ public class AgentRunnerService(
             {
                 info.Pid = pid;
                 _ = statusWriter.UpdateAsync(agentDir, new() { ["pid"] = pid })
-                    .ContinueWith(t => logger.LogWarning(t.Exception, "[runner] Failed to write PID for {Key}", key),
+                    .ContinueWith(t => LogWritePidFailed(t.Exception, key),
                         CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
-                logger.LogInformation("[runner] Launched {Key} PID={Pid}", key, pid);
+                LogLaunchedWithPid(key, pid);
                 activity?.SetTag("agent.pid", pid);
                 activity?.AddEvent(new("process.started"));
             },
@@ -355,7 +358,7 @@ public class AgentRunnerService(
             Secrets: secrets.Count > 0 ? secrets : null,
             ReportWarning: warning =>
             {
-                logger.LogWarning("[runner] {Key}: {Warning}", key, warning);
+                LogAgentWarning(key, warning);
                 _ = statusWriter.UpdateAsync(agentDir, new() { ["lastWarning"] = warning });
             });
 
@@ -404,7 +407,7 @@ public class AgentRunnerService(
                     ? $"Agent exited with code {exitCode}."
                     : sessionError;
 
-                logger.LogError("[runner] Agent {Key} failed with exit code {Code}: {Error}", key, exitCode, sessionError);
+                LogAgentFailedWithExitCode(key, exitCode, sessionError);
                 activity?.SetTag("agent.error", true);
                 activity?.SetTag("agent.errorMessage", sessionError);
                 activity?.SetStatus(ActivityStatusCode.Error, sessionError);
@@ -414,7 +417,7 @@ public class AgentRunnerService(
         catch (OperationCanceledException)
         {
             exitCode = 130;
-            logger.LogInformation("[runner] Agent {Key} cancelled", key);
+            LogAgentCancelled(key);
             activity?.SetTag("agent.cancelled", true);
             activity?.AddEvent(new("process.cancelled"));
         }
@@ -422,7 +425,7 @@ public class AgentRunnerService(
         {
             exitCode = 1;
             sessionError = ex.Message;
-            logger.LogError(ex, "[runner] Agent {Key} error", key);
+            LogAgentError(ex, key);
             activity?.SetTag("agent.error", true);
             activity?.SetTag("agent.errorMessage", ex.Message);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
@@ -445,11 +448,11 @@ public class AgentRunnerService(
             outputChannel.Writer.TryWrite($"## Session ended at {exitedAt:o} (exit code: {exitCode})");
             outputChannel.Writer.TryComplete();
             try { await consumerTask; }
-            catch (Exception ex) { logger.LogWarning(ex, "[runner] Transcript flush faulted for {Key}", key); }
+            catch (Exception ex) { LogTranscriptFlushFaulted(ex, key); }
 
             activity?.SetTag("agent.finishedAt", exitedAt.ToString("o"));
             activity?.AddEvent(new("session.finished"));
-            logger.LogInformation("[runner] Agent {Key} finished (exit={Code}) at {Time}", key, exitCode, exitedAt);
+            LogAgentFinished(key, exitCode, exitedAt);
 
             // Write final status to agent.json — wrapped so a disk error can't abort
             // inbox archival or the relaunch check below.
@@ -483,9 +486,7 @@ public class AgentRunnerService(
             {
                 var suppressUntil = DateTime.UtcNow.AddMinutes(30);
                 _rateLimitedUntil[key] = suppressUntil;
-                logger.LogWarning(
-                    "[runner] Agent {Key} hit a rate limit — inbox NOT archived, launches suppressed until {Until}",
-                    key, suppressUntil);
+                LogAgentRateLimited(key, suppressUntil);
             }
             else
             {
@@ -521,4 +522,64 @@ public class AgentRunnerService(
         if (!string.IsNullOrWhiteSpace(trigger.MessageFile))
             activity.SetTag("message.file", trigger.MessageFile);
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Recovering stale running state for {Project}/{Agent} — resetting to idle")]
+    private partial void LogRecoveringStaleSession(string project, string agent);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Failed to inspect agent {Project}/{Agent} during stale-session recovery")]
+    private partial void LogStaleSessionRecoveryFailed(Exception ex, string project, string agent);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Agent already running: {Key}")]
+    private partial void LogAgentAlreadyRunning(string key);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Agent rate-limited until {Until}, skipping launch: {Key}")]
+    private partial void LogAgentRateLimitedSkippingLaunch(DateTime until, string key);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[runner] RunSessionAsync faulted for {Key} before session try-catch")]
+    private partial void LogRunSessionFaulted(Exception? ex, string key);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Stopping agent: {Key}")]
+    private partial void LogStoppingAgent(string key);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Session {Key} has no PID — forcibly removing orphaned session")]
+    private partial void LogOrphanedSessionRemoved(string key);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[runner] Agent {Key} has missing or malformed agent.json; aborting launch")]
+    private partial void LogAgentJsonMissingOrMalformed(string key);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[runner] Agent {Key} requested executor '{Executor}' which is not registered. Available: {Available}")]
+    private partial void LogExecutorNotRegistered(string key, string executor, string available);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Agent {Key}: model '{Model}' is not registered for executor '{Executor}'. This may cause a runtime failure if the model does not exist.")]
+    private partial void LogModelNotRegistered(string key, string model, string executor);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Failed to read inbox directory {InboxDir}")]
+    private partial void LogReadInboxDirectoryFailed(Exception ex, string inboxDir);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Failed to write PID for {Key}")]
+    private partial void LogWritePidFailed(Exception? ex, string key);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Launched {Key} PID={Pid}")]
+    private partial void LogLaunchedWithPid(string key, int pid);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] {Key}: {Warning}")]
+    private partial void LogAgentWarning(string key, string warning);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[runner] Agent {Key} failed with exit code {Code}: {Error}")]
+    private partial void LogAgentFailedWithExitCode(string key, int code, string? error);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Agent {Key} cancelled")]
+    private partial void LogAgentCancelled(string key);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[runner] Agent {Key} error")]
+    private partial void LogAgentError(Exception ex, string key);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Transcript flush faulted for {Key}")]
+    private partial void LogTranscriptFlushFaulted(Exception ex, string key);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Agent {Key} finished (exit={Code}) at {Time}")]
+    private partial void LogAgentFinished(string key, int code, DateTime time);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Agent {Key} hit a rate limit — inbox NOT archived, launches suppressed until {Until}")]
+    private partial void LogAgentRateLimited(string key, DateTime until);
 }

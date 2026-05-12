@@ -89,7 +89,7 @@ internal sealed class LocalToolBroker : ILocalToolBroker
             request.ToolName,
             Succeeded: true,
             Summary: $"{entries.Count} item(s) in {Path.GetRelativePath(_root, dir)}",
-            Evidence: entries.Select(e => Path.Combine(dir, e)).Take(20).ToList());
+            Evidence: [.. entries.Select(e => Path.Combine(dir, e)).Take(20)]);
     }
 
     private async Task<ToolOutcome> GrepAsync(ToolRequest request, CancellationToken ct)

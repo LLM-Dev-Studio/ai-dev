@@ -4,6 +4,11 @@ using AiDev.Features.Workspace;
 
 namespace AiDev.Services;
 
+/// <summary>
+/// Represents the enhanced title and description generated for a task prompt.
+/// </summary>
+/// <param name="Title">The enhanced task title.</param>
+/// <param name="Description">The enhanced task description.</param>
 public record EnhanceResult(string Title, string Description);
 
 /// <summary>
@@ -18,6 +23,14 @@ public partial class PromptEnhancerService(
     WorkspacePaths paths,
     ILogger<PromptEnhancerService> logger)
 {
+    /// <summary>
+    /// Enhances a task title and description using project context and knowledge base content.
+    /// </summary>
+    /// <param name="projectSlug">The project whose context should be used.</param>
+    /// <param name="title">The original task title.</param>
+    /// <param name="description">The original task description.</param>
+    /// <param name="ct">The cancellation token for the operation.</param>
+    /// <returns>The enhanced result, or <see langword="null"/> when enhancement fails.</returns>
     public async Task<EnhanceResult?> EnhanceAsync(
         ProjectSlug projectSlug, string title, string description, CancellationToken ct = default)
     {
@@ -75,7 +88,7 @@ public partial class PromptEnhancerService(
 
             if (process.ExitCode != 0)
             {
-                logger.LogWarning("[enhancer] Claude exited {Code}. stderr: {Err}", process.ExitCode, stderr);
+                LogClaudeExitCode(process.ExitCode, stderr);
                 return null;
             }
 
@@ -85,7 +98,7 @@ public partial class PromptEnhancerService(
 
             if (jsonStart < 0 || jsonEnd <= jsonStart)
             {
-                logger.LogWarning("[enhancer] No JSON object found in output: {Raw}", raw);
+                LogNoJsonFound(raw);
                 return null;
             }
 
@@ -102,10 +115,19 @@ public partial class PromptEnhancerService(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[enhancer] Failed. stdout: {Out} stderr: {Err}", stdout, stderr);
+            LogEnhanceFailed(ex, stdout, stderr);
             return null;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[enhancer] Claude exited {Code}. stderr: {Err}")]
+    private partial void LogClaudeExitCode(int code, StringBuilder err);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[enhancer] No JSON object found in output: {Raw}")]
+    private partial void LogNoJsonFound(string raw);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[enhancer] Failed. stdout: {Out} stderr: {Err}")]
+    private partial void LogEnhanceFailed(Exception ex, StringBuilder @out, StringBuilder err);
 
     private static ProcessStartInfo BuildProcessStartInfo(string workingDir, string modelId)
     {

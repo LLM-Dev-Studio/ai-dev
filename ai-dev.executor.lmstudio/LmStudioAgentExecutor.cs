@@ -24,7 +24,7 @@ namespace AiDev.Executors;
 /// operations, appends results to the message history, and re-invokes the model — continuing
 /// until the model produces a final response with no further tool calls.
 /// </summary>
-public sealed class LmStudioAgentExecutor(
+public sealed partial class LmStudioAgentExecutor(
     IHttpClientFactory httpClientFactory,
     StudioSettingsService settingsService,
     ILogger<LmStudioAgentExecutor> logger) : IAgentExecutor
@@ -101,7 +101,7 @@ public sealed class LmStudioAgentExecutor(
                 }
                 catch (Exception ex)
                 {
-                    logger.LogDebug(ex, "[lmstudio-health] Failed to parse model list from {Url}", url);
+                    LogHealthParseModelListFailed(ex, url);
                 }
 
                 var message = discovered.Count > 0
@@ -116,7 +116,7 @@ public sealed class LmStudioAgentExecutor(
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "[lmstudio-health] Probe failed: {Message}", ex.Message);
+            LogHealthProbeFailed(ex, ex.Message);
             return new ExecutorHealthResult(false, $"Connection refused: {ex.Message}");
         }
     }
@@ -152,11 +152,15 @@ public sealed class LmStudioAgentExecutor(
             // LM Studio exposes both the loaded context window (for currently-loaded models) and
             // the model's maximum supported context. Prefer the loaded value — it reflects what
             // was actually allocated, which is what matters for preflight budget checks.
-            var contextWindow =
-                   TryGetInt32(m, "loaded_context_length")
-                ?? TryGetInt32(m, "max_context_length")
-                ?? TryGetInt32(m, "context_length")
-                ?? 0;
+            // When loaded_context_length is absent (model not yet loaded, or older LM Studio),
+            // we fall back to the architectural maximum — this can silently cause context starvation
+            // if the model is later JIT-loaded with LM Studio's default n_ctx (4096).
+            var loadedContext = TryGetInt32(m, "loaded_context_length");
+            var maxContext    = TryGetInt32(m, "max_context_length") ?? TryGetInt32(m, "context_length");
+            var contextWindow = loadedContext ?? maxContext ?? 0;
+
+            if (loadedContext == null && maxContext != null)
+                LogModelNoLoadedContextLength(id, maxContext.Value);
 
             if (contextWindow > 0)
                 _contextWindows[id] = contextWindow;
@@ -236,7 +240,7 @@ public sealed class LmStudioAgentExecutor(
             || (parsedUri.Scheme != Uri.UriSchemeHttp && parsedUri.Scheme != Uri.UriSchemeHttps))
         {
             var msg = $"LmStudioBaseUrl '{rawBaseUrl}' is not a valid http/https URL. Aborting.";
-            logger.LogError("[lmstudio] {Message}", msg);
+            LogInvalidBaseUrl(msg);
             output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
             return new ExecutorResult(1, ErrorMessage: msg);
         }
@@ -246,11 +250,8 @@ public sealed class LmStudioAgentExecutor(
         var enableTools   = LmStudioSkills.AreWorkspaceToolsEnabled(context.EnabledSkills);
         var workspaceRoot = enableTools ? DeriveWorkspaceRoot(context.WorkingDir) : null;
 
-        logger.LogInformation(
-            "[lmstudio] Starting session — model={Model} endpoint={Uri} tools={Tools}",
-            context.ModelId, requestUri, enableTools ? "enabled" : "disabled");
-        logger.LogInformation(
-            "[lmstudio] Trigger source={Source} reason={Reason} project={Project} task={TaskId} decision={DecisionId} message={MessageFile}",
+        LogSessionStarting(context.ModelId, requestUri, enableTools ? "enabled" : "disabled");
+        LogSessionTrigger(
             context.Trigger?.Source,
             context.Trigger?.Reason,
             context.Trigger?.ProjectSlug,
@@ -289,16 +290,14 @@ public sealed class LmStudioAgentExecutor(
             output.TryWrite(
                 $"[{DateTime.UtcNow:o}] [lmstudio] context_window={contextWindow} prompt_est={estimatedPromptTokens} max_output={maxOutputTokens} headroom={headroom} tier={promptTier}");
             if (headroom < 256)
-                logger.LogWarning(
-                    "[lmstudio] Low headroom: context_window={Ctx} prompt_est={Prompt} max_output={Out} headroom={Headroom} — reload '{Model}' with a larger context window",
-                    contextWindow, estimatedPromptTokens, maxOutputTokens, headroom, context.ModelId);
+                LogLowHeadroom(contextWindow, estimatedPromptTokens, maxOutputTokens, headroom, context.ModelId);
         }
 
         if (!TokenBudget.CanFitCompact(contextWindow, systemPrompt, maxOutputTokens))
         {
             var minRequired = TokenBudget.EstimateTokens(systemPrompt) + maxOutputTokens + TokenBudget.SafetyMargin;
             var refusal = SystemPromptLoader.BuildRefusalMessage(context.ModelId, contextWindow, minRequired);
-            logger.LogWarning("[lmstudio] {Refusal}", refusal);
+            LogContextWindowRefusal(refusal);
             output.TryWrite($"[{DateTime.UtcNow:o}] {refusal}");
             return new ExecutorResult(1, ErrorMessage: refusal, RequiresHumanDecision: true);
         }
@@ -334,7 +333,7 @@ public sealed class LmStudioAgentExecutor(
                 var msg = iteration == 1
                     ? exceeded.Error
                     : exceeded.Error + $" (after {iteration - 1} tool iteration(s))";
-                logger.LogError("[lmstudio] {Message}", msg);
+                LogPreflightExceeded(msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, Usage: totalUsage, ErrorMessage: msg, RequiresHumanDecision: true);
             }
@@ -356,7 +355,7 @@ public sealed class LmStudioAgentExecutor(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 var msg = $"Failed to connect to LM Studio at {requestUri}: {ex.Message}";
-                logger.LogError(ex, "[lmstudio] {Message}", msg);
+                LogConnectFailed(ex, msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, ErrorMessage: msg);
             }
@@ -367,12 +366,12 @@ public sealed class LmStudioAgentExecutor(
             {
                 var body = await response.Content.ReadAsStringAsync(context.CancellationToken).ConfigureAwait(false);
                 var msg  = $"LM Studio returned HTTP {(int)response.StatusCode}: {body}";
-                logger.LogError("[lmstudio] {Message}", msg);
+                LogHttpError(msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, ErrorMessage: msg);
             }
 
-            logger.LogInformation("[lmstudio] Streaming response — iteration {N}", iteration);
+            LogStreamingResponse(iteration);
 
             // Stream and parse OpenAI SSE response.
             var (finishReason, textContent, toolCalls, sessionUsage, streamError) =
@@ -382,13 +381,13 @@ public sealed class LmStudioAgentExecutor(
             if (sessionUsage != null)
                 totalUsage = totalUsage == null ? sessionUsage : totalUsage + sessionUsage;
 
-            logger.LogInformation("[lmstudio] finish_reason={Reason} iteration={N}", finishReason, iteration);
+            LogFinishReason(finishReason, iteration);
 
             // Surface provider-level errors returned in the SSE stream.
             if (streamError != null)
             {
                 var msg = $"LM Studio returned an error: {streamError}";
-                logger.LogError("[lmstudio] {Message}", msg);
+                LogStreamError(msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, Usage: totalUsage, ErrorMessage: msg, RequiresHumanDecision: true);
             }
@@ -423,7 +422,7 @@ public sealed class LmStudioAgentExecutor(
                     msg = $"Model '{context.ModelId}' finished (finish_reason={finishReason}) but produced no usable output ({outputTokenCount} tokens consumed, likely all internal reasoning). "
                         + "If thinking mode is enabled in LM Studio, disable it for this model or load a non-thinking variant.";
                 }
-                logger.LogError("[lmstudio] {Message}", msg);
+                LogEmptyOutput(msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, Usage: totalUsage, ErrorMessage: msg, RequiresHumanDecision: true);
             }
@@ -431,15 +430,12 @@ public sealed class LmStudioAgentExecutor(
             // Final response: no tool calls.
             if (toolCalls.Count == 0)
             {
-                logger.LogInformation(
-                    "[lmstudio] Session complete — {Chars} chars | iterations: {N}",
-                    textContent.Length, iteration);
+                LogSessionComplete(textContent.Length, iteration);
                 return new ExecutorResult(0, Usage: totalUsage);
             }
 
             // Tool calls requested — execute and loop.
-            logger.LogInformation(
-                "[lmstudio] Tool calls requested — count={Count} iteration={N}", toolCalls.Count, iteration);
+            LogToolCallsRequested(toolCalls.Count, iteration);
             output.TryWrite($"[{DateTime.UtcNow:o}] [lmstudio] tool calls: {toolCalls.Count} (iteration {iteration})");
 
             // Append assistant message with tool_calls.
@@ -472,7 +468,7 @@ public sealed class LmStudioAgentExecutor(
                 var argsJson    = tc.Arguments.ToString();
                 var argsPreview = argsJson.Length > 80 ? argsJson[..80] + "..." : argsJson;
                 output.TryWrite($"[{DateTime.UtcNow:o}] [tool:call] {tc.Name}({argsPreview})");
-                logger.LogInformation("[lmstudio] Executing tool — {Tool}({Args})", tc.Name, argsPreview);
+                LogExecutingTool(tc.Name, argsPreview);
 
                 JsonElement argsElement;
                 try   { argsElement = JsonDocument.Parse(argsJson).RootElement; }
@@ -486,7 +482,7 @@ public sealed class LmStudioAgentExecutor(
                     ? result[..120].Replace('\n', ' ') + "..."
                     : result.Replace('\n', ' ');
                 output.TryWrite($"[{DateTime.UtcNow:o}] [tool:result] {preview}");
-                logger.LogInformation("[lmstudio] Tool result — {Chars} chars", result.Length);
+                LogToolResult(result.Length);
 
                 messages.Add(new JsonObject
                 {
@@ -498,7 +494,7 @@ public sealed class LmStudioAgentExecutor(
         }
 
         var limitMsg = $"Exceeded maximum tool-call iterations ({MaxToolIterations}). Aborting session.";
-        logger.LogError("[lmstudio] {Message}", limitMsg);
+        LogMaxIterationsExceeded(limitMsg);
         output.TryWrite($"[{DateTime.UtcNow:o}] [error] {limitMsg}");
         return new ExecutorResult(1, ErrorMessage: limitMsg);
     }
@@ -691,7 +687,7 @@ public sealed class LmStudioAgentExecutor(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogDebug(ex, "[lmstudio] On-demand health probe failed while resolving context window");
+            LogOnDemandProbeFailed(ex);
         }
 
         return _contextWindows.TryGetValue(modelId, out var resolved) ? resolved : 0;
@@ -707,4 +703,71 @@ public sealed class LmStudioAgentExecutor(
         public string        Name      { get; set; } = string.Empty;
         public StringBuilder Arguments { get; }      = new();
     }
+
+    // -------------------------------------------------------------------------
+    // Logger messages
+    // -------------------------------------------------------------------------
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[lmstudio-health] Failed to parse model list from {Url}")]
+    private partial void LogHealthParseModelListFailed(Exception ex, string url);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[lmstudio-health] Probe failed: {Message}")]
+    private partial void LogHealthProbeFailed(Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[lmstudio] Model '{Id}' has no loaded_context_length — using max_context_length={Max} as estimate. If the model JIT-loads with a small n_ctx (e.g. 4096), prompts near that size will cause context starvation. Load the model in LM Studio first and set an explicit context window.")]
+    private partial void LogModelNoLoadedContextLength(string id, int max);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[lmstudio] {Message}")]
+    private partial void LogInvalidBaseUrl(string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[lmstudio] Starting session — model={Model} endpoint={Uri} tools={Tools}")]
+    private partial void LogSessionStarting(string model, string uri, string tools);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[lmstudio] Trigger source={Source} reason={Reason} project={Project} task={TaskId} decision={DecisionId} message={MessageFile}")]
+    private partial void LogSessionTrigger(string? source, string? reason, string? project, string? taskId, string? decisionId, string? messageFile);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[lmstudio] Low headroom: context_window={Ctx} prompt_est={Prompt} max_output={Out} headroom={Headroom} — reload '{Model}' with a larger context window")]
+    private partial void LogLowHeadroom(int ctx, int prompt, int @out, int headroom, string model);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[lmstudio] {Refusal}")]
+    private partial void LogContextWindowRefusal(string refusal);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[lmstudio] {Message}")]
+    private partial void LogPreflightExceeded(string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[lmstudio] {Message}")]
+    private partial void LogConnectFailed(Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[lmstudio] {Message}")]
+    private partial void LogHttpError(string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[lmstudio] Streaming response — iteration {N}")]
+    private partial void LogStreamingResponse(int n);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[lmstudio] finish_reason={Reason} iteration={N}")]
+    private partial void LogFinishReason(string reason, int n);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[lmstudio] {Message}")]
+    private partial void LogStreamError(string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[lmstudio] {Message}")]
+    private partial void LogEmptyOutput(string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[lmstudio] Session complete — {Chars} chars | iterations: {N}")]
+    private partial void LogSessionComplete(int chars, int n);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[lmstudio] Tool calls requested — count={Count} iteration={N}")]
+    private partial void LogToolCallsRequested(int count, int n);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[lmstudio] Executing tool — {Tool}({Args})")]
+    private partial void LogExecutingTool(string tool, string args);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[lmstudio] Tool result — {Chars} chars")]
+    private partial void LogToolResult(int chars);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[lmstudio] {Message}")]
+    private partial void LogMaxIterationsExceeded(string message);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[lmstudio] On-demand health probe failed while resolving context window")]
+    private partial void LogOnDemandProbeFailed(Exception ex);
 }

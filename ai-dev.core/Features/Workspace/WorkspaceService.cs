@@ -6,11 +6,18 @@ file class ProjectJson
     public string? CreatedAt { get; set; }
 }
 
+/// <summary>
+/// Provides workspace project management and metadata operations.
+/// </summary>
 public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter, ILogger<WorkspaceService>? logger = null)
 {
     private static readonly DomainError InvalidProjectSlugError = new("WORKSPACE_INVALID_SLUG", "Project slug is invalid.");
     private static readonly DomainError ProjectNotFoundError = new("WORKSPACE_NOT_FOUND", "Project not found.");
 
+    /// <summary>
+    /// Lists the registered workspace projects.
+    /// </summary>
+    /// <returns>The registered workspace projects.</returns>
     public List<WorkspaceProject> ListProjects()
     {
         if (!File.Exists(paths.RegistryPath)) return [];
@@ -155,6 +162,11 @@ public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter,
         }
     }
 
+    /// <summary>
+    /// Gets detailed metadata for a project.
+    /// </summary>
+    /// <param name="projectSlug">The project slug to read.</param>
+    /// <returns>The project detail, or <see langword="null"/> when the project does not exist.</returns>
     public ProjectDetail? GetProject(ProjectSlug projectSlug)
     {
         var jsonPath = paths.ProjectJsonPath(projectSlug);
@@ -181,6 +193,14 @@ public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter,
         }
     }
 
+    /// <summary>
+    /// Updates editable metadata for an existing project.
+    /// </summary>
+    /// <param name="projectSlug">The project slug to update.</param>
+    /// <param name="name">The new project name.</param>
+    /// <param name="description">The new project description.</param>
+    /// <param name="codebasePath">The optional codebase path associated with the project.</param>
+    /// <returns>The result of the update operation.</returns>
     public Result<Unit> UpdateProject(ProjectSlug projectSlug, string name, string? description, string? codebasePath)
     {
         if (string.IsNullOrWhiteSpace(name))

@@ -16,7 +16,7 @@ namespace AiDev.Features.Insights;
 /// Insights are written alongside the transcript as <c>{date}.insights.json</c>.
 /// Generation is opt-in: set <c>InsightsExecutor</c> to enable.
 /// </summary>
-public class InsightsService(
+public partial class InsightsService(
     IEnumerable<IAgentExecutor> executors,
     StudioSettingsService settingsService,
     ILogger<InsightsService> logger)
@@ -60,16 +60,14 @@ public class InsightsService(
         if (!AgentExecutorName.TryParse(studioSettings.InsightsExecutor, out var insightsExecutor)
             || !_executors.TryGetValue(insightsExecutor, out var executor))
         {
-            logger.LogWarning("[insights] Executor '{Executor}' not registered — skipping insights generation",
-                studioSettings.InsightsExecutor);
+            LogExecutorNotRegistered(studioSettings.InsightsExecutor);
             return null;
         }
 
         var modelId = studioSettings.InsightsModel ?? executor.KnownModels.FirstOrDefault()?.Id;
         if (string.IsNullOrWhiteSpace(modelId))
         {
-            logger.LogWarning("[insights] No model configured and no known models for executor '{Executor}'",
-                studioSettings.InsightsExecutor);
+            LogNoModelConfigured(studioSettings.InsightsExecutor);
             return null;
         }
 
@@ -80,7 +78,7 @@ public class InsightsService(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[insights] Could not read transcript at {Path}", transcriptPath);
+            LogCouldNotReadTranscript(ex, transcriptPath);
             return null;
         }
 
@@ -94,18 +92,15 @@ public class InsightsService(
         var estimatedTokens = (transcriptContent.Length + 3) / 4;
         if (transcriptContent.Length > MaxTranscriptChars)
         {
-            logger.LogWarning(
-                "[insights] Transcript is ~{Tokens} tokens ({Chars} chars) — truncating to last {Max} chars to fit model context",
-                estimatedTokens, transcriptContent.Length, MaxTranscriptChars);
+            LogTranscriptTruncated(estimatedTokens, transcriptContent.Length, MaxTranscriptChars);
             transcriptContent = transcriptContent[^MaxTranscriptChars..];
         }
         else
         {
-            logger.LogInformation("[insights] Transcript is ~{Tokens} tokens ({Chars} chars)",
-                estimatedTokens, transcriptContent.Length);
+            LogTranscriptSize(estimatedTokens, transcriptContent.Length);
         }
 
-        logger.LogInformation("[insights] Generating insights using {Executor}/{Model}", executor.Name, modelId);
+        LogGeneratingInsights(executor.Name, modelId);
 
         // Create an isolated working directory so we can control the system prompt (CLAUDE.md)
         // without affecting any real agent. The directory structure mimics a workspace tree so
@@ -154,7 +149,7 @@ public class InsightsService(
             var json = ExtractJson(outputLines);
             if (string.IsNullOrWhiteSpace(json))
             {
-                logger.LogWarning("[insights] No JSON found in executor output");
+                LogNoJsonInOutput();
                 return null;
             }
 
@@ -162,23 +157,23 @@ public class InsightsService(
             if (result == null) return null;
 
             await File.WriteAllTextAsync(insightPath, JsonSerializer.Serialize(result, JsonDefaults.Write), ct);
-            logger.LogInformation("[insights] Insights written to {Path}", insightPath);
+            LogInsightsWritten(insightPath);
             return result;
         }
         catch (OperationCanceledException)
         {
-            logger.LogInformation("[insights] Insights generation was cancelled");
+            LogInsightsCancelled();
             return null;
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[insights] Failed to generate or save insights for {Path}", transcriptPath);
+            LogFailedToGenerateInsights(ex, transcriptPath);
             return null;
         }
         finally
         {
             try { Directory.Delete(tempRoot, recursive: true); }
-            catch (Exception ex) { logger.LogDebug(ex, "[insights] Could not clean up temp dir {Dir}", tempRoot); }
+            catch (Exception ex) { LogCouldNotCleanUpTempDir(ex, tempRoot); }
         }
     }
 
@@ -236,10 +231,10 @@ public class InsightsService(
             var root = doc.RootElement;
 
             var classification = root.TryGetProperty("taskClassification", out var tc)
-                ? tc.GetString() ?? "other" : "other";
+                ? TaskClassification.From(tc.GetString()) : TaskClassification.Other;
 
             var sizeRating = root.TryGetProperty("sessionSizeRating", out var sr)
-                ? sr.GetString() ?? "medium" : "medium";
+                ? SessionSizeRating.From(sr.GetString()) : SessionSizeRating.Medium;
 
             List<InsightIssue> issues = [];
             if (root.TryGetProperty("issues", out var issuesEl) && issuesEl.ValueKind == JsonValueKind.Array)
@@ -255,7 +250,7 @@ public class InsightsService(
 
             List<string> gaps = [];
             if (root.TryGetProperty("knowledgeGaps", out var gapsEl) && gapsEl.ValueKind == JsonValueKind.Array)
-                gaps = gapsEl.EnumerateArray().Select(g => g.GetString() ?? string.Empty).Where(g => g.Length > 0).ToList();
+                gaps = [.. gapsEl.EnumerateArray().Select(g => g.GetString() ?? string.Empty).Where(g => g.Length > 0)];
 
             var suggestion = root.TryGetProperty("improvedPromptSuggestion", out var ips)
                 ? ips.GetString() ?? string.Empty : string.Empty;
@@ -264,8 +259,44 @@ public class InsightsService(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[insights] Failed to parse executor output as InsightResult");
+            LogFailedToParseInsightResult(ex);
             return null;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[insights] Executor '{Executor}' not registered — skipping insights generation")]
+    private partial void LogExecutorNotRegistered(string executor);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[insights] No model configured and no known models for executor '{Executor}'")]
+    private partial void LogNoModelConfigured(string executor);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[insights] Could not read transcript at {Path}")]
+    private partial void LogCouldNotReadTranscript(Exception ex, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[insights] Transcript is ~{Tokens} tokens ({Chars} chars) — truncating to last {Max} chars to fit model context")]
+    private partial void LogTranscriptTruncated(int tokens, int chars, int max);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[insights] Transcript is ~{Tokens} tokens ({Chars} chars)")]
+    private partial void LogTranscriptSize(int tokens, int chars);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[insights] Generating insights using {Executor}/{Model}")]
+    private partial void LogGeneratingInsights(AgentExecutorName executor, string model);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[insights] No JSON found in executor output")]
+    private partial void LogNoJsonInOutput();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[insights] Insights written to {Path}")]
+    private partial void LogInsightsWritten(string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[insights] Insights generation was cancelled")]
+    private partial void LogInsightsCancelled();
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[insights] Failed to generate or save insights for {Path}")]
+    private partial void LogFailedToGenerateInsights(Exception ex, string path);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[insights] Could not clean up temp dir {Dir}")]
+    private partial void LogCouldNotCleanUpTempDir(Exception ex, string dir);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[insights] Failed to parse executor output as InsightResult")]
+    private partial void LogFailedToParseInsightResult(Exception ex);
 }

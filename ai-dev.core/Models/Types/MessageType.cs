@@ -6,11 +6,29 @@ namespace AiDev.Models.Types;
 [JsonConverter(typeof(MessageTypeJsonConverter))]
 public readonly record struct MessageType
 {
-    public static readonly MessageType TaskAssigned    = new("task-assigned");
-    public static readonly MessageType DecisionChat    = new("decision-chat");
-    public static readonly MessageType DecisionReply   = new("decision-reply");
-    public static readonly MessageType OverwatchNudge  = new("overwatch-nudge");
+    /// <summary>
+    /// Represents a task assignment message.
+    /// </summary>
+    public static readonly MessageType TaskAssigned = new("task-assigned");
 
+    /// <summary>
+    /// Represents a decision chat message.
+    /// </summary>
+    public static readonly MessageType DecisionChat = new("decision-chat");
+
+    /// <summary>
+    /// Represents a decision reply message.
+    /// </summary>
+    public static readonly MessageType DecisionReply = new("decision-reply");
+
+    /// <summary>
+    /// Represents an overwatch nudge message.
+    /// </summary>
+    public static readonly MessageType OverwatchNudge = new("overwatch-nudge");
+
+    /// <summary>
+    /// Gets the persisted message type value.
+    /// </summary>
     public string Value { get; }
 
     public MessageType(string value)
@@ -20,6 +38,11 @@ public readonly record struct MessageType
         Value = value.Trim().ToLowerInvariant();
     }
 
+    /// <summary>
+    /// Creates a <see cref="MessageType"/> from a raw persisted value.
+    /// </summary>
+    /// <param name="value">The raw message type value.</param>
+    /// <returns>The parsed message type, defaulting to <c>unknown</c>.</returns>
     public static MessageType From(string? value) =>
         string.IsNullOrWhiteSpace(value) ? new("unknown") : new(value);
 
@@ -27,13 +50,4 @@ public readonly record struct MessageType
     public static implicit operator MessageType(string value) => new(value);
 
     public override string ToString() => Value;
-}
-
-internal sealed class MessageTypeJsonConverter : JsonConverter<MessageType>
-{
-    public override MessageType Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => MessageType.From(reader.GetString());
-
-    public override void Write(Utf8JsonWriter writer, MessageType value, JsonSerializerOptions options)
-        => writer.WriteStringValue(value.Value);
 }

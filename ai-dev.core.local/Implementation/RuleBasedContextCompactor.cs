@@ -37,31 +37,27 @@ internal sealed class RuleBasedContextCompactor : IContextCompactor
 
         var tail = unique.TakeLast(AlwaysKeepTail).ToHashSet(ReferenceEqualityComparer.Instance);
 
-        return unique
-            .Where(o => tail.Contains(o) || o.Evidence.Count > 0)
-            .ToList();
+        return [.. unique.Where(o => tail.Contains(o) || o.Evidence.Count > 0)];
     }
 
     // A fact is stable when it carries at least two independent citations.
     private static IReadOnlyList<RuntimeFact> BuildFacts(IReadOnlyList<RuntimeObservation> observations)
-        => observations
+        => [.. observations
             .Select(o => new RuntimeFact(
                 Category: o.Source,
                 Fact: o.Summary,
                 Citations: o.Evidence,
-                IsStable: o.Evidence.Count >= 2))
-            .ToList();
+                IsStable: o.Evidence.Count >= 2))];
 
     // Open questions = latest decision per subject (superseded decisions dropped).
     private static IReadOnlyList<string> BuildOpenQuestions(IReadOnlyList<RuntimeDecision> decisions)
     {
         if (decisions.Count == 0) return [];
 
-        return decisions
+        return [.. decisions
             .GroupBy(d => SubjectKey(d.Decision))
             .Select(g => g.OrderByDescending(d => d.AtUtc).First())
-            .Select(d => d.Decision)
-            .ToList();
+            .Select(d => d.Decision)];
     }
 
     // Use the first four words as the subject key so revisions to the same question group together.

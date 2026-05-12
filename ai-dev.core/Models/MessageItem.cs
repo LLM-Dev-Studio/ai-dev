@@ -1,5 +1,8 @@
 namespace AiDev.Models;
 
+/// <summary>
+/// Represents a message stored in an agent inbox or processed archive.
+/// </summary>
 public sealed class MessageItem
 {
     /// <summary>
@@ -43,17 +46,64 @@ public sealed class MessageItem
         Playbook = NormalizeOptional(playbook);
     }
 
+    /// <summary>
+    /// Gets the backing filename for the message.
+    /// </summary>
     public string Filename { get; }
+
+    /// <summary>
+    /// Gets the agent slug that owns the message.
+    /// </summary>
     public AgentSlug AgentSlug { get; }
+
+    /// <summary>
+    /// Gets the message source.
+    /// </summary>
     public MessageSource From { get; }
+
+    /// <summary>
+    /// Gets the message recipient.
+    /// </summary>
     public string To { get; }
+
+    /// <summary>
+    /// Gets the message timestamp.
+    /// </summary>
     public DateTime? Date { get; }
+
+    /// <summary>
+    /// Gets the message priority.
+    /// </summary>
     public Priority Priority { get; }
+
+    /// <summary>
+    /// Gets the message subject.
+    /// </summary>
     public string Re { get; }
+
+    /// <summary>
+    /// Gets the message type.
+    /// </summary>
     public MessageType Type { get; }
+
+    /// <summary>
+    /// Gets the message body.
+    /// </summary>
     public string Body { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the message has been processed.
+    /// </summary>
     public bool IsProcessed { get; }
+
+    /// <summary>
+    /// Gets the optional associated task identifier.
+    /// </summary>
     public TaskId? TaskId { get; }
+
+    /// <summary>
+    /// Gets the optional associated playbook slug.
+    /// </summary>
     public string? Playbook { get; }
 
     private static Priority NormalizePriority(Priority? priority)

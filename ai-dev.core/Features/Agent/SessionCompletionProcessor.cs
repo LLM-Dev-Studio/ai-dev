@@ -8,7 +8,7 @@ namespace AiDev.Features.Agent;
 /// Handles all post-session cleanup: usage file accumulation, result.json processing,
 /// inbox archival, and conditional relaunch.
 /// </summary>
-public class SessionCompletionProcessor(
+public partial class SessionCompletionProcessor(
     WorkspacePaths paths,
     BoardService boardService,
     InsightsService insightsService,
@@ -56,18 +56,16 @@ public class SessionCompletionProcessor(
                         }
                         var usageJson = System.Text.Json.JsonSerializer.Serialize(sessionUsage, JsonDefaults.Write);
                         await File.WriteAllTextAsync(usagePath, usageJson).ConfigureAwait(false);
-                        logger.LogInformation(
-                            "[runner] Usage — {In} in / {Out} out tokens (daily total)",
-                            sessionUsage.InputTokens, sessionUsage.OutputTokens);
+                        LogUsageDailyTotal(sessionUsage.InputTokens, sessionUsage.OutputTokens);
                     }
                     finally { usageLock.Release(); }
                 }
                 else
                 {
-                    logger.LogWarning("[runner] Usage-lock timed out for {Key} — usage file not updated", key);
+                    LogUsageLockTimeout(key);
                 }
             }
-            catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to write usage file"); }
+            catch (Exception ex) { LogUsageWriteFailed(ex); }
         }
 
         // Process result.json — read SessionResult from outbox, persist alongside transcript,
@@ -84,25 +82,24 @@ public class SessionCompletionProcessor(
                 {
                     var persistedResultPath = Path.Combine(transcriptDir, $"{transcriptDate.Value}.result.json");
                     await File.WriteAllTextAsync(persistedResultPath, resultJson).ConfigureAwait(false);
-                    logger.LogInformation("[runner] Persisted result.json for {Key} → {Path}", key, persistedResultPath);
+                    LogResultPersisted(key, persistedResultPath);
 
                     try { File.Delete(resultPath); }
-                    catch (Exception delEx) { logger.LogWarning(delEx, "[runner] Failed to delete result.json from outbox for {Key}", key); }
+                    catch (Exception delEx) { LogResultDeleteFailed(delEx, key); }
 
                     // Prefer result.taskId; fall back to trigger task id if it was passed in the result.
                     if (!string.IsNullOrWhiteSpace(sessionResult.TaskId)
                         && TaskId.TryParse(sessionResult.TaskId, out var resultTaskId))
                     {
                         boardService.CompleteTaskFromResult(projectSlug, resultTaskId, sessionResult);
-                        logger.LogInformation("[runner] Auto-completed board task {TaskId} from result.json for {Key}",
-                            resultTaskId.Value, key);
+                        LogTaskAutoCompleted(resultTaskId.Value, key);
                     }
                 }
             }
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[runner] Failed to process result.json for {Key}", key);
+            LogResultProcessFailed(ex, key);
         }
 
         // Generate AI insights (fire-and-forget so insights finish even after session CT is cancelled).
@@ -111,8 +108,7 @@ public class SessionCompletionProcessor(
             .ContinueWith(t =>
             {
                 if (t.Exception != null)
-                    logger.LogWarning(t.Exception, "[runner] Insights generation faulted for {Project}/{Agent}",
-                        projectSlug.Value, agentSlug.Value);
+                    LogInsightsFaulted(t.Exception, projectSlug.Value, agentSlug.Value);
             }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 
         // Inbox archival / relaunch.
@@ -122,8 +118,7 @@ public class SessionCompletionProcessor(
         }
         else if (preserveInbox)
         {
-            logger.LogWarning(
-                "[runner] Agent {Key} ended with a recoverable configuration error — inbox preserved for retry", key);
+            LogInboxPreservedForRetry(key);
             if (inboxSnapshot.Length > 0) projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Messages);
         }
         else
@@ -140,9 +135,7 @@ public class SessionCompletionProcessor(
 
             if (pendingAfterSession > 0)
             {
-                logger.LogInformation(
-                    "[runner] {Count} message(s) arrived during session for {Key} — re-launching",
-                    pendingAfterSession, key);
+                LogRelaunchingForPendingMessages(pendingAfterSession, key);
                 relaunch(projectSlug, agentSlug, null);
             }
         }
@@ -161,11 +154,47 @@ public class SessionCompletionProcessor(
                 var dst = Path.Combine(processedDir, filename);
                 if (File.Exists(src)) File.Move(src, dst, overwrite: true);
             }
-            logger.LogInformation("[runner] Archived {Count} inbox file(s)", snapshot.Length);
+            LogInboxArchived(snapshot.Length);
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[runner] Failed to archive inbox");
+            LogInboxArchiveFailed(ex);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Usage — {In} in / {Out} out tokens (daily total)")]
+    private partial void LogUsageDailyTotal(long @in, long @out);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Usage-lock timed out for {Key} — usage file not updated")]
+    private partial void LogUsageLockTimeout(string key);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Failed to write usage file")]
+    private partial void LogUsageWriteFailed(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Persisted result.json for {Key} → {Path}")]
+    private partial void LogResultPersisted(string key, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Failed to delete result.json from outbox for {Key}")]
+    private partial void LogResultDeleteFailed(Exception ex, string key);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Auto-completed board task {TaskId} from result.json for {Key}")]
+    private partial void LogTaskAutoCompleted(string taskId, string key);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Failed to process result.json for {Key}")]
+    private partial void LogResultProcessFailed(Exception ex, string key);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Insights generation faulted for {Project}/{Agent}")]
+    private partial void LogInsightsFaulted(Exception ex, string project, string agent);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Agent {Key} ended with a recoverable configuration error — inbox preserved for retry")]
+    private partial void LogInboxPreservedForRetry(string key);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] {Count} message(s) arrived during session for {Key} — re-launching")]
+    private partial void LogRelaunchingForPendingMessages(int count, string key);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Archived {Count} inbox file(s)")]
+    private partial void LogInboxArchived(int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Failed to archive inbox")]
+    private partial void LogInboxArchiveFailed(Exception ex);
 }

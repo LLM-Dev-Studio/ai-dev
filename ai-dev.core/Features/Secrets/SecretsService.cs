@@ -24,7 +24,7 @@ public class SecretsService(WorkspacePaths paths, AtomicFileWriter fileWriter)
     public IReadOnlyList<string> ListSecrets(ProjectSlug projectSlug)
     {
         var entries = ReadEntries(projectSlug);
-        return entries.Select(e => e.Name).ToList();
+        return [.. entries.Select(e => e.Name)];
     }
 
     /// <summary>Adds or replaces a secret. The value is encrypted before persisting.</summary>

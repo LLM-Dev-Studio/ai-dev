@@ -103,18 +103,12 @@ public sealed partial class MainWindow : Window
 
     private void UpdateNavBadges()
     {
-        if (_messagesNavItem != null)
-        {
-            _messagesNavItem.InfoBadge = _viewModel.UnreadMessageCount > 0
+        _messagesNavItem?.InfoBadge = _viewModel.UnreadMessageCount > 0
                 ? new InfoBadge { Value = _viewModel.UnreadMessageCount }
                 : null;
-        }
-        if (_decisionsNavItem != null)
-        {
-            _decisionsNavItem.InfoBadge = _viewModel.PendingDecisionCount > 0
+        _decisionsNavItem?.InfoBadge = _viewModel.PendingDecisionCount > 0
                 ? new InfoBadge { Value = _viewModel.PendingDecisionCount }
                 : null;
-        }
     }
 
     private void HomeHeader_Click(object sender, RoutedEventArgs e)

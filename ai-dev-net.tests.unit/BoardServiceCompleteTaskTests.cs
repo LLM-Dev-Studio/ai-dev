@@ -30,7 +30,7 @@ public class BoardServiceCompleteTaskTests
 
     private static SessionResult MakeResult(string taskId, IReadOnlyList<string>? tags = null) =>
         new(TaskId: taskId,
-            Status: "completed",
+            SessionStatus: SessionStatus.Completed,
             Summary: "Done",
             PullRequestUrl: null,
             FilesChanged: [],

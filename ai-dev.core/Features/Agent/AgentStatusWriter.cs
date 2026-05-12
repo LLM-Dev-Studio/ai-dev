@@ -1,7 +1,16 @@
 namespace AiDev.Features.Agent;
 
-public class AgentStatusWriter(ILogger<AgentStatusWriter> logger)
+/// <summary>
+/// Writes partial status updates into an agent metadata file.
+/// </summary>
+public partial class AgentStatusWriter(ILogger<AgentStatusWriter> logger)
 {
+    /// <summary>
+    /// Applies status field updates to an agent metadata file.
+    /// </summary>
+    /// <param name="agentDir">The agent directory containing <c>agent.json</c>.</param>
+    /// <param name="updates">The status fields to merge into the existing metadata.</param>
+    /// <returns>A task that completes when the update finishes.</returns>
     public async Task UpdateAsync(string agentDir, Dictionary<string, object?> updates)
     {
         var path = Path.Combine(agentDir, "agent.json");
@@ -27,6 +36,9 @@ public class AgentStatusWriter(ILogger<AgentStatusWriter> logger)
 
             await File.WriteAllTextAsync(path, JsonSerializer.Serialize(merged, JsonDefaults.Write));
         }
-        catch (Exception ex) { logger.LogWarning(ex, "[runner] Failed to update agent status in {AgentDir}", agentDir); }
+        catch (Exception ex) { LogStatusUpdateFailed(ex, agentDir); }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Failed to update agent status in {AgentDir}")]
+    private partial void LogStatusUpdateFailed(Exception ex, string agentDir);
 }

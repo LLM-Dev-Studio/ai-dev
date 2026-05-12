@@ -1,5 +1,8 @@
 namespace AiDev.Features.Workspace;
 
+/// <summary>
+/// Represents summary information about a workspace project.
+/// </summary>
 public sealed class WorkspaceProject
 {
     /// <summary>
@@ -20,10 +23,29 @@ public sealed class WorkspaceProject
         AgentCount = agentCount;
     }
 
+    /// <summary>
+    /// Gets the unique project slug.
+    /// </summary>
     public ProjectSlug Slug { get; }
+
+    /// <summary>
+    /// Gets the display name of the project.
+    /// </summary>
     public string Name { get; }
+
+    /// <summary>
+    /// Gets the optional project description.
+    /// </summary>
     public string? Description { get; }
+
+    /// <summary>
+    /// Gets the project creation timestamp when available.
+    /// </summary>
     public DateTime? CreatedAt { get; }
+
+    /// <summary>
+    /// Gets the number of agents associated with the project.
+    /// </summary>
     public int AgentCount { get; }
 
     private static string? NormalizeOptional(string? value)

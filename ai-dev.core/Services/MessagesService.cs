@@ -1,7 +1,16 @@
 namespace AiDev.Services;
 
+/// <summary>
+/// Provides message listing and archival operations for agent inboxes.
+/// </summary>
 public class MessagesService(WorkspacePaths paths)
 {
+    /// <summary>
+    /// Lists messages for a project or a specific agent.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the messages.</param>
+    /// <param name="agentSlug">The optional agent filter.</param>
+    /// <returns>The matching messages ordered by descending date.</returns>
     public List<MessageItem> ListMessages(ProjectSlug projectSlug, AgentSlug? agentSlug = null)
     {
         var results = new List<MessageItem>();
@@ -47,6 +56,12 @@ public class MessagesService(WorkspacePaths paths)
         return [.. results.OrderByDescending(m => m.Date)];
     }
 
+    /// <summary>
+    /// Moves a message from the inbox to the processed archive.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the message.</param>
+    /// <param name="agentSlug">The agent that owns the message.</param>
+    /// <param name="filename">The message filename to archive.</param>
     public void MarkProcessed(ProjectSlug projectSlug, AgentSlug agentSlug, string filename)
     {
         var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);

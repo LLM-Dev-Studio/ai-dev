@@ -110,9 +110,8 @@ public sealed partial class NewAgentDialog : ContentDialog
     }
 
     private static string DeriveSlug(string name) =>
-        new string(name.ToLowerInvariant()
+        new string([.. name.ToLowerInvariant()
             .Replace(' ', '-')
-            .Where(c => char.IsLetterOrDigit(c) || c == '-')
-            .ToArray())
+            .Where(c => char.IsLetterOrDigit(c) || c == '-')])
         .Trim('-');
 }

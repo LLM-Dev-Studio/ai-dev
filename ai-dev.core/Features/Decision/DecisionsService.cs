@@ -1,5 +1,8 @@
 namespace AiDev.Features.Decision;
 
+/// <summary>
+/// Provides creation, lookup, and resolution operations for project decisions.
+/// </summary>
 public class DecisionsService(
     WorkspacePaths paths,
     IDomainEventDispatcher dispatcher,
@@ -10,6 +13,16 @@ public class DecisionsService(
     private const string ResponseSeparator = "\n\n---\n\n## Human Response\n\n";
     private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// Creates a new decision request.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the decision.</param>
+    /// <param name="from">The decision source.</param>
+    /// <param name="subject">The decision subject.</param>
+    /// <param name="priority">The decision priority.</param>
+    /// <param name="blocks">The optional blocker reference.</param>
+    /// <param name="body">The decision body content.</param>
+    /// <returns>The result of the create operation.</returns>
     public Result<Unit> CreateDecision(ProjectSlug projectSlug, string from, string subject,
         Priority priority, string? blocks, string body)
     {
@@ -51,6 +64,12 @@ public class DecisionsService(
         });
     }
 
+    /// <summary>
+    /// Lists decisions for a project filtered by status.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the decisions.</param>
+    /// <param name="status">The optional status filter.</param>
+    /// <returns>The matching decisions.</returns>
     public List<DecisionItem> ListDecisions(ProjectSlug projectSlug, DecisionStatus? status = null)
     {
         var effectiveStatus = status ?? DecisionStatus.Pending;
@@ -71,6 +90,12 @@ public class DecisionsService(
         return results;
     }
 
+    /// <summary>
+    /// Gets a decision by identifier.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the decision.</param>
+    /// <param name="id">The decision identifier.</param>
+    /// <returns>The decision item, or <see langword="null"/> when not found.</returns>
     public DecisionItem? GetDecision(ProjectSlug projectSlug, DecisionId id)
     {
         var filename = $"{id.Value}.md";
@@ -81,9 +106,24 @@ public class DecisionsService(
         return null;
     }
 
+    /// <summary>
+    /// Resolves a decision with a human response.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the decision.</param>
+    /// <param name="id">The decision identifier.</param>
+    /// <param name="response">The response used to resolve the decision.</param>
+    /// <returns>The result of the resolve operation.</returns>
     public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, DecisionId id, string response)
         => ResolveDecisionAsync(projectSlug, id, response, CancellationToken.None);
 
+    /// <summary>
+    /// Resolves a decision with a human response.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the decision.</param>
+    /// <param name="id">The decision identifier.</param>
+    /// <param name="response">The response used to resolve the decision.</param>
+    /// <param name="cancellationToken">The cancellation token for the operation.</param>
+    /// <returns>The result of the resolve operation.</returns>
     public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, DecisionId id, string response, CancellationToken cancellationToken)
         => coordinator.ExecuteAsync(projectSlug, async () =>
         {
