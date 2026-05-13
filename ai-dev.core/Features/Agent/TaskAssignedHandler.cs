@@ -1,6 +1,6 @@
 namespace AiDev.Features.Agent;
 
-internal sealed class TaskAssignedHandler(
+internal sealed partial class TaskAssignedHandler(
     AgentInboxService inbox,
     IAgentRunnerService runner,
     ILogger<TaskAssignedHandler> logger) : IDomainEventHandler<TaskAssigned>
@@ -24,13 +24,11 @@ internal sealed class TaskAssignedHandler(
             // Log but do not throw — the agent is still launched below so it can discover
             // the task via the board. Throwing here would surface to the dispatcher and
             // swallow the event silently, leaving the task orphaned until OverwatchService.
-            logger.LogError("[board] Failed to write inbox message for {Assignee} task {TaskId}: {Error}",
-                domainEvent.Assignee, domainEvent.TaskId, err.Error.Message);
+            LogInboxWriteFailed(domainEvent.Assignee, domainEvent.TaskId, err.Error.Message);
         }
         else
         {
-            logger.LogInformation("[board] Dispatched TaskAssigned to {Assignee} for task {TaskId} ({Title})",
-                domainEvent.Assignee, domainEvent.TaskId, domainEvent.Title);
+            LogTaskAssignedDispatched(domainEvent.Assignee, domainEvent.TaskId, domainEvent.Title);
         }
 
         // Always launch — the DispatcherService FSW will also fire if the inbox write
@@ -47,4 +45,10 @@ internal sealed class TaskAssignedHandler(
 
         return Task.CompletedTask;
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[board] Failed to write inbox message for {Assignee} task {TaskId}: {Error}")]
+    private partial void LogInboxWriteFailed(AgentSlug assignee, TaskId taskId, string error);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[board] Dispatched TaskAssigned to {Assignee} for task {TaskId} ({Title})")]
+    private partial void LogTaskAssignedDispatched(AgentSlug assignee, TaskId taskId, string title);
 }

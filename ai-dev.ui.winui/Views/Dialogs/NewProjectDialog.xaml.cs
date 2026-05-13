@@ -170,18 +170,36 @@ public sealed partial class NewProjectDialog : ContentDialog
     }
 
     private static string DeriveSlug(string name) =>
-        new string(name.ToLowerInvariant()
+        new string([.. name.ToLowerInvariant()
             .Replace(' ', '-')
-            .Where(c => char.IsLetterOrDigit(c) || c == '-')
-            .ToArray())
+            .Where(c => char.IsLetterOrDigit(c) || c == '-')])
         .Trim('-');
 
+    /// <summary>
+    /// Represents a selectable template entry in the new project dialog.
+    /// </summary>
+    /// <param name="template">The underlying agent template.</param>
     public sealed class TemplateItem(AgentTemplate template)
     {
+        /// <summary>
+        /// Gets the template slug.
+        /// </summary>
         public string Slug { get; } = template.Slug?.Value ?? string.Empty;
+        /// <summary>
+        /// Gets the template display name.
+        /// </summary>
         public string Name { get; } = template.Name;
+        /// <summary>
+        /// Gets the template description.
+        /// </summary>
         public string Description { get; } = template.Description;
+        /// <summary>
+        /// Gets the template model.
+        /// </summary>
         public string Model { get; } = template.Model;
+        /// <summary>
+        /// Gets or sets a value indicating whether the template is selected.
+        /// </summary>
         public bool IsSelected { get; set; } = true;
     }
 }

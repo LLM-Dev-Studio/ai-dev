@@ -6,12 +6,18 @@ using System.Collections.ObjectModel;
 
 namespace AiDev.WinUI.ViewModels;
 
+/// <summary>
+/// Represents executor health status for UI display.
+/// </summary>
 public partial class ExecutorStatusItem : ObservableObject
 {
     [ObservableProperty] public partial string Name { get; set; } = "";
     [ObservableProperty] public partial string HealthColor { get; set; } = "#6B7280";
 }
 
+/// <summary>
+/// Provides shared application shell state for the main UI.
+/// </summary>
 public partial class MainViewModel : ObservableObject
 {
     private readonly ExecutorHealthMonitor _healthMonitor;
@@ -34,6 +40,12 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<ExecutorStatusItem> ExecutorStatuses { get; } = [];
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="MainViewModel"/> class.
+    /// </summary>
+    /// <param name="healthMonitor">The executor health monitor.</param>
+    /// <param name="messagesService">The messages service.</param>
+    /// <param name="decisionsService">The decisions service.</param>
     public MainViewModel(ExecutorHealthMonitor healthMonitor, MessagesService messagesService, DecisionsService decisionsService)
     {
         _healthMonitor = healthMonitor;
@@ -41,11 +53,18 @@ public partial class MainViewModel : ObservableObject
         _decisionsService = decisionsService;
     }
 
+    /// <summary>
+    /// Sets the active project for the shell.
+    /// </summary>
+    /// <param name="project">The active project.</param>
     public void SetActiveProject(ProjectDetail? project)
     {
         ActiveProject = project;
     }
 
+    /// <summary>
+    /// Refreshes navigation badge counts for the active project.
+    /// </summary>
     public void RefreshNavBadges()
     {
         if (ActiveProject is null)
@@ -74,6 +93,10 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Loads executor health status items for display.
+    /// </summary>
+    /// <returns>A task that completes when executor statuses are loaded.</returns>
     public async Task LoadExecutorStatusesAsync()
     {
         try
@@ -95,6 +118,10 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Starts listening for live executor health updates.
+    /// </summary>
+    /// <param name="dispatcher">The dispatcher used to marshal updates to the UI thread.</param>
     public void StartLiveHealthUpdates(DispatcherQueue dispatcher)
     {
         _healthSubscription?.Dispose();
@@ -102,6 +129,9 @@ public partial class MainViewModel : ObservableObject
             dispatcher.TryEnqueue(async () => await LoadExecutorStatusesAsync()));
     }
 
+    /// <summary>
+    /// Stops listening for live executor health updates.
+    /// </summary>
     public void StopLiveHealthUpdates()
     {
         _healthSubscription?.Dispose();

@@ -1,5 +1,8 @@
 namespace AiDev.Features.Board;
 
+/// <summary>
+/// Represents a task tracked on a project board.
+/// </summary>
 public sealed class BoardTask
 {
     /// <summary>
@@ -36,13 +39,44 @@ public sealed class BoardTask
 
     private List<string> _tags;
 
+    /// <summary>
+    /// Gets the unique identifier of the task.
+    /// </summary>
     public TaskId Id { get; }
+
+    /// <summary>
+    /// Gets the current task title.
+    /// </summary>
     public string Title { get; private set; }
+
+    /// <summary>
+    /// Gets the current task priority.
+    /// </summary>
     public Priority Priority { get; private set; }
+
+    /// <summary>
+    /// Gets the optional task description.
+    /// </summary>
     public string? Description { get; private set; }
+
+    /// <summary>
+    /// Gets the optional assigned agent slug.
+    /// </summary>
     public string? Assignee { get; private set; }
+
+    /// <summary>
+    /// Gets the normalized task tags.
+    /// </summary>
     public IReadOnlyList<string> Tags => _tags;
+
+    /// <summary>
+    /// Gets the timestamp when the task was created.
+    /// </summary>
     public DateTime? CreatedAt { get; private set; }
+
+    /// <summary>
+    /// Gets the timestamp when the task was completed.
+    /// </summary>
     public DateTime? CompletedAt { get; private set; }
     /// <summary>Timestamp when the task last moved to its current column. Used by overwatch for stall detection.</summary>
     public DateTime? MovedAt { get; private set; }
@@ -103,9 +137,8 @@ public sealed class BoardTask
     private static List<string> NormalizeTags(List<string>? tags)
     {
         if (tags == null || tags.Count == 0) return [];
-        return tags.Select(t => t?.Trim() ?? string.Empty)
+        return [.. tags.Select(t => t?.Trim() ?? string.Empty)
                    .Where(t => t.Length > 0)
-                   .Distinct(StringComparer.OrdinalIgnoreCase)
-                   .ToList();
+                   .Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 }

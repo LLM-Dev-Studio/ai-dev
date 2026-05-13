@@ -1,5 +1,8 @@
 namespace AiDev.Features.Board;
 
+/// <summary>
+/// Represents a column on a board and the tasks assigned to it.
+/// </summary>
 public sealed class BoardColumn
 {
     private readonly List<TaskId> _taskIds;
@@ -18,8 +21,19 @@ public sealed class BoardColumn
         _taskIds = taskIds ?? [];
     }
 
+    /// <summary>
+    /// Gets the unique identifier for the column.
+    /// </summary>
     public ColumnId Id { get; }
+
+    /// <summary>
+    /// Gets the display title of the column.
+    /// </summary>
     public string Title { get; }
+
+    /// <summary>
+    /// Gets the task identifiers currently assigned to the column.
+    /// </summary>
     public IReadOnlyList<TaskId> TaskIds => _taskIds.AsReadOnly();
 
     /// <summary>

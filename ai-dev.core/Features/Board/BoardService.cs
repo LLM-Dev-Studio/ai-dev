@@ -27,7 +27,10 @@ namespace AiDev.Features.Board
         public DateTime? NudgedAt { get; init; }
     }
 
-    public class BoardService(
+    /// <summary>
+    /// Provides persistence and mutation operations for project boards.
+    /// </summary>
+    public partial class BoardService(
         WorkspacePaths paths,
         IDomainEventDispatcher dispatcher,
         AtomicFileWriter fileWriter,
@@ -38,6 +41,11 @@ namespace AiDev.Features.Board
         private static readonly DomainError InvalidColumnError = new("BOARD_INVALID_COLUMN", "Column id is invalid.");
         private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10);
 
+        /// <summary>
+        /// Loads the board for a project.
+        /// </summary>
+        /// <param name="projectSlug">The project whose board should be loaded.</param>
+        /// <returns>The loaded board, or a default empty board when none exists.</returns>
         public Board LoadBoard(ProjectSlug projectSlug)
         {
             var path = paths.BoardPath(projectSlug);
@@ -54,8 +62,7 @@ namespace AiDev.Features.Board
             {
                 var backupPath = path + $".corrupt.{DateTime.UtcNow:yyyyMMddHHmmss}";
                 try { File.Move(path, backupPath); } catch { /* best-effort */ }
-                logger.LogError(ex, "[board] Corrupt board.json for {ProjectSlug}; backed up to {Backup} and reset to default",
-                    projectSlug, backupPath);
+                LogCorruptBoardJson(ex, projectSlug, backupPath);
                 return new Board(projectSlug);
             }
         }
@@ -65,12 +72,12 @@ namespace AiDev.Features.Board
             var path = paths.BoardPath(projectSlug);
             var state = new BoardState
             {
-                Columns = board.Columns.Select(column => new BoardColumnState
+                Columns = [.. board.Columns.Select(column => new BoardColumnState
                 {
                     Id = column.Id.Value,
                     Title = column.Title,
                     TaskIds = [.. column.TaskIds.Select(taskId => taskId.Value)],
-                }).ToList(),
+                })],
                 Tasks = board.Tasks.ToDictionary(
                     kv => kv.Key.Value,
                     kv => new BoardTaskState
@@ -283,7 +290,7 @@ namespace AiDev.Features.Board
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "[board] Failed to read allowed-tags.json for {ProjectSlug}", projectSlug.Value);
+                LogFailedToReadAllowedTags(ex, projectSlug.Value);
                 return null;
             }
         }
@@ -319,8 +326,7 @@ namespace AiDev.Features.Board
                 var board = LoadBoard(projectSlug);
                 if (!board.Tasks.TryGetValue(taskId, out var task))
                 {
-                    logger.LogWarning("[board] CompleteTaskFromResult: task {TaskId} not found in {ProjectSlug} — result.json may reference a stale or mistyped task ID",
-                        taskId.Value, projectSlug.Value);
+                    LogCompleteTaskNotFound(taskId.Value, projectSlug.Value);
                     return Unit.Value;
                 }
 
@@ -358,5 +364,14 @@ namespace AiDev.Features.Board
             var dispatchResult = await dispatcher.Dispatch(domainEvents, timeoutCts.Token).ConfigureAwait(false);
             return dispatchResult;
         }
+
+        [LoggerMessage(Level = LogLevel.Error, Message = "[board] Corrupt board.json for {ProjectSlug}; backed up to {Backup} and reset to default")]
+        private partial void LogCorruptBoardJson(Exception ex, ProjectSlug projectSlug, string backup);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "[board] Failed to read allowed-tags.json for {ProjectSlug}")]
+        private partial void LogFailedToReadAllowedTags(Exception ex, string projectSlug);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "[board] CompleteTaskFromResult: task {TaskId} not found in {ProjectSlug} — result.json may reference a stale or mistyped task ID")]
+        private partial void LogCompleteTaskNotFound(string taskId, string projectSlug);
     }
 }

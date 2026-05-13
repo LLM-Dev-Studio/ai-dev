@@ -2,6 +2,9 @@ using Microsoft.Extensions.Configuration;
 
 namespace AiDev.Services;
 
+/// <summary>
+/// Loads and persists studio settings from configuration sources and the local settings file.
+/// </summary>
 public class StudioSettingsService(IConfiguration configuration)
 {
     private readonly string _settingsFilePath = Path.Combine(AppContext.BaseDirectory, FilePathConstants.StudioSettingsFileName);
@@ -17,6 +20,10 @@ public class StudioSettingsService(IConfiguration configuration)
         ["haiku"] = "claude-haiku-4-5-20251001",
     };
 
+    /// <summary>
+    /// Gets the effective studio settings merged from defaults and configured values.
+    /// </summary>
+    /// <returns>The effective studio settings.</returns>
     public StudioSettings GetSettings()
     {
         var configuredModels = GetConfiguredModels();
@@ -46,6 +53,10 @@ public class StudioSettingsService(IConfiguration configuration)
         };
     }
 
+    /// <summary>
+    /// Saves studio settings to the local settings file.
+    /// </summary>
+    /// <param name="settings">The settings to persist.</param>
     public void SaveSettings(StudioSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);

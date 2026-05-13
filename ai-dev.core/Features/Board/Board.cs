@@ -1,5 +1,8 @@
 namespace AiDev.Features.Board;
 
+/// <summary>
+/// Represents a project board containing columns, tasks, and pending domain events.
+/// </summary>
 public sealed class Board
 {
     private static readonly DomainError UnknownColumnError = new("BOARD_UNKNOWN_COLUMN", "Column not found.");
@@ -11,8 +14,13 @@ public sealed class Board
     private readonly List<BoardColumn> _columns;
     private readonly Dictionary<TaskId, BoardTask> _tasks;
     [JsonIgnore] private readonly List<DomainEvent> _domainEvents = [];
-    [JsonIgnore] public ProjectSlug ProjectSlug { get; }
 
+    /// <summary>
+    /// Initializes a board for the specified project.
+    /// </summary>
+    /// <param name="projectSlug">The project slug that owns the board.</param>
+    /// <param name="columns">The existing board columns, or <see langword="null"/> to create defaults.</param>
+    /// <param name="tasks">The existing board tasks, or <see langword="null"/> to start empty.</param>
     public Board(ProjectSlug projectSlug, List<BoardColumn>? columns = null, Dictionary<TaskId, BoardTask>? tasks = null)
     {
         ArgumentNullException.ThrowIfNull(projectSlug);
@@ -21,7 +29,19 @@ public sealed class Board
         _tasks = tasks ?? new();
     }
 
+    /// <summary>
+    /// Gets the project slug that owns the board.
+    /// </summary>
+    [JsonIgnore] public ProjectSlug ProjectSlug { get; }
+
+    /// <summary>
+    /// Gets the board columns in display order.
+    /// </summary>
     public IReadOnlyList<BoardColumn> Columns => _columns.AsReadOnly();
+
+    /// <summary>
+    /// Gets the tasks keyed by task identifier.
+    /// </summary>
     public IReadOnlyDictionary<TaskId, BoardTask> Tasks => new System.Collections.ObjectModel.ReadOnlyDictionary<TaskId, BoardTask>(_tasks);
 
     /// <summary>

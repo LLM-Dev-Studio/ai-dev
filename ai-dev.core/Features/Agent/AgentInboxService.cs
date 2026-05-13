@@ -1,12 +1,28 @@
 namespace AiDev.Features.Agent;
 
-public class AgentInboxService(
+/// <summary>
+/// Writes inbox messages for agents and notifies project state changes.
+/// </summary>
+public partial class AgentInboxService(
     WorkspacePaths paths,
     ProjectStateChangedNotifier projectStateChangedNotifier,
     ILogger<AgentInboxService> logger)
 {
     private static readonly ActivitySource ActivitySource = new("AiDevNet.AgentRunner");
 
+    /// <summary>
+    /// Writes a message into an agent inbox.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the agent.</param>
+    /// <param name="agentSlug">The target agent slug.</param>
+    /// <param name="from">The message source.</param>
+    /// <param name="re">The message subject.</param>
+    /// <param name="type">The message type.</param>
+    /// <param name="priority">The message priority.</param>
+    /// <param name="body">The message body.</param>
+    /// <param name="taskId">The optional associated task identifier.</param>
+    /// <param name="decisionId">The optional associated decision identifier.</param>
+    /// <returns>The result of the write operation.</returns>
     public Result<Unit> WriteInboxMessage(ProjectSlug projectSlug, AgentSlug agentSlug,
         MessageSource from, string re, MessageType type, Priority priority, string body,
         TaskId? taskId = null, DecisionId? decisionId = null)
@@ -38,22 +54,27 @@ public class AgentInboxService(
             };
             if (taskId != null) fields["task-id"] = taskId.ToString();
             if (decisionId != null) fields["decision-id"] = decisionId.Value;
+
             var content = FrontmatterParser.Stringify(fields, body);
             File.WriteAllText(filePath, content);
             projectStateChangedNotifier.Notify(projectSlug, ProjectStateChangeKind.Messages | ProjectStateChangeKind.Agents);
             activity?.SetTag("message.filename", unique);
             activity?.SetTag("message.success", true);
-            logger.LogInformation("[runner] Inbox message written: {Project}/{Agent} ← {From} ({Type}) [{File}]",
-                projectSlug, agentSlug, from, type, unique);
+            LogInboxMessageWritten(projectSlug, agentSlug, from, type, unique);
             return new Ok<Unit>(Unit.Value);
         }
         catch (Exception ex)
         {
             activity?.SetTag("message.success", false);
             activity?.SetTag("message.error", ex.Message);
-            logger.LogError(ex, "[runner] Failed to write inbox message to {Project}/{Agent} from {From}: {Error}",
-                projectSlug, agentSlug, from, ex.Message);
+            LogInboxWriteFailed(ex, projectSlug, agentSlug, from, ex.Message);
             return new Err<Unit>(new DomainError("INBOX_WRITE_FAILED", ex.Message));
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Inbox message written: {Project}/{Agent} ← {From} ({Type}) [{File}]")]
+    private partial void LogInboxMessageWritten(ProjectSlug project, AgentSlug agent, MessageSource from, MessageType type, string file);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[runner] Failed to write inbox message to {Project}/{Agent} from {From}: {Error}")]
+    private partial void LogInboxWriteFailed(Exception ex, ProjectSlug project, AgentSlug agent, MessageSource from, string error);
 }

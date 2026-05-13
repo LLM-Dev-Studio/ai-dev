@@ -7,6 +7,9 @@ namespace AiDev.Models.Types;
 [JsonConverter(typeof(DecisionIdJsonConverter))]
 public sealed record DecisionId
 {
+    /// <summary>
+    /// Gets the validated decision identifier value.
+    /// </summary>
     public string Value { get; }
 
     public DecisionId(string value)
@@ -16,6 +19,12 @@ public sealed record DecisionId
         Value = value.Trim();
     }
 
+    /// <summary>
+    /// Attempts to parse a decision identifier.
+    /// </summary>
+    /// <param name="value">The raw identifier value.</param>
+    /// <param name="id">The parsed identifier when successful.</param>
+    /// <returns><see langword="true"/> when parsing succeeds; otherwise, <see langword="false"/>.</returns>
     public static bool TryParse([NotNullWhen(true)] string? value, [NotNullWhen(true)] out DecisionId? id)
     {
         if (string.IsNullOrWhiteSpace(value)) { id = null; return false; }
@@ -23,20 +32,8 @@ public sealed record DecisionId
         return true;
     }
 
-    public static implicit operator string(DecisionId id) => id.Value;
+    public static implicit operator string(DecisionId id) => id?.Value ?? string.Empty;
     public static implicit operator DecisionId(string value) => new(value);
 
     public override string ToString() => Value;
-}
-
-internal sealed class DecisionIdJsonConverter : JsonConverter<DecisionId>
-{
-    public override DecisionId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        var s = reader.GetString() ?? throw new JsonException("Expected string for DecisionId.");
-        return new DecisionId(s);
-    }
-
-    public override void Write(Utf8JsonWriter writer, DecisionId value, JsonSerializerOptions options)
-        => writer.WriteStringValue(value.Value);
 }

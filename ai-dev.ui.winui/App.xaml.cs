@@ -23,12 +23,14 @@ public partial class App : Application
     {
         try
         {
-            _host = Host.CreateDefaultBuilder()
-                .ConfigureAppConfiguration(cfg =>
-                    cfg.AddJsonFile("appsettings.json", optional: true))
-                .ConfigureServices((ctx, services) =>
-                    ConfigureServices(ctx.Configuration, services))
-                .Build();
+            var builder = Host.CreateApplicationBuilder();
+            builder.Configuration.AddJsonFile("appsettings.json", optional: true);
+            builder.Configuration.AddJsonFile(
+                Path.Combine(AppContext.BaseDirectory, FilePathConstants.StudioSettingsFileName),
+                optional: true, reloadOnChange: false);
+            builder.AddServiceDefaults();
+            ConfigureServices(builder.Configuration, builder.Services);
+            _host = builder.Build();
 
             await _host.StartAsync();
 

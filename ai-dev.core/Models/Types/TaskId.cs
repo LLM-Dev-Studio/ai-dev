@@ -6,6 +6,9 @@ namespace AiDev.Models.Types;
 [JsonConverter(typeof(TaskIdJsonConverter))]
 public sealed partial record TaskId : IParsable<TaskId>
 {
+    /// <summary>
+    /// Gets the validated task identifier value.
+    /// </summary>
     public string Value { get; }
 
     public TaskId(string value)
@@ -21,6 +24,12 @@ public sealed partial record TaskId : IParsable<TaskId>
     public static TaskId New() =>
         new($"task-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}-{Guid.NewGuid().ToString("N")[..5]}");
 
+    /// <summary>
+    /// Attempts to parse a validated task identifier.
+    /// </summary>
+    /// <param name="value">The raw identifier value.</param>
+    /// <param name="id">The parsed identifier when successful.</param>
+    /// <returns><see langword="true"/> when parsing succeeds; otherwise, <see langword="false"/>.</returns>
     public static bool TryParse([NotNullWhen(true)] string? value, [NotNullWhen(true)] out TaskId? id)
     {
         if (!IsValid(value)) { id = null; return false; }
@@ -33,7 +42,7 @@ public sealed partial record TaskId : IParsable<TaskId>
     static bool IParsable<TaskId>.TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, [MaybeNullWhen(false)] out TaskId result)
         => TryParse(s, out result);
 
-    public static implicit operator string(TaskId id) => id.Value;
+    public static implicit operator string(TaskId id) => id?.Value ?? string.Empty;
     public static implicit operator TaskId(string value) => new(value);
 
     public override string ToString() => Value;
@@ -43,24 +52,4 @@ public sealed partial record TaskId : IParsable<TaskId>
 
     [System.Text.RegularExpressions.GeneratedRegex(@"^task-\d+-[a-f0-9]{5}$")]
     private static partial System.Text.RegularExpressions.Regex TaskIdPattern();
-}
-
-internal sealed class TaskIdJsonConverter : JsonConverter<TaskId>
-{
-    public override TaskId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        var s = reader.GetString() ?? throw new JsonException("Expected string for TaskId.");
-        if (!TaskId.TryParse(s, out var id)) throw new JsonException($"Invalid TaskId: '{s}'.");
-        return id;
-    }
-
-    public override void Write(Utf8JsonWriter writer, TaskId value, JsonSerializerOptions options)
-        => writer.WriteStringValue(value.Value);
-
-    // Required for Dictionary<TaskId, T> key serialisation
-    public override TaskId ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => Read(ref reader, typeToConvert, options);
-
-    public override void WriteAsPropertyName(Utf8JsonWriter writer, TaskId value, JsonSerializerOptions options)
-        => writer.WritePropertyName(value.Value);
 }

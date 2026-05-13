@@ -54,10 +54,10 @@ public partial class AgentDashboardViewModel : ObservableObject, IDisposable
 
             // Detect agents that have automatically failed over to a backup executor
             FailoverAlerts.Clear();
-            foreach (var a in agents.Where(a => a.FailoverExecutor != null))
+            foreach (var a in agents.Where(a => a.Failover != null))
             {
-                var when = a.FailedOverAt.HasValue ? a.FailedOverAt.Value.ToString("HH:mm") : "recently";
-                FailoverAlerts.Add($"{a.Name} failed over to {a.FailoverExecutor!.Value} at {when}");
+                var when = a.Failover!.OccurredAt.ToString("HH:mm");
+                FailoverAlerts.Add($"{a.Name} failed over to {a.Failover.Executor.Value} at {when}");
             }
             HasFailoverAlerts = FailoverAlerts.Count > 0;
 
@@ -118,7 +118,7 @@ public partial class AgentDashboardViewModel : ObservableObject, IDisposable
             return "Name is required.";
 
         var resolvedSlug = string.IsNullOrWhiteSpace(slug)
-            ? new string(name.Trim().ToLowerInvariant().Replace(" ", "-").Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray()).Trim('-')
+            ? new string([.. name.Trim().ToLowerInvariant().Replace(" ", "-").Where(c => char.IsLetterOrDigit(c) || c == '-')]).Trim('-')
             : slug.Trim();
 
         if (string.IsNullOrWhiteSpace(resolvedSlug))

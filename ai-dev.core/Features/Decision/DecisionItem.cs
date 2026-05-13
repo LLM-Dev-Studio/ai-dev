@@ -1,5 +1,8 @@
 namespace AiDev.Features.Decision;
 
+/// <summary>
+/// Represents a decision request and its eventual resolution state.
+/// </summary>
 public sealed class DecisionItem
 {
     [JsonIgnore] private readonly List<DomainEvent> _domainEvents = [];
@@ -45,17 +48,64 @@ public sealed class DecisionItem
         Response = NormalizeOptional(response);
     }
 
+    /// <summary>
+    /// Gets the backing filename for the decision.
+    /// </summary>
     public string Filename { get; }
+
+    /// <summary>
+    /// Gets the unique decision identifier.
+    /// </summary>
     public DecisionId Id { get; }
+
+    /// <summary>
+    /// Gets the decision source.
+    /// </summary>
     public string From { get; }
+
+    /// <summary>
+    /// Gets the decision creation timestamp.
+    /// </summary>
     public DateTime? Date { get; }
+
+    /// <summary>
+    /// Gets the decision priority.
+    /// </summary>
     public Priority Priority { get; private set; }
+
+    /// <summary>
+    /// Gets the decision subject.
+    /// </summary>
     public string Subject { get; private set; }
+
+    /// <summary>
+    /// Gets the current decision status.
+    /// </summary>
     public DecisionStatus Status { get; private set; }
+
+    /// <summary>
+    /// Gets the optional blocker reference.
+    /// </summary>
     public string? Blocks { get; private set; }
+
+    /// <summary>
+    /// Gets the timestamp when the decision was resolved.
+    /// </summary>
     public DateTime? ResolvedAt { get; private set; }
+
+    /// <summary>
+    /// Gets the actor who resolved the decision.
+    /// </summary>
     public string? ResolvedBy { get; private set; }
+
+    /// <summary>
+    /// Gets the decision body content.
+    /// </summary>
     public string Body { get; private set; }
+
+    /// <summary>
+    /// Gets the resolution response content.
+    /// </summary>
     public string? Response { get; private set; }
 
     /// <summary>

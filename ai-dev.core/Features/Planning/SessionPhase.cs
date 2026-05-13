@@ -31,6 +31,9 @@ public readonly struct SessionPhase : IEquatable<SessionPhase>
         ShortLabel     = shortLabel;
     }
 
+    /// <summary>
+    /// Represents phase 1 business discovery.
+    /// </summary>
     public static readonly SessionPhase Phase1BusinessDiscovery     = new(
         key:           "Phase1BusinessDiscovery",
         dslFileName:   FilePathConstants.BusinessDslFileName,
@@ -41,6 +44,9 @@ public readonly struct SessionPhase : IEquatable<SessionPhase>
         reviewTitle:   "Phase 1 — Business Discovery (Read-Only)",
         shortLabel:    "Ph1");
 
+    /// <summary>
+    /// Represents phase 2 solution shaping.
+    /// </summary>
     public static readonly SessionPhase Phase2SolutionShaping       = new(
         key:           "Phase2SolutionShaping",
         dslFileName:   FilePathConstants.SolutionDslFileName,
@@ -51,6 +57,9 @@ public readonly struct SessionPhase : IEquatable<SessionPhase>
         reviewTitle:   "Phase 2 — Solution Shaping (Read-Only)",
         shortLabel:    "Ph2");
 
+    /// <summary>
+    /// Represents phase 3 planning and decomposition.
+    /// </summary>
     public static readonly SessionPhase Phase3PlanningDecomposition = new(
         key:           "Phase3PlanningDecomposition",
         dslFileName:   FilePathConstants.PlanDslFileName,
@@ -82,8 +91,17 @@ public readonly struct SessionPhase : IEquatable<SessionPhase>
     /// <summary>Compact label used in the session list (e.g. "Ph1").</summary>
     public string ShortLabel     { get; }
 
+    /// <summary>
+    /// Serializes the phase to its persisted key.
+    /// </summary>
+    /// <returns>The serialized phase key.</returns>
     public string Serialize() => _key ?? "Phase1BusinessDiscovery";
 
+    /// <summary>
+    /// Parses a persisted phase key.
+    /// </summary>
+    /// <param name="value">The serialized phase key.</param>
+    /// <returns>The parsed phase, defaulting to phase 1 when the value is unknown.</returns>
     public static SessionPhase Parse(string? value) => value switch
     {
         "Phase1BusinessDiscovery"     => Phase1BusinessDiscovery,

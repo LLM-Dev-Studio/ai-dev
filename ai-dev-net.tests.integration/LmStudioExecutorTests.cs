@@ -525,11 +525,10 @@ public sealed class LmStudioAgentExecutorIntegrationTests : IDisposable
             var models = new List<string>();
             if (doc.RootElement.TryGetProperty("data", out var data))
             {
-                models = data.EnumerateArray()
+                models = [.. data.EnumerateArray()
                     .Select(m => m.TryGetProperty("id", out var idProp) ? idProp.GetString() : null)
                     .Where(n => n is { Length: > 0 })
-                    .Select(n => n!)
-                    .ToList();
+                    .Select(n => n!)];
             }
 
             if (models.Count == 0)

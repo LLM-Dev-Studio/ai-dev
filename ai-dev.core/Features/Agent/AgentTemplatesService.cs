@@ -1,19 +1,25 @@
 namespace AiDev.Features.Agent;
 
+/// <summary>
+/// Loads, saves, creates, and deletes agent templates.
+/// </summary>
 public class AgentTemplatesService(WorkspacePaths paths)
 {
     private readonly TemplateComposer _composer = new();
 
+    /// <summary>
+    /// Lists the available agent templates.
+    /// </summary>
+    /// <returns>The available templates ordered by name.</returns>
     public List<AgentTemplate> ListTemplates()
     {
         var dir = paths.AgentTemplatesDir;
         if (!Directory.Exists(dir)) return [];
 
-        return Directory.GetFiles(dir, "*.json")
+        return [.. Directory.GetFiles(dir, "*.json")
             .Select(LoadTemplateFile)
             .OfType<AgentTemplate>()
-            .OrderBy(t => t.Name)
-            .ToList();
+            .OrderBy(t => t.Name)];
     }
 
     private IReadOnlyDictionary<string, string> LoadPartials()
@@ -52,6 +58,11 @@ public class AgentTemplatesService(WorkspacePaths paths)
         catch { return null; }
     }
 
+    /// <summary>
+    /// Gets an agent template by slug.
+    /// </summary>
+    /// <param name="slug">The template slug.</param>
+    /// <returns>The matching template, or <see langword="null"/> when not found.</returns>
     public AgentTemplate? GetTemplate(string slug)
     {
         if (!AgentSlug.TryParse(slug, out _)) return null;
@@ -59,6 +70,10 @@ public class AgentTemplatesService(WorkspacePaths paths)
         return jsonPath != null && File.Exists(jsonPath.Value) ? LoadTemplateFile(jsonPath.Value) : null;
     }
 
+    /// <summary>
+    /// Saves an agent template.
+    /// </summary>
+    /// <param name="template">The template to persist.</param>
     public void SaveTemplate(AgentTemplate template)
     {
         var jsonPath = paths.SafeTemplatePath(template.Slug, ".json");
@@ -87,6 +102,11 @@ public class AgentTemplatesService(WorkspacePaths paths)
         File.WriteAllText(jsonPath.Value, JsonSerializer.Serialize(meta, JsonDefaults.Write));
     }
 
+    /// <summary>
+    /// Creates and saves a new agent template.
+    /// </summary>
+    /// <param name="template">The template to create.</param>
+    /// <returns>The created template.</returns>
     public AgentTemplate CreateTemplate(AgentTemplate template)
     {
         if (string.IsNullOrEmpty(template.Model))
@@ -96,6 +116,10 @@ public class AgentTemplatesService(WorkspacePaths paths)
         return template;
     }
 
+    /// <summary>
+    /// Deletes an agent template by slug.
+    /// </summary>
+    /// <param name="slug">The template slug.</param>
     public void DeleteTemplate(string slug)
     {
         var jsonPath = paths.SafeTemplatePath(slug, ".json");

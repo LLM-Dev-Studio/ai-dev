@@ -180,10 +180,9 @@ internal sealed class ProgressiveDiscoveryEngine : IProgressiveDiscoveryEngine
     }
 
     private static string[] ExtractTerms(string query)
-        => query.Split([' ', '.', ':', '/', '\\'], StringSplitOptions.RemoveEmptyEntries)
+        => [.. query.Split([' ', '.', ':', '/', '\\'], StringSplitOptions.RemoveEmptyEntries)
             .Where(t => t.Length >= 3)
-            .Take(5)
-            .ToArray();
+            .Take(5)];
 
     private static async Task<bool> FileContainsAnyTermAsync(
         string filePath,

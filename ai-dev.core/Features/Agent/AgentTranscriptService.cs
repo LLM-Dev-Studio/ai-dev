@@ -2,8 +2,17 @@ using AiDev.Executors;
 
 namespace AiDev.Features.Agent;
 
+/// <summary>
+/// Reads usage data persisted alongside agent transcripts.
+/// </summary>
 public class AgentTranscriptService(WorkspacePaths paths)
 {
+    /// <summary>
+    /// Gets the most recent persisted session usage for an agent.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the agent.</param>
+    /// <param name="agentSlug">The agent slug.</param>
+    /// <returns>The most recent session usage, or <see langword="null"/> when unavailable.</returns>
     public TokenUsage? GetLastSessionUsage(ProjectSlug projectSlug, AgentSlug agentSlug)
     {
         var transcriptDir = paths.AgentTranscriptsDir(projectSlug, agentSlug);
@@ -23,6 +32,13 @@ public class AgentTranscriptService(WorkspacePaths paths)
         catch { return null; }
     }
 
+    /// <summary>
+    /// Gets persisted session usage for a specific transcript date.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the agent.</param>
+    /// <param name="agentSlug">The agent slug.</param>
+    /// <param name="date">The transcript date.</param>
+    /// <returns>The session usage for the specified date, or <see langword="null"/> when unavailable.</returns>
     public TokenUsage? GetSessionUsage(ProjectSlug projectSlug, AgentSlug agentSlug, TranscriptDate date)
     {
         var transcriptDir = paths.AgentTranscriptsDir(projectSlug, agentSlug);

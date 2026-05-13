@@ -2,7 +2,7 @@ using System.Reflection;
 
 namespace AiDev.Services;
 
-internal sealed class InProcessDomainEventDispatcher(
+internal sealed partial class InProcessDomainEventDispatcher(
     IServiceProvider serviceProvider,
     ILogger<InProcessDomainEventDispatcher> logger) : IDomainEventDispatcher
 {
@@ -43,8 +43,7 @@ internal sealed class InProcessDomainEventDispatcher(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "[dispatcher] Handler {Handler} failed for {Event}",
-                    handler.GetType().Name, typeof(TEvent).Name);
+                LogHandlerFailed(ex, handler.GetType().Name, typeof(TEvent).Name);
                 failures.Add($"{handler.GetType().Name}: {ex.Message}");
             }
         }
@@ -53,6 +52,9 @@ internal sealed class InProcessDomainEventDispatcher(
             ? new Ok<Unit>(Unit.Value)
             : CountFailureResult(failures);
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[dispatcher] Handler {Handler} failed for {Event}")]
+    private partial void LogHandlerFailed(Exception ex, string handler, string @event);
 
     private static Err<Unit> CountFailureResult(List<string> failures)
     {

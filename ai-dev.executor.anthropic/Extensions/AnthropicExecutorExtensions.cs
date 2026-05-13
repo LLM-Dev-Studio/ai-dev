@@ -22,10 +22,12 @@ public static class AnthropicExecutorExtensions
             client.Timeout = TimeSpan.FromMinutes(10);
         });
 
+#pragma warning disable EXTEXP0001 // Type is for evaluation purposes only and is subject to change or removal in future updates
         services.AddHttpClient("anthropic-health", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(5);
-        });
+        }).RemoveAllResilienceHandlers();
+#pragma warning restore EXTEXP0001
 
         services.AddSingleton<IAgentExecutor, AnthropicAgentExecutor>();
         services.AddSingleton<IPlanningLlmClient, AnthropicPlanningLlmClient>();

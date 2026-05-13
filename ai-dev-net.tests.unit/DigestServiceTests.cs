@@ -11,9 +11,9 @@ public class DigestServiceTests
         var service = CreateService(out _);
         var projectSlug = new ProjectSlug("test-project");
 
-        var result = service.GetDigest(projectSlug, "2026-01-01");
+        var result = service.GetDigest(projectSlug, new DateOnly(2026, 1, 1));
 
-        result.Date.ShouldBe("2026-01-01");
+        result.Date.ShouldBe(new DateOnly(2026, 1, 1));
         result.TotalMessages.ShouldBe(0);
         result.PendingDecisions.ShouldBe(0);
         result.ResolvedDecisions.ShouldBe(0);
@@ -31,7 +31,7 @@ public class DigestServiceTests
         File.WriteAllText(Path.Combine(pendingDir, "decision1.md"), "content");
         File.WriteAllText(Path.Combine(pendingDir, "decision2.md"), "content");
 
-        var result = service.GetDigest(projectSlug, "2026-01-01");
+        var result = service.GetDigest(projectSlug, new DateOnly(2026, 1, 1));
 
         result.PendingDecisions.ShouldBe(2);
     }
@@ -49,7 +49,7 @@ public class DigestServiceTests
         File.WriteAllText(Path.Combine(resolvedDir, "20260101-130000-decision2.md"), "content");
         File.WriteAllText(Path.Combine(resolvedDir, "20260102-120000-decision3.md"), "content");
 
-        var result = service.GetDigest(projectSlug, "2026-01-01");
+        var result = service.GetDigest(projectSlug, new DateOnly(2026, 1, 1));
 
         result.ResolvedDecisions.ShouldBe(2);
     }
@@ -66,7 +66,7 @@ public class DigestServiceTests
         var agent1Dir = Path.Combine(agentsDir, "agent1");
         Directory.CreateDirectory(agent1Dir);
 
-        var result = service.GetDigest(projectSlug, "2026-01-01");
+        var result = service.GetDigest(projectSlug, new DateOnly(2026, 1, 1));
 
         result.AgentActivity.Count.ShouldBe(1);
         result.AgentActivity[0].AgentSlug.Value.ShouldBe("agent1");
@@ -92,7 +92,7 @@ public class DigestServiceTests
         }";
         File.WriteAllText(jsonPath, jsonContent);
 
-        var result = service.GetDigest(projectSlug, "2026-01-01");
+        var result = service.GetDigest(projectSlug, new DateOnly(2026, 1, 1));
 
         result.AgentActivity.Count.ShouldBe(1);
         result.AgentActivity[0].AgentName.ShouldBe("Agent One");
@@ -111,7 +111,7 @@ public class DigestServiceTests
         var agent1Dir = Path.Combine(agentsDir, "agent1");
         Directory.CreateDirectory(agent1Dir);
 
-        var result = service.GetDigest(projectSlug, "2026-01-01");
+        var result = service.GetDigest(projectSlug, new DateOnly(2026, 1, 1));
 
         result.AgentActivity[0].AgentName.ShouldBe("agent1");
         result.AgentActivity[0].Executor.ShouldBeNull();
@@ -133,7 +133,7 @@ public class DigestServiceTests
         File.WriteAllText(jsonPath, "{ invalid json");
 
         // Should not throw
-        var result = service.GetDigest(projectSlug, "2026-01-01");
+        var result = service.GetDigest(projectSlug, new DateOnly(2026, 1, 1));
 
         result.AgentActivity[0].AgentName.ShouldBe("agent1");
     }
@@ -160,7 +160,7 @@ public class DigestServiceTests
         File.WriteAllText(Path.Combine(inboxDir, "20260101-130000-msg2.md"), "content");
         File.WriteAllText(Path.Combine(outboxDir, "20260101-140000-msg1.md"), "content");
 
-        var result = service.GetDigest(projectSlug, "2026-01-01");
+        var result = service.GetDigest(projectSlug, new DateOnly(2026, 1, 1));
 
         result.AgentActivity[0].MessagesReceived.ShouldBe(2);
         result.AgentActivity[0].MessagesSent.ShouldBe(1);
@@ -187,7 +187,7 @@ public class DigestServiceTests
         File.WriteAllText(Path.Combine(inboxDir, "20260101-130000-msg2.md"), "content");
         File.WriteAllText(Path.Combine(inboxDir, "20260102-120000-msg3.md"), "content");
 
-        var result = service.GetDigest(projectSlug, "2026-01-01");
+        var result = service.GetDigest(projectSlug, new DateOnly(2026, 1, 1));
 
         result.AgentActivity[0].MessagesReceived.ShouldBe(2);
     }
@@ -205,7 +205,7 @@ public class DigestServiceTests
         Directory.CreateDirectory(Path.Combine(agentsDir, "alpha-agent"));
         Directory.CreateDirectory(Path.Combine(agentsDir, "beta-agent"));
 
-        var result = service.GetDigest(projectSlug, "2026-01-01");
+        var result = service.GetDigest(projectSlug, new DateOnly(2026, 1, 1));
 
         result.AgentActivity.Count.ShouldBe(3);
         result.AgentActivity[0].AgentName.ShouldBe("alpha-agent");
@@ -226,7 +226,7 @@ public class DigestServiceTests
         Directory.CreateDirectory(Path.Combine(agentsDir, "-invalid")); // Invalid: starts with dash
         Directory.CreateDirectory(Path.Combine(agentsDir, "a")); // Invalid: too short
 
-        var result = service.GetDigest(projectSlug, "2026-01-01");
+        var result = service.GetDigest(projectSlug, new DateOnly(2026, 1, 1));
 
         result.AgentActivity.Count.ShouldBe(1);
         result.AgentActivity[0].AgentSlug.Value.ShouldBe("valid-agent");

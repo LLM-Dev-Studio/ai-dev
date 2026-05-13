@@ -11,7 +11,7 @@ namespace AiDev.Features.Planning;
 /// matches the analyst agent's configured executor for the project.
 /// If no analyst exists, defaults to the standard executor and model.
 /// </summary>
-public sealed class PlanningChatService(
+public sealed partial class PlanningChatService(
     AgentService agentService,
     IEnumerable<IPlanningLlmClient> llmClients,
     ILogger<PlanningChatService> logger) : IPlanningChatService
@@ -39,7 +39,7 @@ public sealed class PlanningChatService(
 
         if (wasFiltered)
         {
-            logger.LogInformation("[planning-chat] EC-6 filter triggered — term: {Term}", firstMatch);
+            LogEc6FilterTriggered(firstMatch);
             const string blockedMessage =
                 "I notice I was about to mention some technical implementation details, which aren't appropriate for this phase. " +
                 "Let's keep our focus on the business problem. Could you rephrase your last message in purely business terms? " +
@@ -150,9 +150,7 @@ public sealed class PlanningChatService(
                     "Planning requires a client matching the analyst's configured executor.");
             }
 
-            logger.LogWarning(
-                "[planning-chat] No analyst agent found and default executor '{Executor}' is unavailable.",
-                executorName);
+            LogNoAnalystAgentFound(executorName);
 
             client = clientMap.Values.FirstOrDefault()
                 ?? throw new InvalidOperationException("No IPlanningLlmClient implementations are registered for planning chat.");
@@ -160,7 +158,7 @@ public sealed class PlanningChatService(
             executorName = client.ExecutorName;
         }
 
-        logger.LogDebug("[planning-chat] Using executor '{Executor}' model '{Model}'", executorName, modelId);
+        LogUsingExecutor(executorName, modelId);
         return (client, modelId);
     }
 
@@ -169,11 +167,11 @@ public sealed class PlanningChatService(
     // -------------------------------------------------------------------------
 
     private static IReadOnlyList<ConversationMessage> ToMessages(IReadOnlyList<ConversationTurn> turns) =>
-        turns.Select(t => new ConversationMessage
+        [.. turns.Select(t => new ConversationMessage
         {
             Role    = t.Role.ApiRole,
             Content = t.Content,
-        }).ToList();
+        })];
 
     // -------------------------------------------------------------------------
     // System prompts
@@ -410,4 +408,13 @@ public sealed class PlanningChatService(
                     dependencies: []
                     estimated_size: <"XS"|"S"|"M"|"L">
         """;
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[planning-chat] EC-6 filter triggered — term: {Term}")]
+    private partial void LogEc6FilterTriggered(string? term);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[planning-chat] No analyst agent found and default executor '{Executor}' is unavailable.")]
+    private partial void LogNoAnalystAgentFound(AgentExecutorName executor);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[planning-chat] Using executor '{Executor}' model '{Model}'")]
+    private partial void LogUsingExecutor(AgentExecutorName executor, string model);
 }

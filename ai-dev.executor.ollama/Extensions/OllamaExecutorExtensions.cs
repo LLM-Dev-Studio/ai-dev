@@ -19,9 +19,9 @@ public static class OllamaExecutorExtensions
 #pragma warning disable EXTEXP0001 // Type is for evaluation purposes only and is subject to change or removal in future updates
         services.AddHttpClient("ollama", c => c.Timeout = TimeSpan.FromMinutes(10))
             .RemoveAllResilienceHandlers();
+        services.AddHttpClient("ollama-health", c => c.Timeout = TimeSpan.FromSeconds(5))
+            .RemoveAllResilienceHandlers();
 #pragma warning restore EXTEXP0001
-
-        services.AddHttpClient("ollama-health", c => c.Timeout = TimeSpan.FromSeconds(5));
         services.AddSingleton<IAgentExecutor, OllamaAgentExecutor>();
         return services;
     }

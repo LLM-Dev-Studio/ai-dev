@@ -6,6 +6,9 @@ namespace AiDev.Models.Types;
 [JsonConverter(typeof(SessionIdJsonConverter))]
 public sealed partial record SessionId
 {
+    /// <summary>
+    /// Gets the validated session identifier value.
+    /// </summary>
     public string Value { get; }
 
     public SessionId(string value)
@@ -20,6 +23,12 @@ public sealed partial record SessionId
     /// <summary>Generates a new unique session ID.</summary>
     public static SessionId New() => new(Guid.CreateVersion7().ToString("N"));
 
+    /// <summary>
+    /// Attempts to parse a validated session identifier.
+    /// </summary>
+    /// <param name="value">The raw identifier value.</param>
+    /// <param name="id">The parsed identifier when successful.</param>
+    /// <returns><see langword="true"/> when parsing succeeds; otherwise, <see langword="false"/>.</returns>
     public static bool TryParse([NotNullWhen(true)] string? value, [NotNullWhen(true)] out SessionId? id)
     {
         if (!IsValid(value)) { id = null; return false; }

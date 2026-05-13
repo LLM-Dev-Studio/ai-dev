@@ -26,11 +26,11 @@ public class SessionResultTests
 
         result.ShouldNotBeNull();
         result!.TaskId.ShouldBe("TASK-42");
-        result.Status.ShouldBe("completed");
+        result.SessionStatus.ShouldBe(SessionStatus.Completed);
         result.Summary.ShouldBe("Shipped the feature");
         result.PullRequestUrl.ShouldBe("https://github.com/org/repo/pull/99");
         result.FilesChanged.ShouldBe(["src/Foo.cs", "src/Bar.cs"]);
-        result.TestOutcome.ShouldBe("passed");
+        result.TestOutcome.ShouldBe(TestOutcome.Passed);
         result.CompletedAt.ShouldNotBeNull();
         result.Tags.ShouldBe(["feat", "api"]);
     }
@@ -63,7 +63,7 @@ public class SessionResultTests
     {
         var original = new SessionResult(
             TaskId: "TASK-1",
-            Status: "completed",
+            SessionStatus: SessionStatus.Completed,
             Summary: "done",
             PullRequestUrl: null,
             FilesChanged: [],
