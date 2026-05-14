@@ -1,3 +1,5 @@
+using AiDev.Services;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -23,12 +25,13 @@ public sealed record AssigneeOption(string DisplayName, string Value);
 
 public partial class BoardViewModel : ObservableObject, IDisposable
 {
-    private readonly BoardService _boardService;
+    private readonly IBoardService _boardService;
     private readonly AgentService _agentService;
     private readonly PromptEnhancerService _enhancerService;
     private readonly MainViewModel _mainViewModel;
     private readonly DispatcherQueue _dispatcher;
-    private Timer? _pollTimer;
+    private readonly ProjectStateChangedNotifier _notifier;
+    private readonly Action<ProjectStateChangedEvent> _onStateChanged;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
 
@@ -60,17 +63,20 @@ public partial class BoardViewModel : ObservableObject, IDisposable
     public ObservableCollection<AssigneeOption> AssigneeOptions { get; } = [];
 
     public BoardViewModel(
-        BoardService boardService,
+        IBoardService boardService,
         AgentService agentService,
         PromptEnhancerService enhancerService,
-        MainViewModel mainViewModel)
+        MainViewModel mainViewModel,
+        ProjectStateChangedNotifier notifier)
     {
         _boardService = boardService;
         _agentService = agentService;
         _enhancerService = enhancerService;
         _mainViewModel = mainViewModel;
-        // Capture the dispatcher on the UI thread so background timer callbacks can marshal to it.
+        _notifier = notifier;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
+        _onStateChanged = OnStateChanged;
+        _notifier.Changed += _onStateChanged;
     }
 
     private ProjectSlug? CurrentSlug => _mainViewModel.ActiveProject?.Slug;
@@ -84,11 +90,6 @@ public partial class BoardViewModel : ObservableObject, IDisposable
         {
             RefreshAgents();
             RefreshBoard();
-
-            // Poll every 3 s for board changes from running agents
-            _pollTimer ??= new Timer(_ =>
-                _dispatcher.TryEnqueue(RefreshBoard),
-                null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
         }
         finally
         {
@@ -310,10 +311,16 @@ public partial class BoardViewModel : ObservableObject, IDisposable
             SelectedAssigneeOption = match;
     }
 
+    private void OnStateChanged(ProjectStateChangedEvent e)
+    {
+        if (e.ProjectSlug != CurrentSlug) return;
+        if (!e.Kind.HasFlag(ProjectStateChangeKind.Board)) return;
+        _dispatcher.TryEnqueue(RefreshBoard);
+    }
+
     public void Dispose()
     {
-        _pollTimer?.Dispose();
-        _pollTimer = null;
+        _notifier.Changed -= _onStateChanged;
 
         _enhanceCts?.Cancel();
         _enhanceCts?.Dispose();

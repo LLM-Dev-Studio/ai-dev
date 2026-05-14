@@ -1,22 +1,14 @@
 namespace AiDev.Features.Workspace;
 
 /// <summary>
-/// Represents a project entry stored in the workspace registry.
+/// Represents a known codebase in the global project registry.
+/// The project's slug and display name are read from the codebase's own
+/// <c>.ai-dev/project.json</c> at runtime and are not duplicated here.
 /// </summary>
 public class WorkspaceRegistryEntry
 {
     /// <summary>
-    /// Gets or sets the project slug.
-    /// </summary>
-    public required string Slug { get; set; }
-
-    /// <summary>
-    /// Gets or sets the relative project path.
+    /// Gets or sets the absolute path to the codebase root directory.
     /// </summary>
     public required string Path { get; set; }
-
-    /// <summary>
-    /// Gets or sets the display name of the project.
-    /// </summary>
-    public required string Name { get; set; }
 }

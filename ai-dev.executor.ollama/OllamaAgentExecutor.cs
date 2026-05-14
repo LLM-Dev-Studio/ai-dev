@@ -212,9 +212,9 @@ public partial class OllamaAgentExecutor(
         LogTriggerDetails(
             context.Trigger?.Source,
             context.Trigger?.Reason,
-            context.Trigger?.ProjectSlug,
-            context.Trigger?.TaskId,
-            context.Trigger?.DecisionId,
+            context.Trigger?.ProjectSlug?.ToString(),
+            context.Trigger?.TaskId?.ToString(),
+            context.Trigger?.DecisionId?.ToString(),
             context.Trigger?.MessageFile);
         output.TryWrite($"[{DateTime.UtcNow:o}] [ollama] model={context.ModelId} endpoint={requestUri}");
 

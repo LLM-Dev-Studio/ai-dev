@@ -1,0 +1,11 @@
+src/**
+out/**
+node_modules/**
+scripts/**
+.vscode/**
+.vs/**
+esbuild.mjs
+jest.config.js
+tsconfig.json
+**/*.map
+**/*.test.ts

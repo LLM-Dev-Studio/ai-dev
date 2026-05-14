@@ -18,7 +18,6 @@ public partial class ProjectSettingsViewModel : ObservableObject
     // Project detail form
     [ObservableProperty] public partial string EditName { get; set; } = "";
     [ObservableProperty] public partial string EditDescription { get; set; } = "";
-    [ObservableProperty] public partial string EditCodebasePath { get; set; } = "";
     [ObservableProperty] public partial string DetailsError { get; set; } = "";
     [ObservableProperty] public partial bool DetailsSaved { get; set; }
     [ObservableProperty] public partial bool SavingDetails { get; set; }
@@ -68,7 +67,6 @@ public partial class ProjectSettingsViewModel : ObservableObject
         {
             EditName = project.Name;
             EditDescription = project.Description;
-            EditCodebasePath = project.CodebasePath ?? "";
         }
         RefreshAgents();
         RefreshExecutors();
@@ -84,8 +82,7 @@ public partial class ProjectSettingsViewModel : ObservableObject
         DetailsSaved = false;
         if (string.IsNullOrWhiteSpace(EditName)) { DetailsError = "Name is required."; return; }
         SavingDetails = true;
-        var result = _workspaceService.UpdateProject(CurrentSlug, EditName, EditDescription,
-            string.IsNullOrWhiteSpace(EditCodebasePath) ? null : EditCodebasePath);
+        var result = _workspaceService.UpdateProject(CurrentSlug, EditName, EditDescription);
         SavingDetails = false;
         if (result is Err<Unit> err) { DetailsError = err.Error.Message; return; }
         // Sync the shell title

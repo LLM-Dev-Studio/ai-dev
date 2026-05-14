@@ -8,7 +8,7 @@ public class DecisionsService(
     IDomainEventDispatcher dispatcher,
     AtomicFileWriter fileWriter,
     ProjectMutationCoordinator coordinator,
-    ILogger<DecisionsService> logger)
+    ILogger<DecisionsService> logger) : IDecisionsService
 {
     private const string ResponseSeparator = "\n\n---\n\n## Human Response\n\n";
     private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10);

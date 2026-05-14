@@ -1,19 +1,24 @@
 namespace AiDev.Features.Agent;
 
 /// <summary>
-/// Loads, saves, creates, and deletes agent templates.
+/// Loads, saves, creates, and deletes agent templates from the global templates directory.
 /// </summary>
-public class AgentTemplatesService(WorkspacePaths paths)
+public class AgentTemplatesService
 {
     private readonly TemplateComposer _composer = new();
+    private readonly string? _templatesOverride;
+
+    public AgentTemplatesService(string templatesDir) => _templatesOverride = templatesDir;
+    public AgentTemplatesService() { }
+
+    private AgentTemplatesFile TemplatesDir => new(_templatesOverride ?? GlobalPaths.AgentTemplatesDir);
 
     /// <summary>
     /// Lists the available agent templates.
     /// </summary>
-    /// <returns>The available templates ordered by name.</returns>
     public List<AgentTemplate> ListTemplates()
     {
-        var dir = paths.AgentTemplatesDir;
+        var dir = TemplatesDir.Value;
         if (!Directory.Exists(dir)) return [];
 
         return [.. Directory.GetFiles(dir, "*.json")
@@ -24,7 +29,7 @@ public class AgentTemplatesService(WorkspacePaths paths)
 
     private IReadOnlyDictionary<string, string> LoadPartials()
     {
-        var sharedDir = Path.Combine(paths.AgentTemplatesDir.Value, "shared");
+        var sharedDir = Path.Combine(TemplatesDir.Value, "shared");
         if (!Directory.Exists(sharedDir)) return new Dictionary<string, string>();
 
         return Directory.GetFiles(sharedDir, "*.md")
@@ -61,32 +66,28 @@ public class AgentTemplatesService(WorkspacePaths paths)
     /// <summary>
     /// Gets an agent template by slug.
     /// </summary>
-    /// <param name="slug">The template slug.</param>
-    /// <returns>The matching template, or <see langword="null"/> when not found.</returns>
     public AgentTemplate? GetTemplate(string slug)
     {
         if (!AgentSlug.TryParse(slug, out _)) return null;
-        var jsonPath = paths.SafeTemplatePath(slug, ".json");
+        var jsonPath = TemplatesDir.SafeTemplateFile(slug, ".json");
         return jsonPath != null && File.Exists(jsonPath.Value) ? LoadTemplateFile(jsonPath.Value) : null;
     }
 
     /// <summary>
     /// Saves an agent template.
     /// </summary>
-    /// <param name="template">The template to persist.</param>
     public void SaveTemplate(AgentTemplate template)
     {
-        var jsonPath = paths.SafeTemplatePath(template.Slug, ".json");
-        var mdPath = paths.SafeTemplatePath(template.Slug, ".md");
+        var jsonPath = TemplatesDir.SafeTemplateFile(template.Slug, ".json");
+        var mdPath = TemplatesDir.SafeTemplateFile(template.Slug, ".md");
         if (jsonPath == null || mdPath == null)
             throw new ArgumentException($"Invalid template slug: '{template.Slug}'");
 
-        Directory.CreateDirectory(paths.AgentTemplatesDir.Value);
+        Directory.CreateDirectory(TemplatesDir.Value);
 
         if (!string.IsNullOrEmpty(template.Content))
             File.WriteAllText(mdPath.Value, template.Content);
 
-        // Store metadata only in JSON (content lives in .md)
         var meta = new AgentTemplate
         {
             Slug = template.Slug,
@@ -105,8 +106,6 @@ public class AgentTemplatesService(WorkspacePaths paths)
     /// <summary>
     /// Creates and saves a new agent template.
     /// </summary>
-    /// <param name="template">The template to create.</param>
-    /// <returns>The created template.</returns>
     public AgentTemplate CreateTemplate(AgentTemplate template)
     {
         if (string.IsNullOrEmpty(template.Model))
@@ -119,11 +118,10 @@ public class AgentTemplatesService(WorkspacePaths paths)
     /// <summary>
     /// Deletes an agent template by slug.
     /// </summary>
-    /// <param name="slug">The template slug.</param>
     public void DeleteTemplate(string slug)
     {
-        var jsonPath = paths.SafeTemplatePath(slug, ".json");
-        var mdPath = paths.SafeTemplatePath(slug, ".md");
+        var jsonPath = TemplatesDir.SafeTemplateFile(slug, ".json");
+        var mdPath = TemplatesDir.SafeTemplateFile(slug, ".md");
 
         if (jsonPath != null && File.Exists(jsonPath.Value)) File.Delete(jsonPath.Value);
         if (mdPath != null && File.Exists(mdPath.Value)) File.Delete(mdPath.Value);

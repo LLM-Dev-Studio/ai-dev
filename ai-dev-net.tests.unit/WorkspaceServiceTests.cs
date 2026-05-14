@@ -5,9 +5,9 @@ public class WorkspaceServiceTests
     [Fact]
     public void CreateProject_WhenSlugInvalid_ReturnsError()
     {
-        var service = CreateService(out _);
+        var (service, codebasePath) = CreateService();
 
-        var result = service.CreateProject("Invalid Slug", "Demo", null);
+        var result = service.CreateProject(codebasePath, "Invalid Slug", "Demo", null);
 
         result.ShouldBeOfType<Err<AiDev.Models.Unit>>();
     }
@@ -15,28 +15,31 @@ public class WorkspaceServiceTests
     [Fact]
     public void CreateProject_WhenValid_ReturnsOk()
     {
-        var service = CreateService(out var paths);
+        var (service, codebasePath) = CreateService();
+        var paths = new WorkspacePaths(new RootDir(Path.Combine(codebasePath, ".ai-dev")));
 
-        var result = service.CreateProject("demo-project", "Demo Project", "Main app");
+        var result = service.CreateProject(codebasePath, "demo-project", "Demo Project", "Main app");
 
         result.ShouldBeOfType<Ok<AiDev.Models.Unit>>();
-        File.Exists(paths.ProjectJsonPath(new ProjectSlug("demo-project"))).ShouldBeTrue();
+        paths.ProjectJsonPath(new ProjectSlug("demo-project")).Exists().ShouldBeTrue();
     }
 
     [Fact]
     public void UpdateProject_WhenMissing_ReturnsError()
     {
-        var service = CreateService(out _);
+        var (service, codebasePath) = CreateService();
 
-        var result = service.UpdateProject(new ProjectSlug("demo-project"), "Demo Project", null, null);
+        var result = service.UpdateProject(new ProjectSlug("demo-project"), "Demo Project", null);
 
         result.ShouldBeOfType<Err<AiDev.Models.Unit>>();
     }
 
-    private static WorkspaceService CreateService(out WorkspacePaths paths)
+    private static (WorkspaceService service, string codebasePath) CreateService()
     {
-        var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
-        paths = new WorkspacePaths(root);
-        return new WorkspaceService(paths, new AtomicFileWriter());
+        var codebasePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(codebasePath);
+        var holder = new ActiveWorkspaceHolder();
+        holder.Activate(codebasePath);
+        return (new WorkspaceService(holder, new AtomicFileWriter()), codebasePath);
     }
 }

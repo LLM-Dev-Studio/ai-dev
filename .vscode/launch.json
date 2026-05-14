@@ -26,6 +26,33 @@
             "type": "dotnet",
             "request": "launch",
             "projectPath": "${workspaceFolder}/ai-dev-net.AppHost/ai-dev-net.AppHost.csproj"
+        },
+        {
+            "name": "Run Extension",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}/ai-dev-vscode",
+                "${workspaceFolder}"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/ai-dev-vscode/dist/**/*.js"
+            ],
+            "preLaunchTask": "build-extension"
+        },
+        {
+            "name": "ai-dev.api",
+            "type": "dotnet",
+            "request": "launch",
+            "projectPath": "${workspaceFolder}/ai-dev.api/ai-dev.api.csproj",
+            "launchSettingsProfile": "http"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "API + Extension",
+            "configurations": ["ai-dev.api", "Run Extension"],
+            "stopAll": true
         }
     ]
 }

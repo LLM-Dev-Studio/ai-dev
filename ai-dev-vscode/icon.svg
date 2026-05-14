@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- left bracket -->
+  <path d="M4.5 2.5 L2 6.5 L4.5 10.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- right bracket -->
+  <path d="M11.5 2.5 L14 6.5 L11.5 10.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 4-pointed sparkle star (concave cubic beziers through centre) -->
+  <path d="M8 1 C8 6.5 8 6.5 14 6.5 C8 6.5 8 6.5 8 12 C8 6.5 8 6.5 2 6.5 C8 6.5 8 6.5 8 1 Z" fill="currentColor"/>
+  <!-- dot -->
+  <circle cx="8" cy="14.5" r="1" fill="currentColor"/>
+</svg>

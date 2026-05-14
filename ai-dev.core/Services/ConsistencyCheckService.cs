@@ -9,7 +9,7 @@ namespace AiDev.Services;
 public class ConsistencyCheckService(
     WorkspacePaths paths,
     WorkspaceService workspaceService,
-    BoardService boardService,
+    IBoardService boardService,
     ILogger<ConsistencyCheckService> logger)
 {
     private sealed class RawBoardState

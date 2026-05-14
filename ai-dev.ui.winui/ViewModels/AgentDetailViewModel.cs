@@ -1,5 +1,6 @@
 using AiDev.Executors;
 using AiDev.Features.Agent;
+using AiDev.Services;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -20,7 +21,8 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
     private readonly IModelRegistry _modelRegistry;
     private readonly MainViewModel _mainViewModel;
     private readonly DispatcherQueue _dispatcher;
-    private Timer? _pollTimer;
+    private readonly ProjectStateChangedNotifier _notifier;
+    private readonly Action<ProjectStateChangedEvent> _onStateChanged;
 
     // ── Core state ──────────────────────────────────────────────────────────
     [ObservableProperty] public partial AgentInfo? Agent { get; set; }
@@ -62,7 +64,8 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
         MessagesService messagesService,
         ExecutorHealthMonitor healthMonitor,
         IModelRegistry modelRegistry,
-        MainViewModel mainViewModel)
+        MainViewModel mainViewModel,
+        ProjectStateChangedNotifier notifier)
     {
         _agentService = agentService;
         _agentRunnerService = agentRunnerService;
@@ -71,7 +74,10 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
         _healthMonitor = healthMonitor;
         _modelRegistry = modelRegistry;
         _mainViewModel = mainViewModel;
+        _notifier = notifier;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
+        _onStateChanged = OnStateChanged;
+        _notifier.Changed += _onStateChanged;
     }
 
     private ProjectSlug? CurrentSlug => _mainViewModel.ActiveProject?.Slug;
@@ -99,23 +105,6 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
             PopulateSkillsList();
             UpdateModelCapabilities();
             RefreshInbox(agentSlug);
-
-            // Poll every 2 s for live run-state changes
-            _pollTimer?.Dispose();
-            _pollTimer = new Timer(_ =>
-            {
-                _dispatcher.TryEnqueue(() =>
-                {
-                    if (Agent is null) return;
-                    var running = _agentRunnerService.IsRunning(CurrentSlug!, Agent.Slug);
-                    if (running != IsRunning)
-                    {
-                        IsRunning = running;
-                        Agent = _agentService.LoadAgent(CurrentSlug!, Agent.Slug);
-                        if (Agent is not null) RefreshInbox(Agent.Slug);
-                    }
-                });
-            }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
         }
         finally
         {
@@ -268,9 +257,30 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void ViewTranscript() => NavigateToTranscript?.Invoke();
 
+    private void OnStateChanged(ProjectStateChangedEvent e)
+    {
+        if (e.ProjectSlug != CurrentSlug) return;
+        _dispatcher.TryEnqueue(() =>
+        {
+            if (Agent is null || CurrentSlug is null) return;
+            if (e.Kind.HasFlag(ProjectStateChangeKind.Agents))
+            {
+                var running = _agentRunnerService.IsRunning(CurrentSlug, Agent.Slug);
+                if (running != IsRunning)
+                {
+                    IsRunning = running;
+                    Agent = _agentService.LoadAgent(CurrentSlug, Agent.Slug);
+                    if (Agent is not null) RefreshInbox(Agent.Slug);
+                    return;
+                }
+            }
+            if (e.Kind.HasFlag(ProjectStateChangeKind.Messages))
+                RefreshInbox(Agent.Slug);
+        });
+    }
+
     public void Dispose()
     {
-        _pollTimer?.Dispose();
-        _pollTimer = null;
+        _notifier.Changed -= _onStateChanged;
     }
 }

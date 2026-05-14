@@ -24,6 +24,11 @@ public static class CoreServiceExtensions
     /// </summary>
     public static IServiceCollection AddAiDevCore(this IServiceCollection services)
     {
+        // WorkspacePaths is resolved lazily from the active workspace holder so that the holder
+        // can be populated (by activating a project) before any service first uses it.
+        services.AddSingleton<ActiveWorkspaceHolder>();
+        services.AddSingleton<WorkspacePaths>(sp => sp.GetRequiredService<ActiveWorkspaceHolder>().Paths);
+
         services.AddSingleton<IDomainEventDispatcher, InProcessDomainEventDispatcher>();
         services.AddSingleton<IDomainEventHandler<TaskAssigned>, TaskAssignedHandler>();
         services.AddSingleton<ProjectStateChangedNotifier>();
@@ -37,9 +42,9 @@ public static class CoreServiceExtensions
         services.AddSingleton<FeatureFlagsService>();
         services.AddSingleton<AgentTemplatesService>();
         services.AddSingleton<AgentService>();
-        services.AddSingleton<BoardService>();
+        services.AddSingleton<IBoardService, BoardService>();
         services.AddSingleton<MessagesService>();
-        services.AddSingleton<DecisionsService>();
+        services.AddSingleton<IDecisionsService, DecisionsService>();
         services.AddSingleton<DecisionChatService>();
         services.AddSingleton<JournalsService>();
         services.AddSingleton<KbService>();
@@ -49,7 +54,7 @@ public static class CoreServiceExtensions
         services.AddSingleton<PromptEnhancerService>();
         services.AddSingleton<InsightsService>();
         services.AddSingleton<AgentPromptBuilder>();
-        services.AddSingleton<AgentInboxService>();
+        services.AddSingleton<IAgentInboxService, AgentInboxService>();
         services.AddSingleton<AgentTranscriptService>();
         services.AddSingleton<ModelResolver>();
         services.AddSingleton<AgentStatusWriter>();
