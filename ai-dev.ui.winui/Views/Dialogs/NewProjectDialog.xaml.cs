@@ -45,8 +45,9 @@ public sealed partial class NewProjectDialog : ContentDialog
         panel.Children.Add(BuildField("Slug", _slugBox,
             footer: "Used as the folder name. Lowercase letters, digits, and hyphens only."));
         panel.Children.Add(BuildField("Description", _descriptionBox, optional: true));
-        panel.Children.Add(BuildField("Codebase path", _codebasePathBox, optional: true,
-            footer: "Absolute path to the codebase agents will work on."));
+        panel.Children.Add(BuildField("Codebase directory",
+            _codebasePathBox,
+            footer: "Absolute path to the codebase root. A .ai-dev/ folder will be created there."));
 
         var templates = _viewModel.GetTemplates();
         if (templates.Count > 0)
@@ -142,8 +143,10 @@ public sealed partial class NewProjectDialog : ContentDialog
             var name = _nameBox.Text.Trim();
             var slug = _slugBox.Text.Trim();
 
+            var codebasePath = _codebasePathBox.Text.Trim();
             if (string.IsNullOrWhiteSpace(name)) { ShowError("Project name is required."); args.Cancel = true; return; }
             if (string.IsNullOrWhiteSpace(slug)) { ShowError("Slug is required."); args.Cancel = true; return; }
+            if (string.IsNullOrWhiteSpace(codebasePath)) { ShowError("Codebase directory is required."); args.Cancel = true; return; }
 
             var selectedTemplates = _templateItems
                 .Where(t => t.IsSelected)
@@ -152,7 +155,7 @@ public sealed partial class NewProjectDialog : ContentDialog
             var error = await _viewModel.CreateProjectAsync(
                 slug, name,
                 _descriptionBox.Text.Trim(),
-                _codebasePathBox.Text.Trim() is { Length: > 0 } p ? p : null,
+                codebasePath,
                 selectedTemplates);
 
             if (error != null) { ShowError(error); args.Cancel = true; }

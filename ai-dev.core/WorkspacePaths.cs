@@ -126,33 +126,22 @@ public record PlaybookArticleFile(string Value) : FilePath(Value);
 public record TemplateFile(string Value) : FilePath(Value);
 
 /// <summary>
-/// Resolved once at startup; provides every known file-system location within the workspace.
-/// Register as a singleton so the workspace root is calculated only once.
+/// Resolved per active project; provides every known file-system path within a codebase's
+/// <c>.ai-dev/</c> directory. Consumed as a singleton whose value is set by
+/// <see cref="ActiveWorkspaceHolder"/> before first use.
 /// </summary>
 public class WorkspacePaths
 {
-    /// <summary>Absolute path to the workspace root directory.</summary>
+    /// <summary>Absolute path to the <c>.ai-dev/</c> directory inside the active codebase.</summary>
     public RootDir Root { get; }
 
-    /// <summary>Path to workspaces.json (the project registry).</summary>
-    public RegistryFile RegistryPath { get; }
-
-    /// <summary>Path to studio-settings.json.</summary>
-    public StudioSettingFile StudioSettingsPath { get; }
-
-    /// <summary>Directory containing agent template files.</summary>
-    public AgentTemplatesFile AgentTemplatesDir { get; }
-
     /// <summary>
-    /// Initializes resolved workspace paths from the workspace root.
+    /// Initializes resolved workspace paths from the codebase's <c>.ai-dev/</c> root.
     /// </summary>
-    /// <param name="root">The workspace root directory.</param>
+    /// <param name="root">The <c>.ai-dev/</c> directory inside the codebase.</param>
     public WorkspacePaths(RootDir root)
     {
         Root = root;
-        RegistryPath = Root.RegistryFile();
-        StudioSettingsPath = Root.StudioSettingFile();
-        AgentTemplatesDir = Root.AgentTemplatesFile();
     }
 
     /// <summary>Gets the project directory path.</summary>
@@ -229,6 +218,4 @@ public class WorkspacePaths
     public KbArticleFile? SafeKbArticlePath(ProjectSlug p, string slug) => KbDir(p).SafeKbArticleFile(slug);
     /// <summary>Gets a safe playbook file path when the slug is valid.</summary>
     public PlaybookArticleFile? SafePlaybookPath(ProjectSlug p, string slug) => PlaybooksDir(p).SafePlaybookFile(slug);
-    /// <summary>Gets a safe template file path when the slug and extension are valid.</summary>
-    public TemplateFile? SafeTemplatePath(string slug, string extension) => AgentTemplatesDir.SafeTemplateFile(slug, extension);
 }

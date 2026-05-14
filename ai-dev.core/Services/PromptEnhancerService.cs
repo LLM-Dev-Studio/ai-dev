@@ -172,8 +172,9 @@ public partial class PromptEnhancerService(
             sb.AppendLine($"Project: {project.Name}");
             if (!string.IsNullOrWhiteSpace(project.Description))
                 sb.AppendLine($"Description: {project.Description}");
-            if (!string.IsNullOrWhiteSpace(project.CodebasePath))
-                sb.AppendLine($"Codebase: {project.CodebasePath}");
+            var codebasePath = Path.GetDirectoryName(paths.Root.Value);
+            if (!string.IsNullOrWhiteSpace(codebasePath))
+                sb.AppendLine($"Codebase: {codebasePath}");
         }
 
         var articles = kbService.ListArticles(projectSlug);

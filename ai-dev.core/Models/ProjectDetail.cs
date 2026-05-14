@@ -21,11 +21,6 @@ public class ProjectDetail
     public required string Description { get; set; }
 
     /// <summary>
-    /// Gets or sets the optional codebase path.
-    /// </summary>
-    public string? CodebasePath { get; set; }
-
-    /// <summary>
     /// Gets or sets the project creation timestamp.
     /// </summary>
     public DateTime? CreatedAt { get; set; }

@@ -1,115 +1,98 @@
 namespace AiDev.Features.Workspace;
 
-file class ProjectJson
-{
-    public string? Description { get; set; }
-    public string? CreatedAt { get; set; }
-}
-
 /// <summary>
-/// Provides workspace project management and metadata operations.
+/// Manages the global registry of known project codebases and per-project metadata operations.
 /// </summary>
-public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter, ILogger<WorkspaceService>? logger = null)
+public class WorkspaceService(ActiveWorkspaceHolder workspace, AtomicFileWriter fileWriter, ILogger<WorkspaceService>? logger = null)
 {
-    private static readonly DomainError InvalidProjectSlugError = new("WORKSPACE_INVALID_SLUG", "Project slug is invalid.");
     private static readonly DomainError ProjectNotFoundError = new("WORKSPACE_NOT_FOUND", "Project not found.");
 
+    // ── Registry ──────────────────────────────────────────────────────────────
+
     /// <summary>
-    /// Lists the registered workspace projects.
+    /// Lists all registered project codebases by reading each one's <c>.ai-dev/project.json</c>.
     /// </summary>
-    /// <returns>The registered workspace projects.</returns>
     public List<WorkspaceProject> ListProjects()
     {
-        if (!File.Exists(paths.RegistryPath)) return [];
+        var registry = ReadRegistry();
+        var projects = new List<WorkspaceProject>();
 
-        try
+        foreach (var entry in registry.Projects)
         {
-            var json = File.ReadAllText(paths.RegistryPath);
-            var registry = JsonSerializer.Deserialize<WorkspaceRegistry>(json, JsonDefaults.Read);
-            if (registry?.Projects == null) return [];
-
-            var projects = new List<WorkspaceProject>();
-            foreach (var entry in registry.Projects)
+            try
             {
-                if (!ProjectSlug.TryParse(entry.Path, out var entrySlug)) continue;
-                var projectJsonPath = paths.ProjectJsonPath(entrySlug);
+                var tempPaths = PathsFor(entry.Path);
+                var projectJsonPath = tempPaths.ProjectJsonPath(default!);
+                if (!File.Exists(projectJsonPath)) continue;
 
-                string? description = null;
-                DateTime? createdAt = null;
+                var raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+                    File.ReadAllText(projectJsonPath), JsonDefaults.Read);
+                if (raw is null) continue;
 
-                if (File.Exists(projectJsonPath))
-                {
-                    try
-                    {
-                        var pJson = File.ReadAllText(projectJsonPath);
-                        var pData = JsonSerializer.Deserialize<ProjectJson>(pJson, JsonDefaults.Read);
-                        description = pData?.Description;
-                        createdAt = DateTime.TryParse(pData?.CreatedAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var caDate)
-                            ? caDate : null;
-                    }
-                    catch (Exception ex) { logger?.LogWarning(ex, "[workspace] Failed to read project.json for {Slug} — using defaults", entrySlug); }
-                }
+                var slug = ReadString(raw, "projectSlug") ?? ReadString(raw, "slug");
+                if (slug is null || !ProjectSlug.TryParse(slug, out var projectSlug)) continue;
 
-                var agentsDir = paths.AgentsDir(entrySlug);
-                var agentCount = Directory.Exists(agentsDir)
-                    ? Directory.GetDirectories(agentsDir).Length
-                    : 0;
+                var name = ReadString(raw, "name") ?? slug;
+                var description = ReadString(raw, "description");
+                var createdAtStr = ReadString(raw, "createdAt");
+                var createdAt = DateTime.TryParse(createdAtStr, null,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : (DateTime?)null;
 
-                projects.Add(new WorkspaceProject(
-                    slug: entrySlug,
-                    name: entry.Name,
-                    description: description,
-                    createdAt: createdAt,
-                    agentCount: agentCount));
+                var agentsDir = tempPaths.AgentsDir(projectSlug);
+                var agentCount = Directory.Exists(agentsDir) ? Directory.GetDirectories(agentsDir).Length : 0;
+
+                projects.Add(new WorkspaceProject(projectSlug, name, description, createdAt, agentCount));
             }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "[workspace] Failed to read project at {Path} — skipping", entry.Path);
+            }
+        }
 
-            return projects;
-        }
-        catch (Exception ex)
-        {
-            logger?.LogError(ex, "[workspace] Failed to read workspace registry at {Path} — returning empty project list", paths.RegistryPath);
-            return [];
-        }
+        return projects;
     }
 
+    // ── Project lifecycle ─────────────────────────────────────────────────────
+
     /// <summary>
-    /// Creates a new project folder structure and registers it in workspaces.json.
-    /// Returns an error message if validation fails, null on success.
+    /// Initialises a codebase as an AI Dev project: creates the <c>.ai-dev/</c> structure,
+    /// writes a merged <c>project.json</c>, registers the path globally, and activates it.
     /// </summary>
-    public Result<Unit> CreateProject(string slug, string name, string? description, string? codebasePath = null)
+    public Result<Unit> CreateProject(string codebasePath, string slug, string name,
+        string? description = null, int apiPort = 0)
     {
         if (string.IsNullOrWhiteSpace(name))
             return new Err<Unit>(new DomainError("WORKSPACE_NAME_REQUIRED", "Name is required."));
         if (!ProjectSlug.TryParse(slug, out var projectSlug))
-            return new Err<Unit>(new DomainError("WORKSPACE_INVALID_SLUG", "Slug must contain only lowercase letters, digits, and hyphens, and cannot start or end with a hyphen."));
+            return new Err<Unit>(new DomainError("WORKSPACE_INVALID_SLUG",
+                "Slug must contain only lowercase letters, digits, and hyphens, and cannot start or end with a hyphen."));
+        if (!Directory.Exists(codebasePath))
+            return new Err<Unit>(new DomainError("WORKSPACE_INVALID_PATH",
+                $"Directory not found: {codebasePath}"));
 
-        var projectJsonPath = paths.ProjectJsonPath(projectSlug);
-        if (File.Exists(projectJsonPath))
-            return new Err<Unit>(new DomainError("WORKSPACE_ALREADY_EXISTS", $"A project with slug '{slug}' already exists."));
+        var absolutePath = Path.GetFullPath(codebasePath);
+        var tempPaths = PathsFor(absolutePath);
 
-        var projectDir = paths.ProjectDir(projectSlug);
         try
         {
-            // Create folder structure
-            Directory.CreateDirectory(paths.AgentsDir(projectSlug));
-            Directory.CreateDirectory(Path.GetDirectoryName(paths.BoardPath(projectSlug))!);
-            Directory.CreateDirectory(paths.DecisionsPendingDir(projectSlug));
-            Directory.CreateDirectory(paths.DecisionsResolvedDir(projectSlug));
+            // Create .ai-dev/ structure
+            Directory.CreateDirectory(tempPaths.AgentsDir(projectSlug));
+            Directory.CreateDirectory(Path.GetDirectoryName(tempPaths.BoardPath(projectSlug))!);
+            Directory.CreateDirectory(tempPaths.DecisionsPendingDir(projectSlug));
+            Directory.CreateDirectory(tempPaths.DecisionsResolvedDir(projectSlug));
 
-            // Write project.json
+            // Write merged project.json
             var meta = new Dictionary<string, object?>
             {
-                ["slug"] = slug,
+                ["projectSlug"] = slug,
                 ["name"] = name,
                 ["description"] = description ?? string.Empty,
                 ["createdAt"] = DateTime.UtcNow.ToString("o"),
-                ["codebaseInitialized"] = false,
             };
-            if (!string.IsNullOrWhiteSpace(codebasePath))
-                meta["codebasePath"] = codebasePath;
+            if (apiPort > 0) meta["apiPort"] = apiPort;
 
             fileWriter.WriteAllText(
-                paths.ProjectJsonPath(projectSlug),
+                tempPaths.ProjectJsonPath(projectSlug),
                 JsonSerializer.Serialize(meta, JsonDefaults.Write));
 
             // Write default board
@@ -125,66 +108,81 @@ public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter,
                 tasks = new { },
             };
             fileWriter.WriteAllText(
-                paths.BoardPath(projectSlug),
+                tempPaths.BoardPath(projectSlug),
                 JsonSerializer.Serialize(boardJson, JsonDefaults.Write));
 
-            // Register in workspaces.json
-            WorkspaceRegistry registry;
-            if (File.Exists(paths.RegistryPath))
-            {
-                var existing = File.ReadAllText(paths.RegistryPath);
-                registry = JsonSerializer.Deserialize<WorkspaceRegistry>(existing, JsonDefaults.Read) ?? new WorkspaceRegistry();
-            }
-            else
-            {
-                registry = new();
-            }
+            // Register in global registry
+            RegisterPath(absolutePath);
 
-            registry.Projects.Add(new() { Slug = slug, Path = slug, Name = name });
-            fileWriter.WriteAllText(paths.RegistryPath, JsonSerializer.Serialize(registry, JsonDefaults.Write));
+            // Activate
+            workspace.Activate(absolutePath);
 
             return new Ok<Unit>(Unit.Value);
         }
-        catch (JsonException ex)
-        {
-            try { if (File.Exists(projectJsonPath)) File.Delete(projectJsonPath); } catch { }
-            return new Err<Unit>(new DomainError("WORKSPACE_INVALID_REGISTRY", ex.Message));
-        }
         catch (IOException ex)
         {
-            // Clean up partial directory on failure
-            try { if (File.Exists(projectJsonPath)) File.Delete(projectJsonPath); } catch { }
             return new Err<Unit>(new DomainError("WORKSPACE_IO_ERROR", $"Failed to create project: {ex.Message}"));
         }
         catch (UnauthorizedAccessException ex)
         {
-            try { if (File.Exists(projectJsonPath)) File.Delete(projectJsonPath); } catch { }
             return new Err<Unit>(new DomainError("WORKSPACE_IO_ERROR", $"Failed to create project: {ex.Message}"));
         }
     }
 
     /// <summary>
-    /// Gets detailed metadata for a project.
+    /// Registers an existing codebase (that already has <c>.ai-dev/project.json</c>) and activates it.
     /// </summary>
-    /// <param name="projectSlug">The project slug to read.</param>
-    /// <returns>The project detail, or <see langword="null"/> when the project does not exist.</returns>
+    public Result<Unit> RegisterProject(string codebasePath)
+    {
+        var absolutePath = Path.GetFullPath(codebasePath);
+        var config = ProjectConfigReader.TryRead(absolutePath);
+        if (config is null)
+            return new Err<Unit>(new DomainError("WORKSPACE_INVALID_PATH",
+                "No valid .ai-dev/project.json found at that path."));
+
+        RegisterPath(absolutePath);
+        workspace.Activate(absolutePath);
+        return new Ok<Unit>(Unit.Value);
+    }
+
+    /// <summary>
+    /// Removes a codebase from the global registry. Does not delete any files on disk.
+    /// </summary>
+    public void RemoveProject(string codebasePath)
+    {
+        var absolutePath = Path.GetFullPath(codebasePath);
+        var registry = ReadRegistry();
+        registry.Projects.RemoveAll(e =>
+            string.Equals(Path.GetFullPath(e.Path), absolutePath, StringComparison.OrdinalIgnoreCase));
+        if (string.Equals(registry.LastActivePath, absolutePath, StringComparison.OrdinalIgnoreCase))
+            registry.LastActivePath = null;
+        WriteRegistry(registry);
+    }
+
+    // ── Active project metadata ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Gets detailed metadata for a project from the active workspace.
+    /// </summary>
     public ProjectDetail? GetProject(ProjectSlug projectSlug)
     {
-        var jsonPath = paths.ProjectJsonPath(projectSlug);
+        var jsonPath = workspace.Paths.ProjectJsonPath(projectSlug);
         if (!File.Exists(jsonPath)) return null;
 
         try
         {
-            var raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(File.ReadAllText(jsonPath), JsonDefaults.Read);
-            if (raw == null) return null;
-            var caStr = raw.TryGetValue("createdAt", out var ca) ? ca.GetString() : null;
+            var raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+                File.ReadAllText(jsonPath), JsonDefaults.Read);
+            if (raw is null) return null;
+
+            var caStr = ReadString(raw, "createdAt");
             return new ProjectDetail
             {
                 Slug = projectSlug,
-                Name = raw.TryGetValue("name", out var n) ? n.GetString() ?? projectSlug : projectSlug,
-                Description = raw.TryGetValue("description", out var d) ? d.GetString() ?? string.Empty : string.Empty,
-                CodebasePath = raw.TryGetValue("codebasePath", out var cp) ? cp.GetString() : null,
-                CreatedAt = DateTime.TryParse(caStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var caDate) ? caDate : null,
+                Name = ReadString(raw, "name") ?? projectSlug,
+                Description = ReadString(raw, "description") ?? string.Empty,
+                CreatedAt = DateTime.TryParse(caStr, null,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var caDate) ? caDate : null,
             };
         }
         catch (Exception ex)
@@ -195,52 +193,71 @@ public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter,
     }
 
     /// <summary>
-    /// Updates editable metadata for an existing project.
+    /// Updates editable metadata for the active project.
     /// </summary>
-    /// <param name="projectSlug">The project slug to update.</param>
-    /// <param name="name">The new project name.</param>
-    /// <param name="description">The new project description.</param>
-    /// <param name="codebasePath">The optional codebase path associated with the project.</param>
-    /// <returns>The result of the update operation.</returns>
-    public Result<Unit> UpdateProject(ProjectSlug projectSlug, string name, string? description, string? codebasePath)
+    public Result<Unit> UpdateProject(ProjectSlug projectSlug, string name, string? description)
     {
         if (string.IsNullOrWhiteSpace(name))
             return new Err<Unit>(new DomainError("WORKSPACE_NAME_REQUIRED", "Name is required."));
-        var jsonPath = paths.ProjectJsonPath(projectSlug);
+
+        var jsonPath = workspace.Paths.ProjectJsonPath(projectSlug);
         if (!File.Exists(jsonPath)) return new Err<Unit>(ProjectNotFoundError);
 
         try
         {
-            var raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(File.ReadAllText(jsonPath), JsonDefaults.Read)
-                      ?? [];
+            var raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+                File.ReadAllText(jsonPath), JsonDefaults.Read) ?? [];
             var merged = raw.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
             merged["name"] = name;
             merged["description"] = description ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(codebasePath))
-                merged.Remove("codebasePath");
-            else
-                merged["codebasePath"] = codebasePath;
 
-            fileWriter.WriteAllText(jsonPath, JsonSerializer.Serialize(merged,
-                JsonDefaults.Write));
-
-            // Keep display name in sync in workspaces.json
-            if (File.Exists(paths.RegistryPath))
-            {
-                var registry = JsonSerializer.Deserialize<WorkspaceRegistry>(File.ReadAllText(paths.RegistryPath), JsonDefaults.Read);
-                var entry = registry?.Projects.FirstOrDefault(p => p.Slug == projectSlug);
-                if (entry != null)
-                {
-                    entry.Name = name;
-                    fileWriter.WriteAllText(paths.RegistryPath, JsonSerializer.Serialize(registry,
-                        JsonDefaults.Write));
-                }
-            }
-
+            fileWriter.WriteAllText(jsonPath, JsonSerializer.Serialize(merged, JsonDefaults.Write));
             return new Ok<Unit>(Unit.Value);
         }
         catch (JsonException ex) { return new Err<Unit>(new DomainError("WORKSPACE_INVALID_METADATA", ex.Message)); }
         catch (IOException ex) { return new Err<Unit>(new DomainError("WORKSPACE_IO_ERROR", ex.Message)); }
         catch (UnauthorizedAccessException ex) { return new Err<Unit>(new DomainError("WORKSPACE_IO_ERROR", ex.Message)); }
     }
+
+    // ── Registry helpers ──────────────────────────────────────────────────────
+
+    internal WorkspaceRegistry ReadRegistry()
+    {
+        GlobalPaths.EnsureCreated();
+        if (!File.Exists(GlobalPaths.RegistryFile)) return new WorkspaceRegistry();
+        try
+        {
+            var json = File.ReadAllText(GlobalPaths.RegistryFile);
+            return JsonSerializer.Deserialize<WorkspaceRegistry>(json, JsonDefaults.Read) ?? new WorkspaceRegistry();
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "[workspace] Failed to read global registry at {Path}", GlobalPaths.RegistryFile);
+            return new WorkspaceRegistry();
+        }
+    }
+
+    private void WriteRegistry(WorkspaceRegistry registry)
+    {
+        GlobalPaths.EnsureCreated();
+        fileWriter.WriteAllText(GlobalPaths.RegistryFile, JsonSerializer.Serialize(registry, JsonDefaults.Write));
+    }
+
+    private void RegisterPath(string absolutePath)
+    {
+        var registry = ReadRegistry();
+        if (!registry.Projects.Any(e =>
+            string.Equals(Path.GetFullPath(e.Path), absolutePath, StringComparison.OrdinalIgnoreCase)))
+        {
+            registry.Projects.Add(new WorkspaceRegistryEntry { Path = absolutePath });
+        }
+        registry.LastActivePath = absolutePath;
+        WriteRegistry(registry);
+    }
+
+    private static WorkspacePaths PathsFor(string codebasePath) =>
+        new(new RootDir(Path.Combine(codebasePath, ".ai-dev")));
+
+    private static string? ReadString(Dictionary<string, JsonElement> raw, string key) =>
+        raw.TryGetValue(key, out var el) ? el.GetString() : null;
 }

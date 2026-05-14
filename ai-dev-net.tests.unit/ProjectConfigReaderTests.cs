@@ -48,6 +48,39 @@ public class ProjectConfigReaderTests
     }
 
     [Fact]
+    public void TryReadFull_WhenConfigHasExtendedFields_ReturnsAllFields()
+    {
+        var dir = TempDir();
+        var aiDevDir = Path.Combine(dir, ".ai-dev");
+        Directory.CreateDirectory(aiDevDir);
+        File.WriteAllText(Path.Combine(aiDevDir, "project.json"),
+            """{"projectSlug":"my-app","apiPort":5100,"name":"My App","description":"A test project","createdAt":"2026-01-01T00:00:00Z"}""");
+
+        var result = ProjectConfigReader.TryReadFull(dir);
+
+        result.ShouldNotBeNull();
+        result!.ProjectSlug.ShouldBe("my-app");
+        result.ApiPort.ShouldBe(5100);
+        result.Name.ShouldBe("My App");
+        result.Description.ShouldBe("A test project");
+        result.CreatedAt.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void TryReadFull_WhenOnlyMinimalFields_ReturnsConfigWithNullOptionals()
+    {
+        var dir = TempDir();
+        WriteConfig(dir, projectSlug: "my-app", apiPort: 5100);
+
+        var result = ProjectConfigReader.TryReadFull(dir);
+
+        result.ShouldNotBeNull();
+        result!.ProjectSlug.ShouldBe("my-app");
+        result.Name.ShouldBeNull();
+        result.Description.ShouldBeNull();
+    }
+
+    [Fact]
     public void WorkspacePaths_WhenConfigPresent_UsesAiDevSubdirectoryAsRoot()
     {
         var dir = TempDir();

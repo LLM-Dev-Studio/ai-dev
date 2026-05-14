@@ -240,7 +240,7 @@ public class DigestServiceTests
         modelRegistry.Find(Arg.Any<AgentExecutorName>(), Arg.Any<string>()).Returns((ModelDescriptor?)null);
         var agentService = new AgentService(
             paths,
-            new AgentTemplatesService(paths),
+            new AgentTemplatesService(),
             new AtomicFileWriter(),
             new ProjectMutationCoordinator(),
             modelRegistry,

@@ -1,7 +1,7 @@
 namespace AiDev.Features.Workspace;
 
 /// <summary>
-/// Reads .ai-dev/project.json from a directory and resolves WorkspacePaths from it.
+/// Reads <c>.ai-dev/project.json</c> from a codebase directory.
 /// </summary>
 public static class ProjectConfigReader
 {
@@ -9,8 +9,9 @@ public static class ProjectConfigReader
     private const string ConfigFileName = "project.json";
 
     /// <summary>
-    /// Tries to read .ai-dev/project.json from the given base directory.
-    /// Returns null if the file is absent, malformed, or missing required fields.
+    /// Reads <c>.ai-dev/project.json</c> from <paramref name="baseDirectory"/>.
+    /// Returns <see langword="null"/> if the file is absent, malformed, or missing
+    /// <c>projectSlug</c>.
     /// </summary>
     public static ProjectConfig? TryRead(string baseDirectory)
     {
@@ -24,15 +25,40 @@ public static class ProjectConfigReader
             if (dto?.ProjectSlug is null or "") return null;
             return new ProjectConfig(dto.ProjectSlug, dto.ApiPort);
         }
-        catch
-        {
-            return null;
-        }
+        catch { return null; }
     }
 
     /// <summary>
-    /// Creates WorkspacePaths by walking up from <paramref name="baseDirectory"/> until a directory
-    /// containing .ai-dev/project.json is found, otherwise falls back to the provided RootDir.
+    /// Reads <c>.ai-dev/project.json</c> from <paramref name="baseDirectory"/>, including the
+    /// optional display fields written by AI Dev Studio (<c>name</c>, <c>description</c>,
+    /// <c>createdAt</c>).
+    /// Returns <see langword="null"/> if the file is absent, malformed, or missing
+    /// <c>projectSlug</c>.
+    /// </summary>
+    public static ProjectConfig? TryReadFull(string baseDirectory)
+    {
+        var configPath = Path.Combine(baseDirectory, AiDevDirName, ConfigFileName);
+        if (!File.Exists(configPath)) return null;
+
+        try
+        {
+            var json = File.ReadAllText(configPath);
+            var dto = JsonSerializer.Deserialize<ProjectConfigDto>(json, JsonDefaults.Read);
+            if (dto?.ProjectSlug is null or "") return null;
+
+            DateTime? createdAt = DateTime.TryParse(dto.CreatedAt, null,
+                System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : null;
+
+            return new ProjectConfig(dto.ProjectSlug, dto.ApiPort,
+                Name: dto.Name, Description: dto.Description, CreatedAt: createdAt);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Creates <see cref="WorkspacePaths"/> by walking up from <paramref name="baseDirectory"/>
+    /// until a directory containing <c>.ai-dev/project.json</c> is found, otherwise falls back
+    /// to <paramref name="fallback"/>.
     /// </summary>
     public static WorkspacePaths CreateWorkspacePaths(string baseDirectory, RootDir? fallback)
     {
@@ -56,5 +82,8 @@ public static class ProjectConfigReader
     {
         public string? ProjectSlug { get; set; }
         public int ApiPort { get; set; }
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public string? CreatedAt { get; set; }
     }
 }

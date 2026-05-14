@@ -7,15 +7,10 @@ public class ConsistencyCheckServiceTests
     [Fact]
     public async Task CheckProjectAsync_WhenBoardIsMissingDefaultColumn_ReturnsWarning()
     {
-        var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
-        var paths = new WorkspacePaths(root);
-        var writer = new AtomicFileWriter();
-        var workspace = new WorkspaceService(paths, writer);
+        var (paths, workspace) = CreateServices();
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
+        var boardService = new BoardService(paths, new PassingDispatcher(), new AtomicFileWriter(), coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
-        workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
-
         var projectSlug = new ProjectSlug("demo-project");
         var taskId = TaskId.New();
         var board = new Board(
@@ -36,15 +31,10 @@ public class ConsistencyCheckServiceTests
     [Fact]
     public async Task CheckProjectAsync_WhenDecisionStatusMismatchesDirectory_ReturnsWarning()
     {
-        var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
-        var paths = new WorkspacePaths(root);
-        var writer = new AtomicFileWriter();
-        var workspace = new WorkspaceService(paths, writer);
+        var (paths, workspace) = CreateServices();
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
+        var boardService = new BoardService(paths, new PassingDispatcher(), new AtomicFileWriter(), coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
-        workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
-
         var projectSlug = new ProjectSlug("demo-project");
         Directory.CreateDirectory(paths.DecisionsPendingDir(projectSlug));
         File.WriteAllText(Path.Combine(paths.DecisionsPendingDir(projectSlug), "20260101-000000-test.md"), "---\nstatus: resolved\nsubject: Test\nfrom: overwatch\npriority: normal\n---\n\nBody");
@@ -57,15 +47,10 @@ public class ConsistencyCheckServiceTests
     [Fact]
     public async Task CheckProjectAsync_WithValidBoardAndDecisions_ReturnsSuccess()
     {
-        var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
-        var paths = new WorkspacePaths(root);
-        var writer = new AtomicFileWriter();
-        var workspace = new WorkspaceService(paths, writer);
+        var (paths, workspace) = CreateServices();
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
+        var boardService = new BoardService(paths, new PassingDispatcher(), new AtomicFileWriter(), coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
-        workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
-
         var projectSlug = new ProjectSlug("demo-project");
         var board = new Board(
             projectSlug,
@@ -88,18 +73,12 @@ public class ConsistencyCheckServiceTests
     [Fact]
     public async Task CheckProjectAsync_WhenBoardReadFails_ReportsError()
     {
-        var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
-        var paths = new WorkspacePaths(root);
-        var writer = new AtomicFileWriter();
-        var workspace = new WorkspaceService(paths, writer);
+        var (paths, workspace) = CreateServices();
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
+        var boardService = new BoardService(paths, new PassingDispatcher(), new AtomicFileWriter(), coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
-        workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
-
         var projectSlug = new ProjectSlug("demo-project");
 
-        // Create an invalid board.json file (malformed JSON)
         var boardPath = paths.BoardPath(projectSlug);
         Directory.CreateDirectory(Path.GetDirectoryName(boardPath.Value)!);
         File.WriteAllText(boardPath.Value, "{ not valid json");
@@ -113,20 +92,14 @@ public class ConsistencyCheckServiceTests
     [Fact]
     public async Task CheckProjectAsync_WhenDecisionReadFails_ReportsError()
     {
-        var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
-        var paths = new WorkspacePaths(root);
-        var writer = new AtomicFileWriter();
-        var workspace = new WorkspaceService(paths, writer);
+        var (paths, workspace) = CreateServices();
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
+        var boardService = new BoardService(paths, new PassingDispatcher(), new AtomicFileWriter(), coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
-        workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
-
         var projectSlug = new ProjectSlug("demo-project");
         var resolvedDir = paths.DecisionsResolvedDir(projectSlug);
         Directory.CreateDirectory(resolvedDir.Value);
 
-        // Create a decision file with invalid YAML that will cause parse failure
         var decisionContent = @"---
 title: Test
 status: {invalid: yaml: structure
@@ -136,27 +109,20 @@ Content";
 
         var report = await service.CheckProjectAsync(projectSlug, TestContext.Current.CancellationToken);
 
-        // Should either report a parse failure or handle it gracefully
         report.Findings.ShouldNotBeNull();
     }
 
     [Fact]
     public async Task CheckProjectAsync_WhenOrphanedTaskInBoard_MovesToBacklog()
     {
-        var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
-        var paths = new WorkspacePaths(root);
-        var writer = new AtomicFileWriter();
-        var workspace = new WorkspaceService(paths, writer);
+        var (paths, workspace) = CreateServices();
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
+        var boardService = new BoardService(paths, new PassingDispatcher(), new AtomicFileWriter(), coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
-        workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
-
         var projectSlug = new ProjectSlug("demo-project");
         var orphanedTaskId = TaskId.New();
         var task = new BoardTask(orphanedTaskId, "Orphaned Task");
 
-        // Board has the task but it's not assigned to any column
         var board = new Board(
             projectSlug,
             new List<BoardColumn>
@@ -177,15 +143,10 @@ Content";
     [Fact]
     public async Task CheckProjectAsync_WhenTaskDuplicateInMultipleColumns_RemovesDuplicate()
     {
-        var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
-        var paths = new WorkspacePaths(root);
-        var writer = new AtomicFileWriter();
-        var workspace = new WorkspaceService(paths, writer);
+        var (paths, workspace) = CreateServices();
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
+        var boardService = new BoardService(paths, new PassingDispatcher(), new AtomicFileWriter(), coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
-        workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
-
         var projectSlug = new ProjectSlug("demo-project");
         var sharedTaskId = TaskId.New();
         var task = new BoardTask(sharedTaskId, "Shared Task");
@@ -209,15 +170,10 @@ Content";
     [Fact]
     public async Task CheckProjectAsync_IgnoresNonMarkdownFilesInDecisions()
     {
-        var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
-        var paths = new WorkspacePaths(root);
-        var writer = new AtomicFileWriter();
-        var workspace = new WorkspaceService(paths, writer);
+        var (paths, workspace) = CreateServices();
         var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
+        var boardService = new BoardService(paths, new PassingDispatcher(), new AtomicFileWriter(), coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
         var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
-        workspace.CreateProject("demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
-
         var projectSlug = new ProjectSlug("demo-project");
         var pendingDir = paths.DecisionsPendingDir(projectSlug);
         Directory.CreateDirectory(pendingDir.Value);
@@ -230,10 +186,20 @@ Content";
         report.Findings.Where(f => f.Code.StartsWith("DECISION")).ShouldBeEmpty();
     }
 
+    private static (WorkspacePaths paths, WorkspaceService workspace) CreateServices()
+    {
+        var codebasePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(codebasePath);
+        var holder = new ActiveWorkspaceHolder();
+        holder.Activate(codebasePath);
+        var workspace = new WorkspaceService(holder, new AtomicFileWriter());
+        workspace.CreateProject(codebasePath, "demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
+        return (holder.Paths, workspace);
+    }
+
     private sealed class PassingDispatcher : IDomainEventDispatcher
     {
         public Task<Result<AiDev.Models.Unit>> Dispatch(IReadOnlyList<DomainEvent> events, CancellationToken ct = default)
             => Task.FromResult<Result<AiDev.Models.Unit>>(new Ok<AiDev.Models.Unit>(AiDev.Models.Unit.Value));
     }
 }
-
