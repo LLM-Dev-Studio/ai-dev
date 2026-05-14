@@ -1,4 +1,5 @@
 import type { AgentSummary, MessageItem, DecisionItem } from '../../types';
+import type { LogEntry } from '../../Logger';
 
 // Extension host → webview
 export type ToAgentsWebview =
@@ -26,3 +27,15 @@ export type FromMessagesWebview =
 
 export type FromDecisionsWebview =
   | { type: 'resolve'; decisionId: string; resolution: string };
+
+// Extension host → Logs webview
+export type ToLogsWebview =
+  | { type: 'history'; entries: LogEntry[] }
+  | { type: 'entry'; entry: LogEntry }
+  | { type: 'cleared' };
+
+// Logs webview → extension host
+export type FromLogsWebview =
+  | { type: 'clear' };
+
+export type { LogEntry };

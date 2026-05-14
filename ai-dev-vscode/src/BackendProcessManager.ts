@@ -4,6 +4,8 @@ export type ProcessLike = {
   kill(): void;
   on(event: 'exit', handler: (code: number | null) => void): void;
   on(event: 'error', handler: (err: Error) => void): void;
+  stdout?: NodeJS.ReadableStream | null;
+  stderr?: NodeJS.ReadableStream | null;
 };
 
 export type Spawner = (
@@ -21,6 +23,7 @@ export interface BackendProcessManagerOptions {
   port: number;
   maxAttempts: number;
   retryDelayMs: number;
+  onOutput?: (line: string, source: 'stdout' | 'stderr') => void;
 }
 
 export class BackendProcessManager {
@@ -55,6 +58,20 @@ export class BackendProcessManager {
       this._process.on('error', () => {
         if (this._state !== 'stopped') this._state = 'stopped';
       });
+
+      if (this.options.onOutput) {
+        const { createInterface } = require('readline') as typeof import('readline');
+        if (this._process.stdout) {
+          createInterface({ input: this._process.stdout }).on('line', (line: string) => {
+            this.options.onOutput!(line, 'stdout');
+          });
+        }
+        if (this._process.stderr) {
+          createInterface({ input: this._process.stderr }).on('line', (line: string) => {
+            this.options.onOutput!(line, 'stderr');
+          });
+        }
+      }
     }
 
     const healthUrl = `http://localhost:${this.options.port}/api/health`;
