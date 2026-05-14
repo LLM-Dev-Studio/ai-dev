@@ -22,7 +22,7 @@ public partial class MainViewModel : ObservableObject
 {
     private readonly ExecutorHealthMonitor _healthMonitor;
     private readonly MessagesService _messagesService;
-    private readonly DecisionsService _decisionsService;
+    private readonly IDecisionsService _decisionsService;
     private IDisposable? _healthSubscription;
 
     [ObservableProperty] public partial ProjectDetail? ActiveProject { get; set; }
@@ -46,7 +46,7 @@ public partial class MainViewModel : ObservableObject
     /// <param name="healthMonitor">The executor health monitor.</param>
     /// <param name="messagesService">The messages service.</param>
     /// <param name="decisionsService">The decisions service.</param>
-    public MainViewModel(ExecutorHealthMonitor healthMonitor, MessagesService messagesService, DecisionsService decisionsService)
+    public MainViewModel(ExecutorHealthMonitor healthMonitor, MessagesService messagesService, IDecisionsService decisionsService)
     {
         _healthMonitor = healthMonitor;
         _messagesService = messagesService;

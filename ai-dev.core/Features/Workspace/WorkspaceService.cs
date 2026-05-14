@@ -83,10 +83,11 @@ public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter,
         if (!ProjectSlug.TryParse(slug, out var projectSlug))
             return new Err<Unit>(new DomainError("WORKSPACE_INVALID_SLUG", "Slug must contain only lowercase letters, digits, and hyphens, and cannot start or end with a hyphen."));
 
-        var projectDir = paths.ProjectDir(projectSlug);
-        if (Directory.Exists(projectDir))
+        var projectJsonPath = paths.ProjectJsonPath(projectSlug);
+        if (File.Exists(projectJsonPath))
             return new Err<Unit>(new DomainError("WORKSPACE_ALREADY_EXISTS", $"A project with slug '{slug}' already exists."));
 
+        var projectDir = paths.ProjectDir(projectSlug);
         try
         {
             // Create folder structure
@@ -146,18 +147,18 @@ public class WorkspaceService(WorkspacePaths paths, AtomicFileWriter fileWriter,
         }
         catch (JsonException ex)
         {
-            try { if (Directory.Exists(projectDir)) Directory.Delete(projectDir.Value, recursive: true); } catch { }
+            try { if (File.Exists(projectJsonPath)) File.Delete(projectJsonPath); } catch { }
             return new Err<Unit>(new DomainError("WORKSPACE_INVALID_REGISTRY", ex.Message));
         }
         catch (IOException ex)
         {
             // Clean up partial directory on failure
-            try { if (Directory.Exists(projectDir)) Directory.Delete(projectDir.Value, recursive: true); } catch { }
+            try { if (File.Exists(projectJsonPath)) File.Delete(projectJsonPath); } catch { }
             return new Err<Unit>(new DomainError("WORKSPACE_IO_ERROR", $"Failed to create project: {ex.Message}"));
         }
         catch (UnauthorizedAccessException ex)
         {
-            try { if (Directory.Exists(projectDir)) Directory.Delete(projectDir.Value, recursive: true); } catch { }
+            try { if (File.Exists(projectJsonPath)) File.Delete(projectJsonPath); } catch { }
             return new Err<Unit>(new DomainError("WORKSPACE_IO_ERROR", $"Failed to create project: {ex.Message}"));
         }
     }

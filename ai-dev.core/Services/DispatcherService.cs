@@ -69,13 +69,10 @@ public partial class DispatcherService(
     public void Dispose()
     {
         _pollTimer?.Dispose();
-        foreach (var w in _watchers)
+        foreach (var w in _watchers.ToArray())
         {
             try { w.Dispose(); }
-            catch
-            {
-                // ignored
-            }
+            catch { }
         }
         _watchers.Clear();
         GC.SuppressFinalize(this);

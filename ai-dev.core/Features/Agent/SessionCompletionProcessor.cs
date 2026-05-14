@@ -10,7 +10,7 @@ namespace AiDev.Features.Agent;
 /// </summary>
 public partial class SessionCompletionProcessor(
     WorkspacePaths paths,
-    BoardService boardService,
+    IBoardService boardService,
     InsightsService insightsService,
     ProjectStateChangedNotifier projectStateChangedNotifier,
     ILogger<SessionCompletionProcessor> logger)

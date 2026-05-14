@@ -19,12 +19,12 @@ namespace AiDev.Services;
 /// </summary>
 public partial class OverwatchService(
     WorkspaceService workspace,
-    BoardService boardService,
+    IBoardService boardService,
     IAgentRunnerService runner,
-    AgentInboxService inbox,
+    IAgentInboxService inbox,
     AgentService agentService,
     ExecutorHealthMonitor executorHealth,
-    DecisionsService decisionsService,
+    IDecisionsService decisionsService,
     ILogger<OverwatchService> logger)
     : IHostedService, IDisposable
 {
@@ -62,8 +62,9 @@ public partial class OverwatchService(
 
     public void Dispose()
     {
-        _scanCts?.Cancel();
-        _scanCts?.Dispose();
+        var cts = Interlocked.Exchange(ref _scanCts, null);
+        try { cts?.Cancel(); } catch (ObjectDisposedException) { }
+        cts?.Dispose();
         GC.SuppressFinalize(this);
     }
 

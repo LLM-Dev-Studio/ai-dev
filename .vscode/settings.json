@@ -2,5 +2,16 @@
     "chat.tools.terminal.autoApprove": {
         "dotnet test": true,
         "dotnet list": true
+    },
+    "files.watcherExclude": {
+        "**/node_modules/**": true,
+        "**/dist/**": true
+    },
+    "files.exclude": {
+        "**/node_modules": true
+    },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/dist": true
     }
 }

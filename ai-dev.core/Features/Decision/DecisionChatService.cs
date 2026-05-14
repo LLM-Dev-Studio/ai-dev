@@ -10,7 +10,7 @@ namespace AiDev.Features.Decision;
 public partial class DecisionChatService(
     WorkspacePaths paths,
     IAgentRunnerService runner,
-    AgentInboxService inbox,
+    IAgentInboxService inbox,
     ProjectStateChangedNotifier projectStateNotifier,
     ILogger<DecisionChatService> logger)
 {

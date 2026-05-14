@@ -1,7 +1,7 @@
 namespace AiDev.Features.Agent;
 
 internal sealed partial class TaskAssignedHandler(
-    AgentInboxService inbox,
+    IAgentInboxService inbox,
     IAgentRunnerService runner,
     ILogger<TaskAssignedHandler> logger) : IDomainEventHandler<TaskAssigned>
 {

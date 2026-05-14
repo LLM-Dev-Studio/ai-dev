@@ -6,7 +6,7 @@ namespace AiDev.Features.Agent;
 public partial class AgentInboxService(
     WorkspacePaths paths,
     ProjectStateChangedNotifier projectStateChangedNotifier,
-    ILogger<AgentInboxService> logger)
+    ILogger<AgentInboxService> logger) : IAgentInboxService
 {
     private static readonly ActivitySource ActivitySource = new("AiDevNet.AgentRunner");
 

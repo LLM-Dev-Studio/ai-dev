@@ -11,8 +11,8 @@ namespace AiDev.Services;
 /// </summary>
 public partial class ProjectStateSnapshotService(
     MessagesService messagesService,
-    DecisionsService decisionsService,
-    BoardService boardService,
+    IDecisionsService decisionsService,
+    IBoardService boardService,
     AgentService agentService,
     AgentRunnerService agentRunnerService,
     ILogger<ProjectStateSnapshotService> logger)

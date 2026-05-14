@@ -7,7 +7,7 @@ public static class WorkspacePathsExtensions
         public RegistryFile RegistryFile() => new(Path.Combine(dir.Value, FilePathConstants.RegistryFileName));
         public StudioSettingFile StudioSettingFile() => new(Path.Combine(dir.Value, FilePathConstants.StudioSettingsFileName));
         public AgentTemplatesFile AgentTemplatesFile() => new(Path.Combine(dir.Value, FilePathConstants.AgentTemplatesDirName));
-        public ProjectDir ProjectDir(ProjectSlug slug) => new(Path.Combine(dir.Value, slug.Value));
+        public ProjectDir ProjectDir(ProjectSlug slug) => new(dir.Value);
     }
 
     extension(ProjectDir dir)

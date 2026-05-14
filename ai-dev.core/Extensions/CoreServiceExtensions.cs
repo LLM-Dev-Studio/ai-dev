@@ -37,9 +37,9 @@ public static class CoreServiceExtensions
         services.AddSingleton<FeatureFlagsService>();
         services.AddSingleton<AgentTemplatesService>();
         services.AddSingleton<AgentService>();
-        services.AddSingleton<BoardService>();
+        services.AddSingleton<IBoardService, BoardService>();
         services.AddSingleton<MessagesService>();
-        services.AddSingleton<DecisionsService>();
+        services.AddSingleton<IDecisionsService, DecisionsService>();
         services.AddSingleton<DecisionChatService>();
         services.AddSingleton<JournalsService>();
         services.AddSingleton<KbService>();
@@ -49,7 +49,7 @@ public static class CoreServiceExtensions
         services.AddSingleton<PromptEnhancerService>();
         services.AddSingleton<InsightsService>();
         services.AddSingleton<AgentPromptBuilder>();
-        services.AddSingleton<AgentInboxService>();
+        services.AddSingleton<IAgentInboxService, AgentInboxService>();
         services.AddSingleton<AgentTranscriptService>();
         services.AddSingleton<ModelResolver>();
         services.AddSingleton<AgentStatusWriter>();

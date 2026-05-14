@@ -7,7 +7,7 @@ namespace AiDev.WinUI.ViewModels;
 
 public partial class DecisionsViewModel : ObservableObject
 {
-    private readonly DecisionsService _decisionsService;
+    private readonly IDecisionsService _decisionsService;
     private readonly DecisionChatService _chatService;
     private readonly MainViewModel _mainViewModel;
     private readonly IUiDispatcher _uiDispatcher;
@@ -33,7 +33,7 @@ public partial class DecisionsViewModel : ObservableObject
     public ObservableCollection<DecisionChatMessage> ChatMessages { get; } = [];
 
     public DecisionsViewModel(
-        DecisionsService decisionsService,
+        IDecisionsService decisionsService,
         DecisionChatService chatService,
         MainViewModel mainViewModel,
         IUiDispatcher uiDispatcher)
@@ -101,7 +101,7 @@ public partial class DecisionsViewModel : ObservableObject
     {
         if (CurrentSlug is null || SelectedDecision is null) return;
         StopPollingDecision();
-        await _decisionsService.ResolveDecisionAsync(CurrentSlug, SelectedDecision.Id, ReplyText.Trim());
+        await _decisionsService.ResolveDecisionAsync(CurrentSlug, SelectedDecision.Id, ReplyText.Trim(), CancellationToken.None);
         ReplyText = "";
         SelectedDecision = null;
         ChatMessages.Clear();

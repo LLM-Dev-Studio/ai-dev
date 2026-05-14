@@ -36,7 +36,7 @@ namespace AiDev.Features.Board
         AtomicFileWriter fileWriter,
         ProjectMutationCoordinator coordinator,
         ILogger<BoardService> logger,
-        ProjectStateChangedNotifier projectStateChangedNotifier)
+        ProjectStateChangedNotifier projectStateChangedNotifier) : IBoardService
     {
         private static readonly DomainError InvalidColumnError = new("BOARD_INVALID_COLUMN", "Column id is invalid.");
         private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10);

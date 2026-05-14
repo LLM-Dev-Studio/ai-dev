@@ -19,7 +19,7 @@ public partial class AgentRunnerService(
     AgentPromptBuilder promptBuilder,
     SessionCompletionProcessor completionProcessor,
     SecretsService secretsService,
-    DecisionsService decisionsService,
+    IDecisionsService decisionsService,
     ILogger<AgentRunnerService> logger,
     ProjectStateChangedNotifier projectStateChangedNotifier,
     FeatureFlagsService featureFlagsService,

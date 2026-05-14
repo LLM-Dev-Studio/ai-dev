@@ -1,0 +1,86 @@
+{
+  "name": "ai-dev-studio",
+  "displayName": "AI Dev Studio",
+  "description": "AI agent orchestration sidebar for AI Dev Studio",
+  "version": "0.1.1",
+  "publisher": "ai-dev-studio",
+  "icon": "logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LLM-Dev-Studio/ai-dev"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ai-dev-studio",
+          "title": "AI Dev Studio",
+          "icon": "icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "ai-dev-studio": [
+        {
+          "id": "aidev.agents",
+          "type": "webview",
+          "name": "Agents"
+        },
+        {
+          "id": "aidev.messages",
+          "type": "webview",
+          "name": "Messages"
+        },
+        {
+          "id": "aidev.decisions",
+          "type": "webview",
+          "name": "Decisions"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "aidev.restartBackend",
+        "title": "AI Dev: Restart Backend"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test": "jest",
+    "package": "vsce package --no-dependencies",
+    "package:win": "npm run build && node scripts/bundle-backend.mjs win32-x64",
+    "package:mac": "npm run build && node scripts/bundle-backend.mjs darwin-arm64",
+    "package:linux": "npm run build && node scripts/bundle-backend.mjs linux-x64",
+    "package:all": "npm run build && node scripts/bundle-backend.mjs"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.3.2",
+    "esbuild": "^0.25.4",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.3.4",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@microsoft/signalr": "^10.0.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  }
+}

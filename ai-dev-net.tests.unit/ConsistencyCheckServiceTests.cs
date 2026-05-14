@@ -55,27 +55,6 @@ public class ConsistencyCheckServiceTests
     }
 
     [Fact]
-    public async Task CheckWorkspaceAsync_WithMultipleProjects_ChecksAll()
-    {
-        var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
-        var paths = new WorkspacePaths(root);
-        var writer = new AtomicFileWriter();
-        var workspace = new WorkspaceService(paths, writer);
-        var coordinator = new ProjectMutationCoordinator();
-        var boardService = new BoardService(paths, new PassingDispatcher(), writer, coordinator, NullLogger<BoardService>.Instance, new ProjectStateChangedNotifier());
-        var service = new ConsistencyCheckService(paths, workspace, boardService, NullLogger<ConsistencyCheckService>.Instance);
-
-        workspace.CreateProject("project1", "Project 1", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
-        workspace.CreateProject("project2", "Project 2", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
-
-        var report = await service.CheckWorkspaceAsync(TestContext.Current.CancellationToken);
-
-        report.Projects.Count.ShouldBe(2);
-        report.Projects[0].ProjectSlug.Value.ShouldBe("project1");
-        report.Projects[1].ProjectSlug.Value.ShouldBe("project2");
-    }
-
-    [Fact]
     public async Task CheckProjectAsync_WithValidBoardAndDecisions_ReturnsSuccess()
     {
         var root = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));

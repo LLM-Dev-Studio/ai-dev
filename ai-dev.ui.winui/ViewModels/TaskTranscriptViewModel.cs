@@ -7,7 +7,7 @@ namespace AiDev.WinUI.ViewModels;
 
 public partial class TaskTranscriptViewModel : ObservableObject
 {
-    private readonly BoardService _boardService;
+    private readonly IBoardService _boardService;
     private readonly MessagesService _messagesService;
     private readonly MainViewModel _mainViewModel;
 
@@ -37,7 +37,7 @@ public partial class TaskTranscriptViewModel : ObservableObject
     public event Action? NavigateBack;
 
     public TaskTranscriptViewModel(
-        BoardService boardService,
+        IBoardService boardService,
         MessagesService messagesService,
         MainViewModel mainViewModel)
     {
