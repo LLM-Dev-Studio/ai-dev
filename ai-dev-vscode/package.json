@@ -46,6 +46,11 @@
           "id": "aidev.decisions",
           "type": "webview",
           "name": "Decisions"
+        },
+        {
+          "id": "aidev.logs",
+          "type": "webview",
+          "name": "Logs"
         }
       ]
     },
