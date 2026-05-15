@@ -15,12 +15,14 @@ var workspaceRoot = builder.Configuration["WORKSPACE_ROOT"]
         "WORKSPACE_ROOT is not set. The VS Code extension sets this when spawning the backend, " +
         "or add it to launchSettings.json for direct development runs.");
 
-var workspacePaths = new WorkspacePaths(new RootDir(Path.Combine(workspaceRoot, ".ai-dev")));
-
-builder.Services.AddSingleton(workspacePaths);
-builder.Services.AddSingleton(workspacePaths.Root);
-
 builder.Services.AddAiDevCore();
+
+// Pre-activate the holder for this codebase. AddAiDevCore registers the type-based singleton,
+// so we override it with a pre-activated instance to ensure WorkspacePaths resolves correctly.
+var holder = new ActiveWorkspaceHolder();
+holder.Activate(workspaceRoot);
+builder.Services.AddSingleton(holder);
+builder.Services.AddSingleton(holder.Paths.Root);
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<ProjectStateRelayService>();
 

@@ -1,0 +1,25 @@
+{
+  "columns": [
+    {
+      "id": "backlog",
+      "title": "Backlog",
+      "taskIds": []
+    },
+    {
+      "id": "in-progress",
+      "title": "In Progress",
+      "taskIds": []
+    },
+    {
+      "id": "review",
+      "title": "Review",
+      "taskIds": []
+    },
+    {
+      "id": "done",
+      "title": "Done",
+      "taskIds": []
+    }
+  ],
+  "tasks": {}
+}

@@ -1,0 +1,10 @@
+{
+  "slug": "generic-standard",
+  "name": "Agent",
+  "role": "generic",
+  "model": "claude-sonnet-4-6",
+  "executor": "claude",
+  "status": "idle",
+  "description": "A general-purpose agent. Read your inbox on every session and respond to messages.",
+  "skills": []
+}

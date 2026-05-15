@@ -24,10 +24,18 @@ public static class CoreServiceExtensions
     /// </summary>
     public static IServiceCollection AddAiDevCore(this IServiceCollection services)
     {
-        // WorkspacePaths is resolved lazily from the active workspace holder so that the holder
-        // can be populated (by activating a project) before any service first uses it.
+        // WorkspacePaths is backed by a root factory that reads the current ActiveWorkspaceHolder
+        // on every access. This means the singleton is safe to construct even before a project is
+        // activated, and automatically follows the active project when it changes.
         services.AddSingleton<ActiveWorkspaceHolder>();
-        services.AddSingleton<WorkspacePaths>(sp => sp.GetRequiredService<ActiveWorkspaceHolder>().Paths);
+        services.AddSingleton<WorkspacePaths>(sp =>
+        {
+            var holder = sp.GetRequiredService<ActiveWorkspaceHolder>();
+            return new WorkspacePaths(() =>
+                holder.HasActiveProject
+                    ? holder.Paths.Root
+                    : new RootDir(Path.Combine(Path.GetTempPath(), "ai-dev-no-project")));
+        });
 
         services.AddSingleton<IDomainEventDispatcher, InProcessDomainEventDispatcher>();
         services.AddSingleton<IDomainEventHandler<TaskAssigned>, TaskAssignedHandler>();

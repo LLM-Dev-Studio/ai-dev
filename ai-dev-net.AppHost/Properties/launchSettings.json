@@ -11,7 +11,8 @@
         "DOTNET_ENVIRONMENT": "Development",
         "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://localhost:21140",
         "ASPIRE_DASHBOARD_MCP_ENDPOINT_URL": "https://localhost:23102",
-        "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22259"
+        "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22259",
+        "WORKSPACE_ROOT": "m:/ai-dev"
       }
     },
     "http": {
@@ -24,7 +25,8 @@
         "DOTNET_ENVIRONMENT": "Development",
         "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "http://localhost:19273",
         "ASPIRE_DASHBOARD_MCP_ENDPOINT_URL": "http://localhost:18184",
-        "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "http://localhost:20062"
+        "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "http://localhost:20062",
+        "WORKSPACE_ROOT": "m:/ai-dev"
       }
     }
   }
