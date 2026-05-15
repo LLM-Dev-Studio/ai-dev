@@ -190,11 +190,11 @@ Content";
     {
         var codebasePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(codebasePath);
-        var holder = new ActiveWorkspaceHolder();
-        holder.Activate(codebasePath);
-        var workspace = new WorkspaceService(holder, new AtomicFileWriter());
+        var registryPath = Path.Combine(codebasePath, "test-managed-projects.json");
+        var paths = new WorkspacePaths(new RootDir(Path.Combine(codebasePath, ".ai-dev")));
+        var workspace = new WorkspaceService(paths, new AtomicFileWriter(), registryFilePath: registryPath);
         workspace.CreateProject(codebasePath, "demo-project", "Demo Project", null).ShouldBeOfType<Ok<AiDev.Models.Unit>>();
-        return (holder.Paths, workspace);
+        return (paths, workspace);
     }
 
     private sealed class PassingDispatcher : IDomainEventDispatcher

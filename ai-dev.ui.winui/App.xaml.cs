@@ -104,8 +104,8 @@ public partial class App : Application
     {
         try
         {
-            if (!File.Exists(GlobalPaths.RegistryFile)) return null;
-            var json = File.ReadAllText(GlobalPaths.RegistryFile);
+            if (!File.Exists(GlobalPaths.ManagedProjectsFile)) return null;
+            var json = File.ReadAllText(GlobalPaths.ManagedProjectsFile);
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             if (doc.RootElement.TryGetProperty("lastActivePath", out var prop))
                 return prop.GetString();

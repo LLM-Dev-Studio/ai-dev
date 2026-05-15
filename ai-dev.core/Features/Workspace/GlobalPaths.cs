@@ -9,8 +9,8 @@ public static class GlobalPaths
     private static readonly string AppDataDir =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AiDevStudio");
 
-    /// <summary>Path to the global project registry file.</summary>
-    public static string RegistryFile => Path.Combine(AppDataDir, "registry.json");
+    /// <summary>Path to the global managed-projects file.</summary>
+    public static string ManagedProjectsFile => Path.Combine(AppDataDir, "managed-projects.json");
 
     /// <summary>Path to the global studio settings file.</summary>
     public static string StudioSettingsFile => Path.Combine(AppDataDir, "studio-settings.json");

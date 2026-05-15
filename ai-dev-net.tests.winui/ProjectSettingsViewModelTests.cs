@@ -20,12 +20,14 @@ public sealed class ProjectSettingsViewModelTests : IDisposable
     private readonly WorkspacePaths _paths;
     private readonly AtomicFileWriter _fileWriter = new();
     private readonly ProjectMutationCoordinator _coordinator = new();
+    private readonly string _registryPath;
 
     public ProjectSettingsViewModelTests()
     {
         _rootPath = Path.Combine(Path.GetTempPath(), $"project-settings-vm-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_rootPath);
         _paths = new WorkspacePaths(new RootDir(_rootPath));
+        _registryPath = Path.Combine(_rootPath, "test-managed-projects.json");
     }
 
     public void Dispose()
@@ -163,7 +165,7 @@ public sealed class ProjectSettingsViewModelTests : IDisposable
         IModelRegistry? modelRegistry = null,
         IReadOnlyList<IAgentExecutor>? executors = null)
     {
-        var workspaceService = new WorkspaceService(_paths, _fileWriter);
+        var workspaceService = new WorkspaceService(_paths, _fileWriter, registryFilePath: _registryPath);
         var templatesService = new AgentTemplatesService(_paths);
         var effectiveModelRegistry = modelRegistry ?? Substitute.For<IModelRegistry>();
         if (modelRegistry is null)
@@ -188,7 +190,7 @@ public sealed class ProjectSettingsViewModelTests : IDisposable
 
         if (withActiveProject)
         {
-            workspaceService.CreateProject("demo-project", "Demo Project", "Test project").ShouldBeOfType<Ok<Unit>>();
+            workspaceService.CreateProject(codebasePath: _rootPath, slug: "demo-project", name: "Demo Project", description: "Test project").ShouldBeOfType<Ok<Unit>>();
             mainViewModel.ActiveProject = workspaceService.GetProject(new ProjectSlug("demo-project"));
         }
 

@@ -17,20 +17,19 @@ namespace AiDevNet.Tests.Integration;
 public class ProductionReadinessIntegrationTests : IDisposable
 {
     private readonly string _rootPath;
-    private readonly ActiveWorkspaceHolder _holder;
     private readonly WorkspacePaths _paths;
     private readonly AtomicFileWriter _fileWriter = new();
     private readonly ProjectMutationCoordinator _coordinator = new();
     private readonly string _templatesDir;
+    private readonly string _registryPath;
 
     public ProductionReadinessIntegrationTests()
     {
         _rootPath = Path.Combine(Path.GetTempPath(), $"prod-ready-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_rootPath);
-        _holder = new ActiveWorkspaceHolder();
-        _holder.Activate(_rootPath);
-        _paths = _holder.Paths;
+        _paths = new WorkspacePaths(new RootDir(Path.Combine(_rootPath, ".ai-dev")));
         _templatesDir = Path.Combine(Path.GetTempPath(), $"templates-{Guid.NewGuid():N}");
+        _registryPath = Path.Combine(_rootPath, "test-managed-projects.json");
     }
 
     public void Dispose()
@@ -142,14 +141,14 @@ public class ProductionReadinessIntegrationTests : IDisposable
     [Fact]
     public void WorkspaceService_CreateProject_UsesAtomicWritesForArtifacts()
     {
-        var service = new WorkspaceService(_holder, _fileWriter);
+        var service = new WorkspaceService(_paths, _fileWriter, registryFilePath: _registryPath);
 
-        var result = service.CreateProject(_rootPath, "demo-project", "Demo Project", "Main app");
+        var result = service.CreateProject(slug: "demo-project", name: "Demo Project", description: "Main app");
 
         result.ShouldBeOfType<Ok<Unit>>();
         File.Exists(_paths.ProjectJsonPath(new ProjectSlug("demo-project"))).ShouldBeTrue();
         File.Exists(_paths.BoardPath(new ProjectSlug("demo-project"))).ShouldBeTrue();
-        File.Exists(GlobalPaths.RegistryFile).ShouldBeTrue();
+        File.Exists(_registryPath).ShouldBeTrue();
     }
 
     [Fact]
@@ -166,8 +165,8 @@ public class ProductionReadinessIntegrationTests : IDisposable
             modelRegistry,
             NullLogger<AgentService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
-        var workspaceService = new WorkspaceService(_holder, _fileWriter);
-        workspaceService.CreateProject(_rootPath, projectSlug.Value, "Demo Project", null).ShouldBeOfType<Ok<Unit>>();
+        var workspaceService = new WorkspaceService(_paths, _fileWriter, registryFilePath: _registryPath);
+        workspaceService.CreateProject(slug: projectSlug.Value, name: "Demo Project").ShouldBeOfType<Ok<Unit>>();
 
         Directory.CreateDirectory(_templatesDir);
         File.WriteAllText(Path.Combine(_templatesDir, "generic-standard.json"),
@@ -185,10 +184,10 @@ public class ProductionReadinessIntegrationTests : IDisposable
     public void KbAndPlaybookServices_SaveAtomically()
     {
         var projectSlug = new ProjectSlug("demo-project");
-        var workspaceService = new WorkspaceService(_holder, _fileWriter);
-        workspaceService.CreateProject(_rootPath, projectSlug.Value, "Demo Project", null).ShouldBeOfType<Ok<Unit>>();
+        var workspaceService = new WorkspaceService(_paths, _fileWriter, registryFilePath: _registryPath);
+        workspaceService.CreateProject(slug: projectSlug.Value, name: "Demo Project").ShouldBeOfType<Ok<Unit>>();
 
-        var kbService = new KbService(_paths, _fileWriter, _coordinator);
+        var kbService= new KbService(_paths, _fileWriter, _coordinator);
         var playbookService = new PlaybookService(_paths, _fileWriter, _coordinator);
 
         kbService.Save(projectSlug, "deployment", "# Deployment\n\nSteps").ShouldBeOfType<Ok<Unit>>();
