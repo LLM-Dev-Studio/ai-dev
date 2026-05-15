@@ -16,33 +16,21 @@ public class WorkspaceService
     private string EffectiveRegistryFile => _registryFilePath ?? GlobalPaths.ManagedProjectsFile;
 
     /// <summary>
-    /// Initialises the service bound to a specific set of workspace paths.
-    /// Suitable for direct construction in tests; pass <paramref name="registryFilePath"/>
-    /// to redirect registry reads and writes away from the real managed-projects.json.
+    /// Primary constructor. Pass <paramref name="registryFilePath"/> to redirect registry reads/writes
+    /// away from the real managed-projects.json (used in tests).
     /// </summary>
     public WorkspaceService(
         WorkspacePaths paths,
         AtomicFileWriter fileWriter,
+        ActiveWorkspaceHolder? holder = null,
         string? registryFilePath = null,
         ILogger<WorkspaceService>? logger = null)
     {
         _paths = paths;
         _fileWriter = fileWriter;
+        _holder = holder;
         _registryFilePath = registryFilePath;
         _logger = logger;
-    }
-
-    /// <summary>
-    /// Initialises the service from the active workspace holder (used by the DI container).
-    /// </summary>
-    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
-    public WorkspaceService(
-        ActiveWorkspaceHolder workspace,
-        AtomicFileWriter fileWriter,
-        ILogger<WorkspaceService>? logger = null)
-        : this(workspace.Paths, fileWriter, logger: logger)
-    {
-        _holder = workspace;
     }
 
     // ── Registry ──────────────────────────────────────────────────────────────

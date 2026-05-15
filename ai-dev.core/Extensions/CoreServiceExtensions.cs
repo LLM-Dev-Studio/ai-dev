@@ -24,11 +24,8 @@ public static class CoreServiceExtensions
     /// </summary>
     public static IServiceCollection AddAiDevCore(this IServiceCollection services)
     {
-        // WorkspacePaths is resolved lazily from the active workspace holder so that the holder
-        // can be populated (by activating a project) before any service first uses it.
-        services.AddSingleton<ActiveWorkspaceHolder>();
-        services.AddSingleton<WorkspacePaths>(sp => sp.GetRequiredService<ActiveWorkspaceHolder>().Paths);
-
+        // WorkspacePaths and (optionally) ActiveWorkspaceHolder are registered by the host
+        // (Program.cs for the API, App.xaml.cs for WinUI). AddAiDevCore consumes them.
         services.AddSingleton<IDomainEventDispatcher, InProcessDomainEventDispatcher>();
         services.AddSingleton<IDomainEventHandler<TaskAssigned>, TaskAssignedHandler>();
         services.AddSingleton<ProjectStateChangedNotifier>();
@@ -37,7 +34,11 @@ public static class CoreServiceExtensions
         services.AddSingleton<ProjectMutationCoordinator>();
         services.AddSingleton<ConsistencyCheckService>();
         services.AddSingleton<SecretsService>();
-        services.AddSingleton<WorkspaceService>();
+        services.AddSingleton<WorkspaceService>(sp => new WorkspaceService(
+            sp.GetRequiredService<WorkspacePaths>(),
+            sp.GetRequiredService<AtomicFileWriter>(),
+            sp.GetService<ActiveWorkspaceHolder>(),
+            logger: sp.GetService<ILogger<WorkspaceService>>()));
         services.AddSingleton<StudioSettingsService>();
         services.AddSingleton<FeatureFlagsService>();
         services.AddSingleton<AgentTemplatesService>();
