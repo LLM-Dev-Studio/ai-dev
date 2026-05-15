@@ -21,13 +21,15 @@ public sealed class ProjectSettingsViewModelTests : IDisposable
     private readonly AtomicFileWriter _fileWriter = new();
     private readonly ProjectMutationCoordinator _coordinator = new();
     private readonly string _registryPath;
+    private readonly string _templatesDir;
 
     public ProjectSettingsViewModelTests()
     {
         _rootPath = Path.Combine(Path.GetTempPath(), $"project-settings-vm-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_rootPath);
-        _paths = new WorkspacePaths(new RootDir(_rootPath));
+        _paths = new WorkspacePaths(new RootDir(Path.Combine(_rootPath, ".ai-dev")));
         _registryPath = Path.Combine(_rootPath, "test-managed-projects.json");
+        _templatesDir = Path.Combine(_rootPath, "agent-templates");
     }
 
     public void Dispose()
@@ -79,8 +81,8 @@ public sealed class ProjectSettingsViewModelTests : IDisposable
     public async Task ApplyBulkSwitchToExecutorAsync_WhenValid_UpdatesExecutorModelAndThinkingLevel()
     {
         var modelRegistry = Substitute.For<IModelRegistry>();
-        modelRegistry.GetModelsForExecutor(AgentExecutorName.AnthropicValue).Returns([
-            new ModelDescriptor("anthropic-haiku", "Anthropic Haiku", AgentExecutorName.AnthropicValue)
+        modelRegistry.GetModelsForExecutor(AgentExecutorName.Anthropic).Returns([
+            new ModelDescriptor("anthropic-haiku", "Anthropic Haiku", AgentExecutorName.Anthropic)
         ]);
 
         var (viewModel, _, agentService, _) = CreateViewModel(modelRegistry: modelRegistry);
@@ -105,9 +107,9 @@ public sealed class ProjectSettingsViewModelTests : IDisposable
     public async Task ApplyBulkSwitchToExecutorAsync_WhenModelOverrideProvided_UsesOverrideForAllAgents()
     {
         var modelRegistry = Substitute.For<IModelRegistry>();
-        modelRegistry.GetModelsForExecutor(AgentExecutorName.AnthropicValue).Returns([
-            new ModelDescriptor("anthropic-haiku", "Anthropic Haiku", AgentExecutorName.AnthropicValue),
-            new ModelDescriptor("anthropic-sonnet", "Anthropic Sonnet", AgentExecutorName.AnthropicValue, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning)
+        modelRegistry.GetModelsForExecutor(AgentExecutorName.Anthropic).Returns([
+            new ModelDescriptor("anthropic-haiku", "Anthropic Haiku", AgentExecutorName.Anthropic),
+            new ModelDescriptor("anthropic-sonnet", "Anthropic Sonnet", AgentExecutorName.Anthropic, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Reasoning)
         ]);
 
         var (viewModel, _, agentService, _) = CreateViewModel(modelRegistry: modelRegistry);
@@ -128,8 +130,8 @@ public sealed class ProjectSettingsViewModelTests : IDisposable
     public async Task ApplyBulkSwitchToExecutorAsync_WhenModelOverrideIsUnsupported_ReturnsError()
     {
         var modelRegistry = Substitute.For<IModelRegistry>();
-        modelRegistry.GetModelsForExecutor(AgentExecutorName.AnthropicValue).Returns([
-            new ModelDescriptor("anthropic-haiku", "Anthropic Haiku", AgentExecutorName.AnthropicValue)
+        modelRegistry.GetModelsForExecutor(AgentExecutorName.Anthropic).Returns([
+            new ModelDescriptor("anthropic-haiku", "Anthropic Haiku", AgentExecutorName.Anthropic)
         ]);
 
         var (viewModel, _, agentService, _) = CreateViewModel(modelRegistry: modelRegistry);
@@ -147,10 +149,10 @@ public sealed class ProjectSettingsViewModelTests : IDisposable
     public void GetAvailableModelsForExecutor_WhenExecutorHasModels_ReturnsDistinctSortedIds()
     {
         var modelRegistry = Substitute.For<IModelRegistry>();
-        modelRegistry.GetModelsForExecutor(AgentExecutorName.AnthropicValue).Returns([
-            new ModelDescriptor("z-model", "Z Model", AgentExecutorName.AnthropicValue),
-            new ModelDescriptor("a-model", "A Model", AgentExecutorName.AnthropicValue),
-            new ModelDescriptor("A-model", "A Model Duplicate", AgentExecutorName.AnthropicValue)
+        modelRegistry.GetModelsForExecutor(AgentExecutorName.Anthropic).Returns([
+            new ModelDescriptor("z-model", "Z Model", AgentExecutorName.Anthropic),
+            new ModelDescriptor("a-model", "A Model", AgentExecutorName.Anthropic),
+            new ModelDescriptor("A-model", "A Model Duplicate", AgentExecutorName.Anthropic)
         ]);
 
         var (viewModel, _, _, _) = CreateViewModel(modelRegistry: modelRegistry);
@@ -166,10 +168,10 @@ public sealed class ProjectSettingsViewModelTests : IDisposable
         IReadOnlyList<IAgentExecutor>? executors = null)
     {
         var workspaceService = new WorkspaceService(_paths, _fileWriter, registryFilePath: _registryPath);
-        var templatesService = new AgentTemplatesService(_paths);
+        var templatesService = new AgentTemplatesService(_templatesDir);
         var effectiveModelRegistry = modelRegistry ?? Substitute.For<IModelRegistry>();
         if (modelRegistry is null)
-            effectiveModelRegistry.GetModelsForExecutor(Arg.Any<string>()).Returns([]);
+            effectiveModelRegistry.GetModelsForExecutor(Arg.Any<AgentExecutorName>()).Returns([]);
 
         var agentService = new AgentService(
             _paths,
@@ -207,7 +209,7 @@ public sealed class ProjectSettingsViewModelTests : IDisposable
 
     private void SeedProjectWithAgent(AgentService agentService)
     {
-        var templatesService = new AgentTemplatesService(_paths);
+        var templatesService = new AgentTemplatesService(_templatesDir);
         templatesService.CreateTemplate(new AgentTemplate
         {
             Slug = new AgentSlug("generic-standard"),
