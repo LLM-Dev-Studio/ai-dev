@@ -45,7 +45,11 @@ public static class CoreServiceExtensions
         services.AddSingleton<ProjectMutationCoordinator>();
         services.AddSingleton<ConsistencyCheckService>();
         services.AddSingleton<SecretsService>();
-        services.AddSingleton<WorkspaceService>();
+        services.AddSingleton<WorkspaceService>(sp => new WorkspaceService(
+            sp.GetRequiredService<WorkspacePaths>(),
+            sp.GetRequiredService<AtomicFileWriter>(),
+            sp.GetService<ActiveWorkspaceHolder>(),
+            logger: sp.GetService<ILogger<WorkspaceService>>()));
         services.AddSingleton<StudioSettingsService>();
         services.AddSingleton<FeatureFlagsService>();
         services.AddSingleton<AgentTemplatesService>();

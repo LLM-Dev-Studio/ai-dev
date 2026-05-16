@@ -10,15 +10,17 @@ import { StudioSignalRClient } from './StudioSignalRClient';
 import { AgentsPanelProvider } from './panels/AgentsPanelProvider';
 import { MessagesPanelProvider } from './panels/MessagesPanelProvider';
 import { DecisionsPanelProvider } from './panels/DecisionsPanelProvider';
+import { LogsPanelProvider } from './panels/LogsPanelProvider';
+import { Logger } from './Logger';
 import type { ProjectConfig } from './types';
 
 let backendManager: BackendProcessManager | undefined;
 let signalRClient: StudioSignalRClient | undefined;
 let statusBar: StatusBarManager | undefined;
-export let log: vscode.OutputChannel;
+export let log: Logger;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  log = vscode.window.createOutputChannel('AI Dev Studio');
+  log = new Logger('AI Dev Studio');
   context.subscriptions.push(log);
   log.appendLine(`Activating — extensionPath: ${context.extensionPath}`);
 
@@ -29,11 +31,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const agentsProvider = new AgentsPanelProvider(context.extensionUri);
   const messagesProvider = new MessagesPanelProvider(context.extensionUri);
   const decisionsProvider = new DecisionsPanelProvider(context.extensionUri);
+  const logsProvider = new LogsPanelProvider(context.extensionUri, log);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('aidev.agents', agentsProvider),
     vscode.window.registerWebviewViewProvider('aidev.messages', messagesProvider),
     vscode.window.registerWebviewViewProvider('aidev.decisions', decisionsProvider),
+    vscode.window.registerWebviewViewProvider('aidev.logs', logsProvider),
+    logsProvider,
   );
 
   const detector = new WorkspaceDetector(
@@ -104,7 +109,17 @@ async function connectBackend(
   log.appendLine(`Binary: ${binaryPath} (exists: ${fs.existsSync(binaryPath)})`);
 
   backendManager = new BackendProcessManager(
-    { binaryPath, port: config.apiPort, maxAttempts: 30, retryDelayMs: 1000 },
+    {
+      binaryPath,
+      port: config.apiPort,
+      maxAttempts: 30,
+      retryDelayMs: 1000,
+      onOutput: (line, source) => {
+        const msg = `[backend:${source}] ${line}`;
+        if (source === 'stderr') log.warn(msg);
+        else log.info(msg);
+      },
+    },
     (binary, args, options) => spawn(binary, args, {
       ...options,
       stdio: 'pipe',

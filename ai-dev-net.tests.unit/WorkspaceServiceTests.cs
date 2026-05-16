@@ -1,13 +1,30 @@
 namespace AiDevNet.Tests.Unit;
 
-public class WorkspaceServiceTests
+public class WorkspaceServiceTests : IDisposable
 {
+    private readonly string _codebasePath;
+    private readonly string _registryPath;
+    private readonly WorkspaceService _service;
+
+    public WorkspaceServiceTests()
+    {
+        _codebasePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_codebasePath);
+        _registryPath = Path.Combine(_codebasePath, "test-managed-projects.json");
+        var paths = new WorkspacePaths(new RootDir(Path.Combine(_codebasePath, ".ai-dev")));
+        _service = new WorkspaceService(paths, new AtomicFileWriter(), registryFilePath: _registryPath);
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_codebasePath))
+            Directory.Delete(_codebasePath, recursive: true);
+    }
+
     [Fact]
     public void CreateProject_WhenSlugInvalid_ReturnsError()
     {
-        var (service, codebasePath) = CreateService();
-
-        var result = service.CreateProject(codebasePath, "Invalid Slug", "Demo", null);
+        var result = _service.CreateProject(_codebasePath, "Invalid Slug", "Demo", null);
 
         result.ShouldBeOfType<Err<AiDev.Models.Unit>>();
     }
@@ -15,31 +32,29 @@ public class WorkspaceServiceTests
     [Fact]
     public void CreateProject_WhenValid_ReturnsOk()
     {
-        var (service, codebasePath) = CreateService();
-        var paths = new WorkspacePaths(new RootDir(Path.Combine(codebasePath, ".ai-dev")));
+        var paths = new WorkspacePaths(new RootDir(Path.Combine(_codebasePath, ".ai-dev")));
 
-        var result = service.CreateProject(codebasePath, "demo-project", "Demo Project", "Main app");
+        var result = _service.CreateProject(_codebasePath, "demo-project", "Demo Project", "Main app");
 
         result.ShouldBeOfType<Ok<AiDev.Models.Unit>>();
         paths.ProjectJsonPath(new ProjectSlug("demo-project")).Exists().ShouldBeTrue();
     }
 
     [Fact]
-    public void UpdateProject_WhenMissing_ReturnsError()
+    public void CreateProject_WhenValid_StoresSlugInRegistry()
     {
-        var (service, codebasePath) = CreateService();
+        _service.CreateProject(_codebasePath, "demo-project", "Demo Project", null);
 
-        var result = service.UpdateProject(new ProjectSlug("demo-project"), "Demo Project", null);
-
-        result.ShouldBeOfType<Err<AiDev.Models.Unit>>();
+        var json = File.ReadAllText(_registryPath);
+        json.ShouldContain("\"slug\"");
+        json.ShouldContain("demo-project");
     }
 
-    private static (WorkspaceService service, string codebasePath) CreateService()
+    [Fact]
+    public void UpdateProject_WhenMissing_ReturnsError()
     {
-        var codebasePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(codebasePath);
-        var holder = new ActiveWorkspaceHolder();
-        holder.Activate(codebasePath);
-        return (new WorkspaceService(holder, new AtomicFileWriter()), codebasePath);
+        var result = _service.UpdateProject(new ProjectSlug("demo-project"), "Demo Project", null);
+
+        result.ShouldBeOfType<Err<AiDev.Models.Unit>>();
     }
 }

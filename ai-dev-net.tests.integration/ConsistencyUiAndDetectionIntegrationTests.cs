@@ -12,18 +12,17 @@ namespace AiDevNet.Tests.Integration;
 public class ConsistencyUiAndDetectionIntegrationTests : IDisposable
 {
     private readonly string _rootPath;
-    private readonly ActiveWorkspaceHolder _holder;
     private readonly WorkspacePaths _paths;
     private readonly AtomicFileWriter _fileWriter = new();
     private readonly ProjectMutationCoordinator _coordinator = new();
+    private readonly string _registryPath;
 
     public ConsistencyUiAndDetectionIntegrationTests()
     {
         _rootPath = Path.Combine(Path.GetTempPath(), $"consistency-ui-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_rootPath);
-        _holder = new ActiveWorkspaceHolder();
-        _holder.Activate(_rootPath);
-        _paths = _holder.Paths;
+        _paths = new WorkspacePaths(new RootDir(Path.Combine(_rootPath, ".ai-dev")));
+        _registryPath = Path.Combine(_rootPath, "test-managed-projects.json");
     }
 
     public void Dispose()
@@ -35,8 +34,8 @@ public class ConsistencyUiAndDetectionIntegrationTests : IDisposable
     [Fact]
     public async Task CheckProjectAsync_WhenRawBoardHasDuplicateTaskReference_ReportsRawFinding()
     {
-        var workspaceService = new WorkspaceService(_holder, _fileWriter);
-        workspaceService.CreateProject(_rootPath, "demo-project", "Demo Project", null).ShouldBeOfType<Ok<Unit>>();
+        var workspaceService = new WorkspaceService(_paths, _fileWriter, registryFilePath: _registryPath);
+        workspaceService.CreateProject(slug: "demo-project", name: "Demo Project").ShouldBeOfType<Ok<Unit>>();
         var projectSlug = new ProjectSlug("demo-project");
         var boardPath = _paths.BoardPath(projectSlug);
         _fileWriter.WriteAllText(boardPath, "{\"columns\":[{\"id\":\"backlog\",\"title\":\"Backlog\",\"taskIds\":[\"task-1\"]},{\"id\":\"review\",\"title\":\"Review\",\"taskIds\":[\"task-1\"]}],\"tasks\":{\"task-1\":{\"id\":\"task-1\",\"title\":\"Investigate failure\",\"priority\":\"normal\"}}}");

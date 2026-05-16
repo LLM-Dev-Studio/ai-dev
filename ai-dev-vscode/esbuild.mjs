@@ -26,6 +26,7 @@ const webviewCtx = await esbuild.context({
     'src/webviews/agents/main.tsx',
     'src/webviews/messages/main.tsx',
     'src/webviews/decisions/main.tsx',
+    'src/webviews/logs/main.tsx',
   ],
   outdir: 'dist/webviews',
   platform: 'browser',
