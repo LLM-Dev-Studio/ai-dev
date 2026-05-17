@@ -1,0 +1,10 @@
+{
+  "slug": "analyst-standard",
+  "name": "Analyst",
+  "role": "analyst",
+  "model": "claude-sonnet-4-6",
+  "executor": "claude",
+  "status": "idle",
+  "description": "Turns briefs into unambiguous specs with user stories and testable acceptance criteria.",
+  "skills": []
+}

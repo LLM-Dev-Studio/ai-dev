@@ -132,17 +132,23 @@ public record TemplateFile(string Value) : FilePath(Value);
 /// </summary>
 public class WorkspacePaths
 {
+    private readonly RootDir? _staticRoot;
+    private readonly Func<RootDir>? _rootFactory;
+
     /// <summary>Absolute path to the <c>.ai-dev/</c> directory inside the active codebase.</summary>
-    public RootDir Root { get; }
+    public RootDir Root => _rootFactory?.Invoke() ?? _staticRoot!;
 
     /// <summary>
-    /// Initializes resolved workspace paths from the codebase's <c>.ai-dev/</c> root.
+    /// Initializes resolved workspace paths from a fixed <c>.ai-dev/</c> root.
     /// </summary>
     /// <param name="root">The <c>.ai-dev/</c> directory inside the codebase.</param>
-    public WorkspacePaths(RootDir root)
-    {
-        Root = root;
-    }
+    public WorkspacePaths(RootDir root) => _staticRoot = root;
+
+    /// <summary>
+    /// Initializes workspace paths backed by a factory — the root is re-evaluated on every
+    /// access so that the singleton can follow the active project as it changes.
+    /// </summary>
+    internal WorkspacePaths(Func<RootDir> rootFactory) => _rootFactory = rootFactory;
 
     /// <summary>Gets the project directory path.</summary>
     public ProjectDir ProjectDir(ProjectSlug p) => Root.ProjectDir(p);

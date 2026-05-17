@@ -24,8 +24,19 @@ public static class CoreServiceExtensions
     /// </summary>
     public static IServiceCollection AddAiDevCore(this IServiceCollection services)
     {
-        // WorkspacePaths and (optionally) ActiveWorkspaceHolder are registered by the host
-        // (Program.cs for the API, App.xaml.cs for WinUI). AddAiDevCore consumes them.
+        // WorkspacePaths is backed by a root factory that reads the current ActiveWorkspaceHolder
+        // on every access. This means the singleton is safe to construct even before a project is
+        // activated, and automatically follows the active project when it changes.
+        services.AddSingleton<ActiveWorkspaceHolder>();
+        services.AddSingleton<WorkspacePaths>(sp =>
+        {
+            var holder = sp.GetRequiredService<ActiveWorkspaceHolder>();
+            return new WorkspacePaths(() =>
+                holder.HasActiveProject
+                    ? holder.Paths.Root
+                    : new RootDir(Path.Combine(Path.GetTempPath(), "ai-dev-no-project")));
+        });
+
         services.AddSingleton<IDomainEventDispatcher, InProcessDomainEventDispatcher>();
         services.AddSingleton<IDomainEventHandler<TaskAssigned>, TaskAssignedHandler>();
         services.AddSingleton<ProjectStateChangedNotifier>();
