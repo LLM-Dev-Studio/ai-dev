@@ -57,9 +57,9 @@ for (const { vsceTarget, rid, sourceBinary, destBinary } of targets) {
   console.log(`  ${vsceTarget}  (dotnet RID: ${rid})`);
   console.log('─'.repeat(60));
 
-  // 1. Publish self-contained
+  // 1. Publish self-contained single-file so bin/ only needs the one executable
   run(
-    `dotnet publish "${apiProject}" --self-contained -r ${rid} -c Release`,
+    `dotnet publish "${apiProject}" --self-contained -r ${rid} -c Release -p:PublishSingleFile=true`,
     repoRoot,
   );
 
