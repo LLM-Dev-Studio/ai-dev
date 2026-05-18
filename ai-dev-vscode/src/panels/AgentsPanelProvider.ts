@@ -8,22 +8,28 @@ export class AgentsPanelProvider extends BasePanelProvider {
   }
 
   protected onConnected(view: vscode.WebviewView, disposables: vscode.Disposable[]): void {
-    disposables.push(this.signalR!.onAgentsChanged(() => void this.refresh()));
+    let webviewReady = false;
+    disposables.push(this.signalR!.onAgentsChanged(() => {
+      if (webviewReady) void this.refresh();
+    }));
 
     disposables.push(view.webview.onDidReceiveMessage(async (msg: FromAgentsWebview) => {
       try {
-        if (msg.type === 'run') {
+        if (msg.type === 'ready') {
+          webviewReady = true;
+          await this.refresh();
+        } else if (msg.type === 'run') {
           await this.api!.runAgent(this.projectSlug!, msg.agentSlug);
         } else if (msg.type === 'stop') {
           await this.api!.stopAgent(this.projectSlug!, msg.agentSlug);
         }
-        await this.refresh();
+        if (msg.type !== 'ready') {
+          await this.refresh();
+        }
       } catch (e) {
         this.send({ type: 'error', message: String(e) });
       }
     }));
-
-    void this.refresh();
   }
 
   private async refresh(): Promise<void> {

@@ -1,4 +1,4 @@
-import type { AgentSummary, MessageItem, DecisionItem } from '../../types';
+import type { AgentSummary, MessageItem, DecisionItem, BoardData, BoardTaskItem } from '../../types';
 import type { LogEntry } from '../../Logger';
 
 // Extension host → webview
@@ -17,16 +17,56 @@ export type ToDecisionsWebview =
   | { type: 'error'; message: string }
   | { type: 'decisions'; data: DecisionItem[] };
 
+export type ToKanbanWebview =
+  | { type: 'loading' }
+  | { type: 'error'; message: string }
+  | { type: 'board'; data: BoardData; githubRepo?: string }
+  | { type: 'github-sign-in-required'; owner: string; repo: string };
+
 // Webview → extension host
 export type FromAgentsWebview =
+  | { type: 'ready' }
   | { type: 'run'; agentSlug: string }
   | { type: 'stop'; agentSlug: string };
 
 export type FromMessagesWebview =
+  | { type: 'ready' }
   | { type: 'process'; fileName: string; agentSlug: string }; // agentSlug populated from MessageItem.agentSlug
 
 export type FromDecisionsWebview =
+  | { type: 'ready' }
   | { type: 'resolve'; decisionId: string; resolution: string };
+
+export type FromKanbanWebview =
+  | { type: 'ready' }
+  | { type: 'refresh' }
+  | { type: 'githubSignIn' }
+  | {
+      type: 'createTask';
+      columnId: string;
+      title: string;
+      description?: string;
+      assignee?: string;
+      priority?: string;
+      tags?: string[];
+    }
+  | {
+      type: 'updateTask';
+      taskId: string;
+      columnId: string;
+      title: string;
+      description?: string;
+      assignee?: string;
+      priority?: string;
+      tags?: string[];
+    }
+  | { type: 'moveTask'; taskId: string; toColumnId: string }
+  | { type: 'deleteTask'; taskId: string };
+
+export type EditableBoardTask = Pick<
+  BoardTaskItem,
+  'id' | 'title' | 'description' | 'assignee' | 'priority' | 'tags'
+>;
 
 // Extension host → Logs webview
 export type ToLogsWebview =

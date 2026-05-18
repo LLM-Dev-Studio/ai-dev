@@ -8,11 +8,17 @@ export class DecisionsPanelProvider extends BasePanelProvider {
   }
 
   protected onConnected(view: vscode.WebviewView, disposables: vscode.Disposable[]): void {
-    disposables.push(this.signalR!.onDecisionsChanged(() => void this.refresh(view)));
+    let webviewReady = false;
+    disposables.push(this.signalR!.onDecisionsChanged(() => {
+      if (webviewReady) void this.refresh(view);
+    }));
 
     disposables.push(view.webview.onDidReceiveMessage(async (msg: FromDecisionsWebview) => {
       try {
-        if (msg.type === 'resolve') {
+        if (msg.type === 'ready') {
+          webviewReady = true;
+          await this.refresh(view);
+        } else if (msg.type === 'resolve') {
           await this.api!.resolveDecision(this.projectSlug!, msg.decisionId, msg.resolution);
           await this.refresh(view);
         }
@@ -20,8 +26,6 @@ export class DecisionsPanelProvider extends BasePanelProvider {
         this.send({ type: 'error', message: String(e) });
       }
     }));
-
-    void this.refresh(view);
   }
 
   private async refresh(view: vscode.WebviewView): Promise<void> {

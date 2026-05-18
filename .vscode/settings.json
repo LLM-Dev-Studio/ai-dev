@@ -1,7 +1,8 @@
 {
     "chat.tools.terminal.autoApprove": {
         "dotnet test": true,
-        "dotnet list": true
+        "dotnet list": true,
+        "npm run build": true
     },
     "files.watcherExclude": {
         "**/node_modules/**": true,

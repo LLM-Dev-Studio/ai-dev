@@ -1,5 +1,6 @@
 {
   "projectSlug": "llm-dev-studio",
+  "apiPort": 5191,
   "name": "LLM Dev Studio",
   "description": "",
   "createdAt": "2026-05-15T05:29:48.1965730Z"

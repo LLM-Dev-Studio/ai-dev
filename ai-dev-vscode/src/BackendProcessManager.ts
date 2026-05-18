@@ -24,6 +24,11 @@ export interface BackendProcessManagerOptions {
   maxAttempts: number;
   retryDelayMs: number;
   onOutput?: (line: string, source: 'stdout' | 'stderr') => void;
+  fallbackCommand?: {
+    binary: string;
+    args: string[];
+    cwd?: string;
+  };
 }
 
 export class BackendProcessManager {
@@ -49,9 +54,18 @@ export class BackendProcessManager {
     if (this._state !== 'not-started') return;
     this._state = 'starting';
 
-    // Skip spawning when binary is absent — dev mode where backend runs externally.
-    if (this.fileExists(this.options.binaryPath)) {
+    const hasBundledBinary = this.fileExists(this.options.binaryPath);
+    if (hasBundledBinary) {
       this._process = this.spawner(this.options.binaryPath, [], {});
+    } else if (this.options.fallbackCommand) {
+      this._process = this.spawner(
+        this.options.fallbackCommand.binary,
+        this.options.fallbackCommand.args,
+        { cwd: this.options.fallbackCommand.cwd },
+      );
+    }
+
+    if (this._process) {
       this._process.on('exit', () => {
         if (this._state !== 'stopped') this._state = 'stopped';
       });

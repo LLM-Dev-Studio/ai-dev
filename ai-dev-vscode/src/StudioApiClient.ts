@@ -1,5 +1,5 @@
-export type { AgentSummary, MessageItem, DecisionItem } from './types';
-import type { AgentSummary, MessageItem, DecisionItem } from './types';
+export type { AgentSummary, MessageItem, DecisionItem, BoardData, BoardTaskItem } from './types';
+import type { AgentSummary, MessageItem, DecisionItem, BoardData, BoardTaskItem } from './types';
 
 export type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -63,6 +63,45 @@ export class StudioApiClient {
     });
   }
 
+  // ── Board ───────────────────────────────────────────────────────────────────
+
+  async getBoard(projectSlug: string): Promise<BoardData> {
+    return this.get(`/api/board?projectSlug=${enc(projectSlug)}`);
+  }
+
+  async createBoardTask(
+    projectSlug: string,
+    request: {
+      columnId: string;
+      title: string;
+      description?: string;
+      priority?: string;
+      assignee?: string;
+      tags?: string[];
+    },
+  ): Promise<BoardTaskItem> {
+    return this.postJson(`/api/board/tasks?projectSlug=${enc(projectSlug)}`, request);
+  }
+
+  async updateBoardTask(
+    projectSlug: string,
+    taskId: string,
+    request: {
+      columnId: string;
+      title: string;
+      description?: string;
+      priority?: string;
+      assignee?: string;
+      tags?: string[];
+    },
+  ): Promise<BoardTaskItem> {
+    return this.postJson(`/api/board/tasks/${enc(taskId)}?projectSlug=${enc(projectSlug)}`, request);
+  }
+
+  async deleteBoardTask(projectSlug: string, taskId: string): Promise<void> {
+    await this.del(`/api/board/tasks/${enc(taskId)}?projectSlug=${enc(projectSlug)}`);
+  }
+
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
   private async get<T>(path: string): Promise<T> {
@@ -76,6 +115,23 @@ export class StudioApiClient {
       method: 'POST',
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) throw new ApiError(res.status, path);
+  }
+
+  private async postJson<T>(path: string, body: unknown): Promise<T> {
+    const res = await this.fetcher(this.baseUrl + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new ApiError(res.status, path);
+    return res.json() as Promise<T>;
+  }
+
+  private async del(path: string): Promise<void> {
+    const res = await this.fetcher(this.baseUrl + path, {
+      method: 'DELETE',
     });
     if (!res.ok) throw new ApiError(res.status, path);
   }

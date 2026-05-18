@@ -15,6 +15,9 @@ var workspaceRoot = builder.Configuration["WORKSPACE_ROOT"]
         "WORKSPACE_ROOT is not set. The VS Code extension sets this when spawning the backend, " +
         "or add it to launchSettings.json for direct development runs.");
 
+if (!Path.IsPathRooted(workspaceRoot))
+    workspaceRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, workspaceRoot));
+
 builder.Services.AddAiDevCore();
 
 // Pre-activate the holder for this codebase. AddAiDevCore registers the type-based singleton,
@@ -43,6 +46,7 @@ app.UseCors();
 app.MapAgentRoutes();
 app.MapMessageRoutes();
 app.MapDecisionRoutes();
+app.MapBoardRoutes();
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "healthy" }));
 app.MapHub<ProjectStateHub>("/hubs/project");

@@ -57,6 +57,7 @@ function App() {
       else if (msg.type === 'decisions') { setDecisions(msg.data); setState('ready'); }
     };
     window.addEventListener('message', handler);
+    vscode.postMessage({ type: 'ready' });
     return () => window.removeEventListener('message', handler);
   }, []);
 

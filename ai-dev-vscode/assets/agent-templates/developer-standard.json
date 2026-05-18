@@ -1,0 +1,9 @@
+{
+  "slug": "developer-standard",
+  "name": "Developer",
+  "role": "developer",
+  "model": "claude-sonnet-4-6",
+  "description": "Implements features and fixes bugs. Commits code and notifies QA when ready for review.",
+  "content": "",
+  "executor": "claude"
+}

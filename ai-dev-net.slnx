@@ -40,8 +40,6 @@
   <Project Path="ai-dev-net.ServiceDefaults/ai-dev-net.ServiceDefaults.csproj" />
   <Project Path="ai-dev-net.tests.integration/ai-dev-net.tests.integration.csproj" />
   <Project Path="ai-dev-net.tests.unit/ai-dev-net.tests.unit.csproj" />
-  <Project Path="ai-dev.api/ai-dev.api.csproj" />
-  <Project Path="ai-dev.core.local/ai-dev.core.local.csproj" />
   <Project Path="ai-dev.core/ai-dev.core.csproj" Id="c5884869-1690-4cc5-b2d5-fba00997cf78" />
   <Project Path="ai-dev.executor.anthropic/ai-dev.executor.anthropic.csproj" />
   <Project Path="ai-dev.executor.claude/ai-dev.executor.claude.csproj" />
@@ -49,11 +47,10 @@
   <Project Path="ai-dev.executor.github-models/ai-dev.executor.github-models.csproj" />
   <Project Path="ai-dev.executor.lmstudio/ai-dev.executor.lmstudio.csproj" />
   <Project Path="ai-dev.executor.ollama/ai-dev.executor.ollama.csproj" />
+  <Project Path="ai-dev.core.local/ai-dev.core.local.csproj" />
   <Project Path="ai-dev.mcp/ai-dev.mcp.csproj" />
   <Project Path="ai-dev.ui.winui/ai-dev.ui.winui.csproj">
     <Platform Solution="Debug|Any CPU" Project="x64" />
   </Project>
-  <Project Path="samples/winappdriver-sample/WinAppDriver.Sample.Tests.csproj">
-    <Build Solution="Debug|*" Project="false" />
-  </Project>
+  <Project Path="samples/winappdriver-sample/WinAppDriver.Sample.Tests.csproj" />
 </Solution>

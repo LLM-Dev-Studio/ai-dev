@@ -65,6 +65,7 @@ function App() {
   }, [entries, scrollToBottom]);
 
   useEffect(() => {
+    vscode.postMessage({ type: 'ready' });
     const handler = (event: MessageEvent<ToLogsWebview>) => {
       const msg = event.data;
       if (msg.type === 'history') {
