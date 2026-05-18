@@ -35,7 +35,15 @@ dotnet run --project ai-dev.ui.winui -p:Platform=x64
 npm run build      # one-shot bundle
 npm run watch      # incremental rebuild
 npm test           # Jest unit tests
-npm run package    # produce .vsix for sideloading
+
+# Distributable .vsix with embedded self-contained API binary (use these for releases):
+npm run package:win    # win32-x64  → ai-dev-studio-win32-x64-<version>.vsix
+npm run package:mac    # darwin-arm64
+npm run package:linux  # linux-x64
+npm run package:all    # all three platforms
+
+# JS-only .vsix with no backend binary (NOT suitable for distribution — backend won't start):
+npm run package
 ```
 
 ### CI mirrors
