@@ -37,3 +37,32 @@ export interface DecisionItem {
   blocks?: string;
   body?: string;
 }
+
+export interface BoardColumnItem {
+  id: string;
+  title: string;
+  taskIds: string[];
+}
+
+export interface BoardTaskItem {
+  id: string;
+  title: string;
+  priority: string;
+  description?: string;
+  assignee?: string;
+  tags?: string[];
+  createdAt?: string;
+  completedAt?: string;
+  movedAt?: string;
+  nudgedAt?: string;
+}
+
+export interface BoardData {
+  columns: BoardColumnItem[];
+  tasks: Record<string, BoardTaskItem>;
+}
+
+export interface GitHubRepoInfo {
+  owner: string;
+  repo: string;
+}

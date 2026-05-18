@@ -50,6 +50,7 @@ function App() {
       else if (msg.type === 'agents') { setAgents(msg.data); setState('ready'); }
     };
     window.addEventListener('message', handler);
+    vscode.postMessage({ type: 'ready' });
     return () => window.removeEventListener('message', handler);
   }, []);
 

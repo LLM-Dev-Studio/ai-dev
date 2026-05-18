@@ -8,7 +8,7 @@
       "applicationUrl": "http://localhost:5191",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "WORKSPACE_ROOT": "M:\\ai-dev-net"
+        "WORKSPACE_ROOT": ".."
       }
     },
     "https": {
@@ -18,7 +18,7 @@
       "applicationUrl": "https://localhost:7087;http://localhost:5191",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "WORKSPACE_ROOT": "M:\\ai-dev-net"
+        "WORKSPACE_ROOT": ".."
       }
     }
   }

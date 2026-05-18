@@ -13,6 +13,7 @@ public partial class BoardColumnViewModel : ObservableObject
 {
     public BoardColumn Column { get; }
     public ObservableCollection<BoardTask> Tasks { get; } = [];
+    public bool IsBacklog => Column.Id == ColumnId.Backlog;
     public bool IsDone => Column.Id == ColumnId.Done;
 
     public BoardColumnViewModel(BoardColumn column)
@@ -82,6 +83,13 @@ public partial class BoardViewModel : ObservableObject, IDisposable
     private ProjectSlug? CurrentSlug => _mainViewModel.ActiveProject?.Slug;
 
     [RelayCommand]
+    public void Refresh()
+    {
+        if (CurrentSlug is null) return;
+        RefreshBoard();
+    }
+
+    [RelayCommand]
     public async Task LoadAsync()
     {
         if (CurrentSlug is null) return;
@@ -138,7 +146,7 @@ public partial class BoardViewModel : ObservableObject, IDisposable
         TaskTitle = "";
         TaskDescription = "";
         TaskPriority = "normal";
-        TaskColumnId = columnId;
+        TaskColumnId = ColumnId.Backlog.Value;
         TaskAssignee = GetDefaultAssignee();
         SyncSelectedAssigneeOption();
         TaskError = "";

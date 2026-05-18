@@ -6,9 +6,11 @@ import { StudioSignalRClient } from '../StudioSignalRClient';
 export abstract class BasePanelProvider implements vscode.WebviewViewProvider {
   protected view?: vscode.WebviewView;
   protected projectSlug?: string;
+  protected workspaceFolderPath?: string;
   protected api?: StudioApiClient;
   protected signalR?: StudioSignalRClient;
   private connectionDisposables: vscode.Disposable[] = [];
+  private placeholderMessage = 'Waiting for AI Dev Studio backend...';
 
   constructor(
     protected readonly viewId: string,
@@ -27,13 +29,22 @@ export abstract class BasePanelProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  connect(projectSlug: string, api: StudioApiClient, signalR: StudioSignalRClient): void {
+  connect(projectSlug: string, api: StudioApiClient, signalR: StudioSignalRClient, workspaceFolderPath?: string): void {
     this.projectSlug = projectSlug;
+    this.workspaceFolderPath = workspaceFolderPath;
     this.api = api;
     this.signalR = signalR;
     if (this.view) {
       this.enableScripts(this.view);
       this.wireUp(this.view);
+    }
+  }
+
+  setPlaceholderMessage(message: string): void {
+    this.placeholderMessage = message;
+    if (this.view && !this.api) {
+      this.view.webview.options = { enableScripts: false };
+      this.view.webview.html = this.buildPlaceholderHtml();
     }
   }
 
@@ -49,6 +60,7 @@ export abstract class BasePanelProvider implements vscode.WebviewViewProvider {
     for (const d of this.connectionDisposables) d.dispose();
     this.connectionDisposables = [];
     this.projectSlug = undefined;
+    this.workspaceFolderPath = undefined;
     this.api = undefined;
     this.signalR = undefined;
     this.send({ type: 'loading' });
@@ -69,7 +81,7 @@ export abstract class BasePanelProvider implements vscode.WebviewViewProvider {
   private buildPlaceholderHtml(): string {
     return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <style>body{font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);color:var(--vscode-descriptionForeground);background:transparent;margin:0;padding:8px;}</style>
-</head><body><p>Waiting for AI Dev Studio backend…</p></body></html>`;
+</head><body><p>${this.placeholderMessage}</p></body></html>`;
   }
 
   private buildHtml(webview: vscode.Webview): string {

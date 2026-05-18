@@ -45,6 +45,7 @@ export class LogsPanelProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.disposables.push(
       webviewView.webview.onDidReceiveMessage(msg => {
         if (msg.type === 'clear') this.logger.clearBuffer();
+        if (msg.type === 'ready') this.sendHistory();
       }),
     );
   }

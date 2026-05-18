@@ -48,6 +48,7 @@ function App() {
       else if (msg.type === 'messages') { setMessages(msg.data); setState('ready'); }
     };
     window.addEventListener('message', handler);
+    vscode.postMessage({ type: 'ready' });
     return () => window.removeEventListener('message', handler);
   }, []);
 

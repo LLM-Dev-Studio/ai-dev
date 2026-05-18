@@ -49,8 +49,8 @@ export class WorkspaceDetector extends EventEmitter {
     const raw = this.readFile(filePath);
     if (!raw) return;
     try {
-      const config = JSON.parse(raw) as ProjectConfig;
-      if (config.projectSlug && config.apiPort) {
+      const config = parseProjectConfig(JSON.parse(raw) as Record<string, unknown>);
+      if (config) {
         this.emit('projectDetected', { config, workspaceFolderPath });
       }
     } catch {
@@ -69,4 +69,39 @@ export class WorkspaceDetector extends EventEmitter {
   dispose(): void {
     this.watcher?.dispose();
   }
+}
+
+function parseProjectConfig(parsed: Record<string, unknown>): ProjectConfig | undefined {
+  const projectSlug = firstNonEmptyString(parsed.projectSlug, parsed.slug, parsed.projectId);
+  const apiPort = firstPositiveNumber(parsed.apiPort, parsed.port);
+
+  if (!projectSlug || !apiPort) {
+    return undefined;
+  }
+
+  return { projectSlug, apiPort };
+}
+
+function firstNonEmptyString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
+}
+
+function firstPositiveNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return Math.trunc(value);
+    }
+    if (typeof value === 'string') {
+      const candidate = Number(value.trim());
+      if (Number.isFinite(candidate) && candidate > 0) {
+        return Math.trunc(candidate);
+      }
+    }
+  }
+  return undefined;
 }

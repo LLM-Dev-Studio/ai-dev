@@ -8,11 +8,17 @@ export class MessagesPanelProvider extends BasePanelProvider {
   }
 
   protected onConnected(view: vscode.WebviewView, disposables: vscode.Disposable[]): void {
-    disposables.push(this.signalR!.onMessagesChanged(() => void this.refresh(view)));
+    let webviewReady = false;
+    disposables.push(this.signalR!.onMessagesChanged(() => {
+      if (webviewReady) void this.refresh(view);
+    }));
 
     disposables.push(view.webview.onDidReceiveMessage(async (msg: FromMessagesWebview) => {
       try {
-        if (msg.type === 'process') {
+        if (msg.type === 'ready') {
+          webviewReady = true;
+          await this.refresh(view);
+        } else if (msg.type === 'process') {
           await this.api!.processMessage(this.projectSlug!, msg.agentSlug, msg.fileName);
           await this.refresh(view);
         }
@@ -20,8 +26,6 @@ export class MessagesPanelProvider extends BasePanelProvider {
         this.send({ type: 'error', message: String(e) });
       }
     }));
-
-    void this.refresh(view);
   }
 
   private async refresh(view: vscode.WebviewView): Promise<void> {

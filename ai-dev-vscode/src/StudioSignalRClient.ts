@@ -39,11 +39,13 @@ export class StudioSignalRClient {
   private readonly _onAgentsChanged = new vscode.EventEmitter<void>();
   private readonly _onMessagesChanged = new vscode.EventEmitter<void>();
   private readonly _onDecisionsChanged = new vscode.EventEmitter<void>();
+  private readonly _onBoardChanged = new vscode.EventEmitter<void>();
 
   readonly onConnectionStateChanged = this._onConnectionStateChanged.event;
   readonly onAgentsChanged = this._onAgentsChanged.event;
   readonly onMessagesChanged = this._onMessagesChanged.event;
   readonly onDecisionsChanged = this._onDecisionsChanged.event;
+  readonly onBoardChanged = this._onBoardChanged.event;
 
   private _connectionState: ConnectionState = 'disconnected';
 
@@ -70,7 +72,10 @@ export class StudioSignalRClient {
       if (kinds.includes('agents')) this._onAgentsChanged.fire();
       if (kinds.includes('messages')) this._onMessagesChanged.fire();
       if (kinds.includes('decisions')) this._onDecisionsChanged.fire();
-      if (kinds.includes('board')) this._onAgentsChanged.fire(); // board changes affect agent views
+      if (kinds.includes('board')) {
+        this._onBoardChanged.fire();
+        this._onAgentsChanged.fire(); // board changes affect agent views
+      }
     });
 
     this.setState('connecting');
@@ -92,6 +97,7 @@ export class StudioSignalRClient {
     this._onAgentsChanged.dispose();
     this._onMessagesChanged.dispose();
     this._onDecisionsChanged.dispose();
+    this._onBoardChanged.dispose();
     void this.connection?.stop();
   }
 
