@@ -20,7 +20,7 @@ export type ToDecisionsWebview =
 export type ToKanbanWebview =
   | { type: 'loading' }
   | { type: 'error'; message: string }
-  | { type: 'board'; data: BoardData; githubRepo?: string }
+  | { type: 'board'; data: BoardData; agents: AgentSummary[]; githubRepo?: string }
   | { type: 'github-sign-in-required'; owner: string; repo: string };
 
 // Webview → extension host

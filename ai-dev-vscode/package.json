@@ -2,7 +2,7 @@
   "name": "ai-dev-studio",
   "displayName": "AI Dev Studio",
   "description": "AI agent orchestration sidebar for AI Dev Studio",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "AllanNielsen",
   "icon": "logo.png",
   "repository": {

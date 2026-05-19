@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getVsCodeApi } from '../shared/vscodeApi';
-import type { BoardColumnItem, BoardData, BoardTaskItem } from '../../types';
+import type { AgentSummary, BoardColumnItem, BoardData, BoardTaskItem } from '../../types';
 import type { ToKanbanWebview } from '../shared/protocol';
 
 const vscode = getVsCodeApi();
@@ -133,10 +133,11 @@ function TaskCard({
 // ─── TaskPanel ────────────────────────────────────────────────────────────────
 
 function TaskPanel({
-  task, columns, onSave, onDelete, onClose,
+  task, columns, agents, onSave, onDelete, onClose,
 }: {
   task: SelectedTask;
   columns: BoardColumnItem[];
+  agents: AgentSummary[];
   onSave: (taskId: string, updates: Omit<SelectedTask, 'id' | 'columnId'> & { columnId: string }) => void;
   onDelete: (taskId: string) => void;
   onClose: () => void;
@@ -221,11 +222,12 @@ function TaskPanel({
 
         <div className="panel-field">
           <label>Assignee</label>
-          <input
-            value={assignee}
-            placeholder="Name"
-            onChange={e => { setAssignee(e.target.value); mark(); }}
-          />
+          <select value={assignee} onChange={e => { setAssignee(e.target.value); mark(); }}>
+            <option value="">Unassigned</option>
+            {agents.map(a => (
+              <option key={a.slug} value={a.slug}>{a.slug}</option>
+            ))}
+          </select>
         </div>
 
         <div className="panel-field">
@@ -276,6 +278,7 @@ function App(): React.JSX.Element {
   const [error, setError] = useState('');
   const [githubRepo, setGithubRepo] = useState('');
   const [board, setBoard] = useState<BoardData>({ columns: [], tasks: {} });
+  const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [creatingIn, setCreatingIn] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
@@ -302,6 +305,7 @@ function App(): React.JSX.Element {
         return;
       }
       setBoard(msg.data);
+      setAgents(msg.agents);
       if (msg.githubRepo) setGithubRepo(msg.githubRepo);
       setState('ready');
     };
@@ -1140,6 +1144,7 @@ function App(): React.JSX.Element {
           <TaskPanel
             task={selected}
             columns={board.columns}
+            agents={agents}
             onSave={saveTask}
             onDelete={deleteTask}
             onClose={() => setSelected(null)}
