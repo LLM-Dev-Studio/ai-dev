@@ -61,7 +61,10 @@ export type FromKanbanWebview =
       tags?: string[];
     }
   | { type: 'moveTask'; taskId: string; toColumnId: string }
-  | { type: 'deleteTask'; taskId: string };
+  | { type: 'deleteTask'; taskId: string }
+  | { type: 'addColumn'; id: string; title: string }
+  | { type: 'renameColumn'; columnId: string; title: string }
+  | { type: 'deleteColumn'; columnId: string };
 
 export type EditableBoardTask = Pick<
   BoardTaskItem,

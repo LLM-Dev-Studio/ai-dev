@@ -242,10 +242,10 @@ function TaskPanel({
           ) : null}
         </div>
 
-        <div className="panel-field">
+        <div className="panel-field panel-field--grow" style={{ display: 'flex', flexDirection: 'column' }}>
           <label>Description</label>
           <textarea
-            rows={6}
+            style={{ flex: 1, minHeight: '80px', resize: 'none' }}
             value={description}
             placeholder="Add a description…"
             onChange={e => { setDescription(e.target.value); mark(); }}
@@ -282,6 +282,12 @@ function App(): React.JSX.Element {
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SelectedTask | null>(null);
   const [doneDays, setDoneDays] = useState(7);
+  const [renamingColumn, setRenamingColumn] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [addingColumn, setAddingColumn] = useState(false);
+  const [newColumnTitle, setNewColumnTitle] = useState('');
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const newColumnInputRef = useRef<HTMLInputElement>(null);
 
   const createInputRef = useRef<HTMLInputElement>(null);
 
@@ -309,6 +315,14 @@ function App(): React.JSX.Element {
   }, [creatingIn]);
 
   useEffect(() => {
+    if (renamingColumn) setTimeout(() => renameInputRef.current?.select(), 40);
+  }, [renamingColumn]);
+
+  useEffect(() => {
+    if (addingColumn) setTimeout(() => newColumnInputRef.current?.focus(), 40);
+  }, [addingColumn]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelected(null); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -317,6 +331,30 @@ function App(): React.JSX.Element {
   const selectTask = (task: BoardTaskItem) => {
     const col = board.columns.find(c => c.taskIds.includes(task.id));
     setSelected({ ...task, columnId: col?.id ?? '' });
+  };
+
+  const startRename = (column: BoardColumnItem) => {
+    setRenamingColumn(column.id);
+    setRenameValue(column.title);
+  };
+
+  const submitRename = () => {
+    if (!renamingColumn || !renameValue.trim()) { setRenamingColumn(null); return; }
+    vscode.postMessage({ type: 'renameColumn', columnId: renamingColumn, title: renameValue.trim() });
+    setRenamingColumn(null);
+  };
+
+  const submitDeleteColumn = (columnId: string) => {
+    vscode.postMessage({ type: 'deleteColumn', columnId });
+  };
+
+  const submitAddColumn = () => {
+    const title = newColumnTitle.trim();
+    if (!title) { setAddingColumn(false); return; }
+    const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'column';
+    vscode.postMessage({ type: 'addColumn', id, title });
+    setNewColumnTitle('');
+    setAddingColumn(false);
   };
 
   const submitNewTask = () => {
@@ -507,6 +545,64 @@ function App(): React.JSX.Element {
         }
 
         .column-head-right { display: flex; align-items: center; gap: 4px; }
+
+        /* ─── Column rename / delete ─── */
+        .column-title--editable { cursor: text; }
+        .column-title--editable:hover { color: var(--kb-fg); }
+
+        .column-rename-input {
+          font-size: 0.68rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          background: var(--kb-input-bg);
+          border: 1px solid var(--kb-border-focus);
+          border-radius: 3px;
+          color: var(--kb-fg);
+          padding: 1px 5px;
+          outline: none;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .col-delete-btn {
+          background: transparent;
+          border: 1px solid transparent;
+          color: color-mix(in srgb, var(--kb-muted) 40%, transparent);
+          cursor: pointer;
+          border-radius: 3px;
+          padding: 1px 4px;
+          font-size: 0.65rem;
+          line-height: 1.4;
+          transition: color 110ms, border-color 110ms, background 110ms;
+        }
+        .col-delete-btn:not(:disabled):hover {
+          color: #f87171;
+          border-color: color-mix(in srgb, #dc2626 35%, transparent);
+          background: color-mix(in srgb, #dc2626 12%, transparent);
+        }
+        .col-delete-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        /* ─── Add column card ─── */
+        .add-column-card {
+          border-style: dashed;
+          border-color: color-mix(in srgb, var(--kb-border) 45%, transparent);
+          background: transparent;
+          gap: 6px;
+        }
+
+        .add-column-input {
+          background: transparent;
+          border: none;
+          border-bottom: 1px solid var(--kb-border-focus);
+          border-radius: 0;
+          color: var(--kb-fg);
+          font-size: 0.8rem;
+          padding: 3px 0;
+          outline: none;
+          width: 100%;
+        }
+        .add-column-input::placeholder { color: var(--kb-muted); }
 
         .done-window-btn {
           background: color-mix(in srgb, var(--kb-badge-bg) 45%, transparent);
@@ -729,11 +825,11 @@ function App(): React.JSX.Element {
           transition: background 110ms;
         }
 
-        button:not(.secondary):not(.icon-btn):not(.add-task-btn):not(.danger):not(.done-window-btn):not(.done-hidden-btn) {
+        button:not(.secondary):not(.icon-btn):not(.add-task-btn):not(.danger):not(.done-window-btn):not(.done-hidden-btn):not(.col-delete-btn) {
           background: var(--kb-btn-bg);
           color: var(--kb-btn-fg);
         }
-        button:not(.secondary):not(.icon-btn):not(.add-task-btn):not(.danger):not(.done-window-btn):not(.done-hidden-btn):hover {
+        button:not(.secondary):not(.icon-btn):not(.add-task-btn):not(.danger):not(.done-window-btn):not(.done-hidden-btn):not(.col-delete-btn):hover {
           background: var(--kb-btn-hover);
         }
         button:disabled { opacity: 0.45; cursor: default; }
@@ -822,6 +918,8 @@ function App(): React.JSX.Element {
         }
 
         .panel-field { display: flex; flex-direction: column; gap: 0; }
+        .panel-field--grow { flex: 1; min-height: 0; }
+        .panel-field--grow textarea { flex: 1; min-height: 80px; resize: none; }
 
         .panel-title-input {
           background: transparent;
@@ -876,6 +974,9 @@ function App(): React.JSX.Element {
         </div>
         <div className="header-right">
           <span className="task-count">{totalTasks}</span>
+          {!addingColumn ? (
+            <button className="icon-btn" title="Add column" onClick={() => setAddingColumn(true)}>+</button>
+          ) : null}
           <button
             className="icon-btn"
             title="Refresh board"
@@ -890,6 +991,7 @@ function App(): React.JSX.Element {
             {board.columns.map((column, idx) => {
               const allTasks = tasksForColumn(column, board);
               const isDoneCol = column.id === DONE_COLUMN_ID;
+              const isProtected = column.id === DONE_COLUMN_ID || column.id === 'backlog';
               const cutoff = isDoneCol && doneDays > 0
                 ? new Date(Date.now() - doneDays * 86_400_000)
                 : null;
@@ -909,7 +1011,27 @@ function App(): React.JSX.Element {
                   onDrop={e => onDropTask(e, column.id)}
                 >
                   <div className="column-head">
-                    <h4 className="column-title">{column.title}</h4>
+                    {renamingColumn === column.id ? (
+                      <input
+                        ref={renameInputRef}
+                        className="column-rename-input"
+                        value={renameValue}
+                        onChange={e => setRenameValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') submitRename();
+                          if (e.key === 'Escape') setRenamingColumn(null);
+                        }}
+                        onBlur={submitRename}
+                      />
+                    ) : (
+                      <h4
+                        className={`column-title${isProtected ? '' : ' column-title--editable'}`}
+                        title={isProtected ? undefined : 'Double-click to rename'}
+                        onDoubleClick={() => { if (!isProtected) startRename(column); }}
+                      >
+                        {column.title}
+                      </h4>
+                    )}
                     <div className="column-head-right">
                       {isDoneCol ? (
                         <button
@@ -924,6 +1046,14 @@ function App(): React.JSX.Element {
                         </button>
                       ) : null}
                       <span className="column-count">{tasks.length}</span>
+                      {!isProtected ? (
+                        <button
+                          className="col-delete-btn"
+                          title={tasks.length > 0 ? 'Move tasks before deleting' : 'Delete column'}
+                          disabled={tasks.length > 0}
+                          onClick={() => submitDeleteColumn(column.id)}
+                        >✕</button>
+                      ) : null}
                     </div>
                   </div>
 
@@ -984,6 +1114,25 @@ function App(): React.JSX.Element {
                 </section>
               );
             })}
+            {addingColumn ? (
+              <div className="board-column add-column-card">
+                <input
+                  ref={newColumnInputRef}
+                  className="add-column-input"
+                  value={newColumnTitle}
+                  placeholder="Column name…"
+                  onChange={e => setNewColumnTitle(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') submitAddColumn();
+                    if (e.key === 'Escape') { setAddingColumn(false); setNewColumnTitle(''); }
+                  }}
+                />
+                <div className="task-create-actions">
+                  <button onClick={submitAddColumn}>Add</button>
+                  <button className="secondary" onClick={() => { setAddingColumn(false); setNewColumnTitle(''); }}>Cancel</button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 

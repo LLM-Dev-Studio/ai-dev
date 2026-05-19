@@ -6,8 +6,6 @@ namespace AiDev.Api.Routes;
 
 public static class BoardRoutes
 {
-    private sealed record BoardColumnResponse(string Id, string Title, List<string> TaskIds);
-
     private sealed record BoardTaskResponse(
         string Id,
         string Title,
@@ -21,6 +19,11 @@ public static class BoardRoutes
         DateTime? NudgedAt);
 
     private sealed record BoardResponse(List<BoardColumnResponse> Columns, Dictionary<string, BoardTaskResponse> Tasks);
+
+    private sealed record AddColumnRequest(string Id, string Title);
+    private sealed record RenameColumnRequest(string Title);
+
+    private sealed record BoardColumnResponse(string Id, string Title, List<string> TaskIds);
 
     private sealed record CreateTaskRequest(
         string? ColumnId,
@@ -114,11 +117,62 @@ public static class BoardRoutes
             };
         });
 
+        app.MapPost("/api/board/columns", async (string projectSlug, AddColumnRequest body, IBoardService boardService, CancellationToken ct) =>
+        {
+            ProjectSlug project = projectSlug;
+            var result = await boardService.AddColumnAsync(project, body.Id, body.Title, ct);
+            return result switch
+            {
+                Ok<BoardColumn> ok => Results.Ok(new BoardColumnResponse(ok.Value.Id.Value, ok.Value.Title, [])),
+                Err<BoardColumn> err when IsColumnInputError(err.Error.Code) => Results.BadRequest(err.Error),
+                Err<BoardColumn> err => Results.Problem(err.Error.Message),
+                _ => Results.Problem("Unexpected result."),
+            };
+        });
+
+        app.MapPatch("/api/board/columns/{columnId}", async (string columnId, string projectSlug, RenameColumnRequest body, IBoardService boardService, CancellationToken ct) =>
+        {
+            ProjectSlug project = projectSlug;
+            if (!ColumnId.TryParse(columnId, out var parsedColumnId))
+                return Results.BadRequest(new DomainError("BOARD_INVALID_COLUMN", "Column id is invalid."));
+
+            var result = await boardService.RenameColumnAsync(project, parsedColumnId, body.Title, ct);
+            return result switch
+            {
+                Ok<Unit> => Results.Ok(),
+                Err<Unit> err when err.Error.Code == "BOARD_UNKNOWN_COLUMN" => Results.NotFound(),
+                Err<Unit> err when IsColumnInputError(err.Error.Code) => Results.BadRequest(err.Error),
+                Err<Unit> err => Results.Problem(err.Error.Message),
+                _ => Results.Problem("Unexpected result."),
+            };
+        });
+
+        app.MapDelete("/api/board/columns/{columnId}", async (string columnId, string projectSlug, IBoardService boardService, CancellationToken ct) =>
+        {
+            ProjectSlug project = projectSlug;
+            if (!ColumnId.TryParse(columnId, out var parsedColumnId))
+                return Results.BadRequest(new DomainError("BOARD_INVALID_COLUMN", "Column id is invalid."));
+
+            var result = await boardService.RemoveColumnAsync(project, parsedColumnId, ct);
+            return result switch
+            {
+                Ok<Unit> => Results.Ok(),
+                Err<Unit> err when err.Error.Code == "BOARD_UNKNOWN_COLUMN" => Results.NotFound(),
+                Err<Unit> err when IsColumnInputError(err.Error.Code) => Results.BadRequest(err.Error),
+                Err<Unit> err => Results.Problem(err.Error.Message),
+                _ => Results.Problem("Unexpected result."),
+            };
+        });
+
         return app;
     }
 
     private static bool IsBoardInputError(string code)
         => code is "BOARD_INVALID_COLUMN" or "BOARD_UNKNOWN_COLUMN" or "BOARD_INVALID_TASK" or "BOARD_INVALID_ASSIGNEE";
+
+    private static bool IsColumnInputError(string code)
+        => code is "BOARD_INVALID_COLUMN" or "BOARD_DUPLICATE_COLUMN" or "BOARD_PROTECTED_COLUMN"
+                or "BOARD_COLUMN_NOT_EMPTY" or "BOARD_INVALID_COLUMN_TITLE";
 
     private static BoardResponse ToResponse(Board board)
         => new(

@@ -431,6 +431,21 @@ export class KanbanPanelProvider extends BasePanelProvider {
 
     if (msg.type === 'deleteTask') {
       await this.api.deleteBoardTask(this.projectSlug, msg.taskId);
+      return;
+    }
+
+    if (msg.type === 'addColumn') {
+      await this.api.addBoardColumn(this.projectSlug, msg.id, msg.title);
+      return;
+    }
+
+    if (msg.type === 'renameColumn') {
+      await this.api.renameBoardColumn(this.projectSlug, msg.columnId, msg.title);
+      return;
+    }
+
+    if (msg.type === 'deleteColumn') {
+      await this.api.removeBoardColumn(this.projectSlug, msg.columnId);
     }
   }
 
