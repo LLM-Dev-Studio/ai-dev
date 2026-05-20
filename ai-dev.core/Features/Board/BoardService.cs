@@ -245,6 +245,48 @@ namespace AiDev.Features.Board
                     error => new Err<int>(error));
             }, cancellationToken);
 
+        public Task<Result<BoardColumn>> AddColumnAsync(ProjectSlug projectSlug, string columnId, string title,
+            CancellationToken cancellationToken = default)
+            => coordinator.ExecuteAsync(projectSlug, () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!ColumnId.TryParse(columnId, out var parsedColumnId))
+                    return Task.FromResult<Result<BoardColumn>>(new Err<BoardColumn>(InvalidColumnError));
+
+                var board = LoadBoard(projectSlug);
+                var result = board.AddColumn(parsedColumnId, title);
+                if (result is Ok<BoardColumn> ok)
+                    SaveBoard(projectSlug, board);
+
+                return Task.FromResult(result);
+            }, cancellationToken);
+
+        public Task<Result<Unit>> RenameColumnAsync(ProjectSlug projectSlug, ColumnId columnId, string newTitle,
+            CancellationToken cancellationToken = default)
+            => coordinator.ExecuteAsync(projectSlug, () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var board = LoadBoard(projectSlug);
+                var result = board.RenameColumn(columnId, newTitle);
+                if (result is Ok<Unit>)
+                    SaveBoard(projectSlug, board);
+
+                return Task.FromResult(result);
+            }, cancellationToken);
+
+        public Task<Result<Unit>> RemoveColumnAsync(ProjectSlug projectSlug, ColumnId columnId,
+            CancellationToken cancellationToken = default)
+            => coordinator.ExecuteAsync(projectSlug, () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var board = LoadBoard(projectSlug);
+                var result = board.RemoveColumn(columnId);
+                if (result is Ok<Unit>)
+                    SaveBoard(projectSlug, board);
+
+                return Task.FromResult(result);
+            }, cancellationToken);
+
         private async Task<Result<BoardTask>> PersistBoardResultAsync(ProjectSlug projectSlug, Board board, BoardTask task)
         {
             SaveBoard(projectSlug, board);
