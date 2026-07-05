@@ -2,8 +2,8 @@
   "name": "ai-dev-studio",
   "displayName": "AI Dev Studio",
   "description": "AI agent orchestration sidebar for AI Dev Studio",
-  "version": "0.1.5",
-  "publisher": "AllanNielsen",
+  "version": "0.1.7",
+  "publisher": "HybridSolutions",
   "icon": "logo.png",
   "repository": {
     "type": "git",
