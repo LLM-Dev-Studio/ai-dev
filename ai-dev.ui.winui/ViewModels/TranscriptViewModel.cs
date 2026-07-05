@@ -10,7 +10,7 @@ namespace AiDev.WinUI.ViewModels;
 public partial class TranscriptViewModel : ObservableObject
 {
     private readonly AgentService _agentService;
-    private readonly AgentRunnerService _agentRunnerService;
+    private readonly AgentTranscriptService _transcriptService;
     private readonly IModelRegistry _modelRegistry;
     private readonly MainViewModel _mainViewModel;
 
@@ -36,12 +36,12 @@ public partial class TranscriptViewModel : ObservableObject
 
     public TranscriptViewModel(
         AgentService agentService,
-        AgentRunnerService agentRunnerService,
+        AgentTranscriptService transcriptService,
         IModelRegistry modelRegistry,
         MainViewModel mainViewModel)
     {
         _agentService = agentService;
-        _agentRunnerService = agentRunnerService;
+        _transcriptService = transcriptService;
         _modelRegistry = modelRegistry;
         _mainViewModel = mainViewModel;
     }
@@ -80,14 +80,14 @@ public partial class TranscriptViewModel : ObservableObject
         SelectedDate = date;
         TranscriptContent = _agentService.ReadTranscript(CurrentSlug, Agent.Slug, date);
 
-        var usage = _agentRunnerService.GetSessionUsage(CurrentSlug, Agent.Slug, date);
+        var usage = _transcriptService.GetSessionUsage(CurrentSlug, Agent.Slug, date);
         if (usage is null)
         {
             TokenSummary = "";
         }
         else
         {
-            var model = _modelRegistry.Find(Agent.Executor.Value, Agent.Model);
+            var model = _modelRegistry.Find(Agent.Executor, Agent.Model);
             var cost = usage.EstimatedCost(model);
             var parts = new System.Text.StringBuilder();
             parts.Append($"in: {usage.InputTokens:N0}  out: {usage.OutputTokens:N0}");

@@ -1,0 +1,9 @@
+{
+  "slug": "guard-standard",
+  "name": "Guard",
+  "role": "guard",
+  "model": "claude-opus-4-6",
+  "description": "Reviews code for security vulnerabilities, audits dependencies, and enforces secure-by-default practices.",
+  "content": "",
+  "executor": "claude"
+}

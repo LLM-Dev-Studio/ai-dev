@@ -20,7 +20,10 @@ file class AgentJson
     public string? FailedOverAt { get; init; }
 }
 
-public class AgentService(
+/// <summary>
+/// Provides agent discovery, persistence, and metadata management operations.
+/// </summary>
+public partial class AgentService(
     WorkspacePaths paths,
     AgentTemplatesService templates,
     AtomicFileWriter fileWriter,
@@ -32,18 +35,28 @@ public class AgentService(
     private static readonly DomainError AgentNotFoundError = new("AGENT_NOT_FOUND", "Agent not found.");
 
 
+    /// <summary>
+    /// Lists agents for a project.
+    /// </summary>
+    /// <param name="projectSlug">The project whose agents should be listed.</param>
+    /// <returns>The project agents ordered by name.</returns>
     public List<AgentInfo> ListAgents(ProjectSlug projectSlug)
     {
         var agentsDir = paths.AgentsDir(projectSlug);
         if (!agentsDir.Exists()) return [];
 
-        return Directory.GetDirectories(agentsDir)
+        return [.. Directory.GetDirectories(agentsDir)
             .Select(d => AgentSlug.TryParse(Path.GetFileName(d), out var a) ? LoadAgent(projectSlug, a) : null)
             .OfType<AgentInfo>()
-            .OrderBy(a => a.Name)
-            .ToList();
+            .OrderBy(a => a.Name)];
     }
 
+    /// <summary>
+    /// Loads agent metadata for a specific agent.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the agent.</param>
+    /// <param name="agentSlug">The agent slug to load.</param>
+    /// <returns>The loaded agent information, or <see langword="null"/> when unavailable.</returns>
     public AgentInfo? LoadAgent(ProjectSlug projectSlug, AgentSlug agentSlug)
     {
         var jsonPath = paths.AgentJsonPath(projectSlug, agentSlug);
@@ -61,26 +74,52 @@ public class AgentService(
             var inboxDir = paths.AgentInboxDir(projectSlug, agentSlug);
             var inboxCount = inboxDir.Exists() ? Directory.GetFiles(inboxDir, "*.md").Length : 0;
 
-            return new(
-                slug: data.Slug ?? agentSlug,
-                name: data.Name ?? agentSlug,
-                role: data.Role ?? string.Empty,
-                description: data.Description ?? string.Empty,
-                model: model,
-                status: AgentStatus.From(data.Status),
-                lastRunAt: DateTime.TryParse(data.LastRunAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastRun) ? lastRun : null,
-                inboxCount: inboxCount,
-                executor: executor,
-                skills: data.Skills ?? [],
-                lastError: data.LastError,
-                lastErrorAt: DateTime.TryParse(data.LastErrorAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastErrorAt) ? lastErrorAt : null,
-                thinkingLevel: ThinkingLevelExtensions.Parse(data.Thinking),
-                failoverExecutor: AgentExecutorName.TryParse(data.FailoverExecutor, out var failoverExecutor) ? failoverExecutor : null,
-                failedOverAt: DateTime.TryParse(data.FailedOverAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var failedOverAt) ? failedOverAt : null);
+            var slug2       = data.Slug ?? agentSlug;
+            var name        = data.Name ?? (string)agentSlug;
+            var role        = data.Role ?? string.Empty;
+            var description = data.Description ?? string.Empty;
+            var model2      = string.IsNullOrWhiteSpace(model) ? "sonnet" : model;
+            var thinking    = ThinkingLevel.Parse(data.Thinking);
+            var skills      = data.Skills ?? [];
+
+            var previousRunAt = DateTime.TryParse(data.LastRunAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastRun)
+                ? lastRun : (DateTime?)null;
+            var failure = data.LastError is { Length: > 0 } lastErrStr
+                ? new AgentFailure(lastErrStr, DateTime.TryParse(data.LastErrorAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var lastErrAt) ? lastErrAt : DateTime.UtcNow)
+                : null;
+            var failover = AgentExecutorName.TryParse(data.FailoverExecutor, out var foExec)
+                ? new AgentFailover(foExec, DateTime.TryParse(data.FailedOverAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var foAt) ? foAt : DateTime.UtcNow)
+                : null;
+
+            var status = AgentStatus.From(data.Status);
+            return status switch
+            {
+                { IsRunning: true } => new AgentInfoRunning
+                {
+                    Slug = slug2, Name = name, Role = role, Description = description,
+                    Model = model2, Executor = executor, Skills = skills,
+                    ThinkingLevel = thinking, InboxCount = inboxCount, Failover = failover,
+                    StartedAt = previousRunAt ?? DateTime.UtcNow,
+                },
+                { IsError: true } when failure is not null => new AgentInfoFailed
+                {
+                    Slug = slug2, Name = name, Role = role, Description = description,
+                    Model = model2, Executor = executor, Skills = skills,
+                    ThinkingLevel = thinking, InboxCount = inboxCount, Failover = failover,
+                    Failure = failure, PreviousRunAt = previousRunAt,
+                },
+                _ => new AgentInfoIdle
+                {
+                    Slug = slug2, Name = name, Role = role, Description = description,
+                    Model = model2, Executor = executor, Skills = skills,
+                    ThinkingLevel = thinking, InboxCount = inboxCount, Failover = failover,
+                    PreviousRunAt = previousRunAt,
+                },
+            };
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[agent] Failed to load agent.json for {Project}/{Agent}", projectSlug, agentSlug);
+            LogFailedToLoadAgentJson(ex, projectSlug, agentSlug);
             return null;
         }
     }
@@ -97,10 +136,10 @@ public class AgentService(
         if (string.IsNullOrWhiteSpace(storedModel)) return storedModel;
 
         // Already a known real model ID — nothing to do.
-        if (modelRegistry.Find(executor.Value, storedModel) != null) return storedModel;
+        if (modelRegistry.Find(executor, storedModel) != null) return storedModel;
 
         // Try the deterministic legacy alias map, scoped to the correct executor.
-        var resolved = LegacyModelAliases.Resolve(storedModel, executor.Value);
+        var resolved = LegacyModelAliases.Resolve(storedModel, executor);
         if (resolved != null)
         {
             PatchModelInJson(jsonPath, resolved);
@@ -125,7 +164,7 @@ public class AgentService(
     }
 
     public Result<Unit> SaveAgentMeta(ProjectSlug projectSlug, AgentSlug agentSlug, string name, string description,
-        string model, AgentExecutorName executor, IReadOnlyList<string>? skills = null, ThinkingLevel thinkingLevel = ThinkingLevel.Off)
+        string model, AgentExecutorName executor, IReadOnlyList<string>? skills = null, ThinkingLevel thinkingLevel = default)
     {
         try { _ = paths.AgentDir(projectSlug, agentSlug); }
         catch (ArgumentException) { return new Err<Unit>(InvalidAgentSlugError); }
@@ -200,7 +239,13 @@ public class AgentService(
         });
     }
 
-    public string GetClaudeMd(ProjectSlug projectSlug, AgentSlug agentSlug)
+/// <summary>
+/// Gets the CLAUDE.md content for the specified agent.
+/// </summary>
+/// <param name="projectSlug">The slug of the project.</param>
+/// <param name="agentSlug">The slug of the agent.</param>
+/// <returns>The CLAUDE.md content, or an empty string when the file does not exist.</returns>
+public string GetClaudeMd(ProjectSlug projectSlug, AgentSlug agentSlug)
     {
         try
         {
@@ -210,7 +255,14 @@ public class AgentService(
         catch (ArgumentException) { return string.Empty; }
     }
 
-    public Result<Unit> SaveClaudeMd(ProjectSlug projectSlug, AgentSlug agentSlug, string content)
+/// <summary>
+/// Saves CLAUDE.md content for the specified agent.
+/// </summary>
+/// <param name="projectSlug">The slug of the project.</param>
+/// <param name="agentSlug">The slug of the agent.</param>
+/// <param name="content">The CLAUDE.md content to save.</param>
+/// <returns>A result indicating success or failure.</returns>
+public Result<Unit> SaveClaudeMd(ProjectSlug projectSlug, AgentSlug agentSlug, string content)
     {
         return coordinator.Execute<Result<Unit>>(projectSlug, () =>
         {
@@ -225,7 +277,15 @@ public class AgentService(
         });
     }
 
-    public Result<Unit> CreateAgent(ProjectSlug projectSlug, string agentSlug, string name, string? templateSlug)
+/// <summary>
+/// Creates a new agent from an optional template.
+/// </summary>
+/// <param name="projectSlug">The slug of the project.</param>
+/// <param name="agentSlug">The slug of the agent.</param>
+/// <param name="name">The name of the agent.</param>
+/// <param name="templateSlug">The optional template slug used for the initial configuration.</param>
+/// <returns>A result indicating success or failure.</returns>
+public Result<Unit> CreateAgent(ProjectSlug projectSlug, string agentSlug, string name, string? templateSlug)
     {
         if (!AgentSlug.TryParse(agentSlug, out var slug))
             return new Err<Unit>(new DomainError("AGENT_SLUG_FORMAT", "Slug must contain only lowercase letters, digits, and hyphens, and cannot start or end with a hyphen."));
@@ -271,6 +331,8 @@ public class AgentService(
                 paths.AgentJournalDir(projectSlug, slug).Create();
                 fileWriter.WriteAllText(paths.AgentJsonPath(projectSlug, slug), JsonSerializer.Serialize(agentJsonDict, JsonDefaults.Write));
                 fileWriter.WriteAllText(paths.AgentClaudeMdPath(projectSlug, slug), claudeContent ?? $"# {name}\n\nYou are {name}.\n");
+                if (!string.IsNullOrEmpty(tmpl.CompactContent))
+                    fileWriter.WriteAllText(Path.Combine(agentDir.Value, "CLAUDE.compact.md"), tmpl.CompactContent);
 
                 return new Ok<Unit>(Unit.Value);
             }
@@ -287,23 +349,35 @@ public class AgentService(
         });
     }
 
-    public TranscriptDate[] ListTranscriptDates(ProjectSlug projectSlug, AgentSlug agentSlug)
+/// <summary>
+/// Lists available transcript dates for an agent.
+/// </summary>
+/// <param name="projectSlug">The slug of the project.</param>
+/// <param name="agentSlug">The slug of the agent.</param>
+/// <returns>The available transcript dates sorted in descending order.</returns>
+public TranscriptDate[] ListTranscriptDates(ProjectSlug projectSlug, AgentSlug agentSlug)
     {
         try
         {
             var dir = paths.AgentTranscriptsDir(projectSlug, agentSlug);
             if (!dir.Exists()) return [];
-            return Directory.GetFiles(dir, "????-??-??.md")
+            return [.. Directory.GetFiles(dir, "????-??-??.md")
                 .Select(f => Path.GetFileNameWithoutExtension(f)!)
                 .Select(s => TranscriptDate.TryParse(s, out var d) ? d : null)
                 .OfType<TranscriptDate>()
-                .OrderDescending()
-                .ToArray();
+                .OrderDescending()];
         }
         catch (ArgumentException) { return []; }
     }
 
-    public string ReadTranscript(ProjectSlug projectSlug, AgentSlug agentSlug, TranscriptDate date)
+/// <summary>
+/// Reads transcript content for an agent on a specific date.
+/// </summary>
+/// <param name="projectSlug">The slug of the project.</param>
+/// <param name="agentSlug">The slug of the agent.</param>
+/// <param name="date">The transcript date.</param>
+/// <returns>The transcript content, or an empty string when unavailable.</returns>
+public string ReadTranscript(ProjectSlug projectSlug, AgentSlug agentSlug, TranscriptDate date)
     {
         var path = paths.TranscriptPath(projectSlug, agentSlug, date);
         if (!path.Exists()) return string.Empty;
@@ -313,9 +387,12 @@ public class AgentService(
     }
 
     /// <summary>
-    /// Reads the AI-generated insight result for the given session date,
-    /// or returns null if no insights file exists or it cannot be parsed.
+    /// Reads the AI-generated insight result for a session date.
     /// </summary>
+    /// <param name="projectSlug">The slug of the project.</param>
+    /// <param name="agentSlug">The slug of the agent.</param>
+    /// <param name="date">The transcript date.</param>
+    /// <returns>The insight result, or <see langword="null"/> when unavailable.</returns>
     public InsightResult? ReadInsights(ProjectSlug projectSlug, AgentSlug agentSlug, TranscriptDate date)
     {
         var path = paths.InsightPath(projectSlug, agentSlug, date);
@@ -327,4 +404,7 @@ public class AgentService(
         }
         catch { return null; }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[agent] Failed to load agent.json for {Project}/{Agent}")]
+    private partial void LogFailedToLoadAgentJson(Exception ex, ProjectSlug project, AgentSlug agent);
 }

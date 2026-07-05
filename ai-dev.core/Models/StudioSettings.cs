@@ -1,7 +1,13 @@
 namespace AiDev.Models;
 
+/// <summary>
+/// Represents persisted application settings for executor and model configuration.
+/// </summary>
 public class StudioSettings
 {
+    /// <summary>
+    /// Gets or sets legacy model aliases retained only for migration.
+    /// </summary>
     public Dictionary<string, string> Models { get; set; } = new();  // Legacy — kept for migration only; not used for model resolution.
 
     /// <summary>Base URL for the Ollama HTTP API. Defaults to http://localhost:11434.</summary>
@@ -28,4 +34,10 @@ public class StudioSettings
     /// When omitted, InsightsService picks the first known model for the configured executor.
     /// </summary>
     public string? InsightsModel { get; set; }
+
+    /// <summary>
+    /// Context window size threshold (in tokens) below which local executors load CLAUDE.compact.md
+    /// instead of the full CLAUDE.md. Defaults to 16384 (16k tokens).
+    /// </summary>
+    public int CompactPromptThreshold { get; set; } = 16_384;
 }

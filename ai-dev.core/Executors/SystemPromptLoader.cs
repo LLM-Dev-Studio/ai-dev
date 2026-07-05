@@ -1,0 +1,65 @@
+using System.Text;
+using System.Text.Json;
+
+namespace AiDev.Executors;
+
+/// <summary>
+/// Selects and loads the appropriate system prompt tier (full or compact) for local model executors,
+/// and builds the deterministic refusal message when even the compact prompt will not fit.
+/// </summary>
+public static class SystemPromptLoader
+{
+    public const string Fallback = "You are a helpful AI agent.";
+
+    /// <summary>
+    /// Reads CLAUDE.md (full) and CLAUDE.compact.md (compact) from the agent's working directory,
+    /// then delegates tier selection to <see cref="TokenBudget.SelectSystemPrompt"/>.
+    /// Falls back to <see cref="Fallback"/> when neither file exists.
+    /// When no compact file exists, the full prompt is used regardless of context window size.
+    /// Substitutes <c>{{name}}</c> with the agent's display name from agent.json.
+    /// </summary>
+    public static string Load(string workingDir, int contextWindow, int threshold, ILogger? logger = null)
+    {
+        var fullPath    = Path.Combine(workingDir, "CLAUDE.md");
+        var compactPath = Path.Combine(workingDir, "CLAUDE.compact.md");
+
+        var full    = File.Exists(fullPath)    ? File.ReadAllText(fullPath, Encoding.UTF8)    : Fallback;
+        var compact = File.Exists(compactPath) ? File.ReadAllText(compactPath, Encoding.UTF8) : full;
+
+        var agentName = TryReadAgentName(workingDir, logger);
+        if (agentName != null)
+        {
+            full    = full.Replace("{{name}}", agentName, StringComparison.Ordinal);
+            compact = compact.Replace("{{name}}", agentName, StringComparison.Ordinal);
+        }
+
+        return TokenBudget.SelectSystemPrompt(contextWindow, full, compact, threshold);
+    }
+
+    private static string? TryReadAgentName(string workingDir, ILogger? logger)
+    {
+        var agentJsonPath = Path.Combine(workingDir, "agent.json");
+        if (!File.Exists(agentJsonPath)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(agentJsonPath, Encoding.UTF8));
+            return doc.RootElement.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String
+                ? n.GetString()
+                : null;
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "[system-prompt] Failed to read agent name from {Path} — {{{{name}}}} will not be substituted", agentJsonPath);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Builds a deterministic, human-readable refusal message when the model's context window
+    /// is too small to run the agent. Generated entirely in code — no LLM involvement.
+    /// </summary>
+    public static string BuildRefusalMessage(string modelId, int contextWindow, int minRequired) =>
+        $"[SESSION REFUSED] Model '{modelId}' has a context window of {contextWindow} tokens. " +
+        $"This agent requires a minimum of {minRequired} tokens to run. " +
+        $"Switch to a model with a larger context window.";
+}

@@ -32,9 +32,9 @@ public partial class DigestViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
             var digest = _digestService.GetDigest(CurrentSlug, today);
-            DigestDate = digest.Date;
+            DigestDate = digest.Date.ToString("yyyy-MM-dd");
             TotalMessages = digest.TotalMessages;
             PendingDecisions = digest.PendingDecisions;
             ResolvedDecisions = digest.ResolvedDecisions;

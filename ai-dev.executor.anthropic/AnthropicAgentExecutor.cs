@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
+using AiDev.Models.Types;
 using AiDev.Services;
 
 using Microsoft.Extensions.Logging;
@@ -24,23 +25,23 @@ namespace AiDev.Executors;
 /// Rate limits (HTTP 429) are detected from the response status code and surfaced as
 /// <see cref="ExecutorResult.IsRateLimited"/> = true, suppressing re-launches.
 /// </summary>
-public sealed class AnthropicAgentExecutor(
+public sealed partial class AnthropicAgentExecutor(
     IHttpClientFactory httpClientFactory,
     StudioSettingsService settingsService,
     ILogger<AnthropicAgentExecutor> logger) : IAgentExecutor
 {
-    public string Name        => "anthropic";
+    public AgentExecutorName Name => AgentExecutorName.Anthropic;
     public string DisplayName => "Anthropic (API)";
 
     public IReadOnlyList<ExecutorSkill> AvailableSkills { get; } = AnthropicSkills.All;
 
     public IReadOnlyList<ModelDescriptor> KnownModels { get; } =
     [
-        new("claude-sonnet-4-5",              "Claude Sonnet 4.5",              "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
-        new("claude-sonnet-4-6",              "Claude Sonnet 4.6",              "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
-        new("claude-opus-4-5",               "Claude Opus 4.5",               "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
-        new("claude-opus-4-6",               "Claude Opus 4.6",               "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
-        new("claude-haiku-4-5-20251001",     "Claude Haiku 4.5",              "anthropic", ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 0.80m,  OutputCostPer1MTokens:  4.00m),
+        new("claude-sonnet-4-5",              "Claude Sonnet 4.5",              AgentExecutorName.Anthropic, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
+        new("claude-sonnet-4-6",              "Claude Sonnet 4.6",              AgentExecutorName.Anthropic, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 3.00m,  OutputCostPer1MTokens: 15.00m),
+        new("claude-opus-4-5",               "Claude Opus 4.5",               AgentExecutorName.Anthropic, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
+        new("claude-opus-4-6",               "Claude Opus 4.6",               AgentExecutorName.Anthropic, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision | ModelCapabilities.Reasoning, MaxTokens: 32_000, ContextWindow: 200_000, InputCostPer1MTokens: 15.00m, OutputCostPer1MTokens: 75.00m),
+        new("claude-haiku-4-5-20251001",     "Claude Haiku 4.5",              AgentExecutorName.Anthropic, ModelCapabilities.Streaming | ModelCapabilities.ToolCalling | ModelCapabilities.Vision, MaxTokens: 8192,  ContextWindow: 200_000, InputCostPer1MTokens: 0.80m,  OutputCostPer1MTokens:  4.00m),
     ];
 
     private const int MaxToolIterations = 30;
@@ -80,7 +81,7 @@ public sealed class AnthropicAgentExecutor(
                     .EnumerateArray()
                     .Select(m => m.GetProperty("id").GetString() ?? string.Empty)
                     .Where(id => id.Length > 0)
-                    .Select(id => new ModelDescriptor(id, id, "anthropic"))
+                    .Select(id => new ModelDescriptor(id, id, AgentExecutorName.Anthropic))
                     .ToList() ?? [];
             }
             catch { /* model list is best-effort */ }
@@ -94,7 +95,7 @@ public sealed class AnthropicAgentExecutor(
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "[anthropic-health] Probe failed: {Message}", ex.Message);
+            LogHealthProbeFailed(ex, ex.Message);
             return new ExecutorHealthResult(false, $"Connection failed: {ex.Message}");
         }
     }
@@ -109,7 +110,7 @@ public sealed class AnthropicAgentExecutor(
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             const string msg = "AnthropicApiKey not configured in studio settings. Aborting.";
-            logger.LogError("[anthropic] {Message}", msg);
+            LogMissingApiKey(msg);
             output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
             return new ExecutorResult(1, ErrorMessage: msg);
         }
@@ -118,9 +119,7 @@ public sealed class AnthropicAgentExecutor(
         var enableTools   = context.EnabledSkills.Contains("mcp-workspace");
         var workspaceRoot = enableTools ? DeriveWorkspaceRoot(context.WorkingDir) : null;
 
-        logger.LogInformation(
-            "[anthropic] Starting session — model={Model} tools={Tools}",
-            context.ModelId, enableTools ? "enabled" : "disabled");
+        LogSessionStarting(context.ModelId, enableTools ? "enabled" : "disabled");
 
         output.TryWrite($"[{DateTime.UtcNow:o}] [anthropic] model={context.ModelId}");
 
@@ -159,7 +158,7 @@ public sealed class AnthropicAgentExecutor(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 var msg = $"Failed to connect to Anthropic API: {ex.Message}";
-                logger.LogError(ex, "[anthropic] {Message}", msg);
+                LogConnectFailed(ex, msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, ErrorMessage: msg);
             }
@@ -171,7 +170,7 @@ public sealed class AnthropicAgentExecutor(
                 var retryAfter = response.Headers.RetryAfter?.Delta;
                 var hint   = retryAfter.HasValue ? $" retry-after={retryAfter.Value.TotalSeconds:F0}s" : "";
                 var msg    = $"Anthropic rate limit reached.{hint}";
-                logger.LogWarning("[anthropic] {Message} Body={Body}", msg, body);
+                LogRateLimited(msg, body);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [rate-limit] {msg}");
                 return new ExecutorResult(1, IsRateLimited: true, ErrorMessage: msg);
             }
@@ -180,12 +179,12 @@ public sealed class AnthropicAgentExecutor(
             {
                 var body = await response.Content.ReadAsStringAsync(context.CancellationToken).ConfigureAwait(false);
                 var msg  = $"Anthropic returned HTTP {(int)response.StatusCode}: {body}";
-                logger.LogError("[anthropic] {Message}", msg);
+                LogHttpError(msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, ErrorMessage: msg);
             }
 
-            logger.LogInformation("[anthropic] Streaming response — iteration {N}", iteration);
+            LogStreamingResponse(iteration);
 
             // --- Stream and parse SSE ---
             var (stopReason, textContent, toolUses, iterationUsage) =
@@ -198,15 +197,12 @@ public sealed class AnthropicAgentExecutor(
             // --- End turn: final response ---
             if (stopReason == "end_turn" || toolUses.Count == 0)
             {
-                logger.LogInformation(
-                    "[anthropic] Session complete — {Chars} chars | iterations: {N}",
-                    textContent.Length, iteration);
+                LogSessionComplete(textContent.Length, iteration);
                 return new ExecutorResult(0, Usage: totalUsage);
             }
 
             // --- Tool use: execute calls and loop ---
-            logger.LogInformation(
-                "[anthropic] Tool calls requested — count={Count} iteration={N}", toolUses.Count, iteration);
+            LogToolCallsRequested(toolUses.Count, iteration);
             output.TryWrite($"[{DateTime.UtcNow:o}] [anthropic] tool calls: {toolUses.Count} (iteration {iteration})");
 
             // Append assistant message (content array with text + tool_use blocks).
@@ -237,7 +233,7 @@ public sealed class AnthropicAgentExecutor(
                 var inputJson = use.InputJson.ToString();
                 var argsPreview = inputJson.Length > 80 ? inputJson[..80] + "…" : inputJson;
                 output.TryWrite($"[{DateTime.UtcNow:o}] [tool:call] {use.Name}({argsPreview})");
-                logger.LogInformation("[anthropic] Executing tool — {Tool}({Args})", use.Name, argsPreview);
+                LogExecutingTool(use.Name, argsPreview);
 
                 // Parse input JSON to JsonElement for WorkspaceTools compatibility.
                 JsonElement argsElement;
@@ -252,7 +248,7 @@ public sealed class AnthropicAgentExecutor(
                     ? result[..120].Replace('\n', ' ') + "…"
                     : result.Replace('\n', ' ');
                 output.TryWrite($"[{DateTime.UtcNow:o}] [tool:result] {preview}");
-                logger.LogInformation("[anthropic] Tool result — {Chars} chars", result.Length);
+                LogToolResult(result.Length);
 
                 toolResults.Add(new JsonObject
                 {
@@ -267,7 +263,7 @@ public sealed class AnthropicAgentExecutor(
         }
 
         var limitMsg = $"Exceeded maximum tool-call iterations ({MaxToolIterations}). Aborting session.";
-        logger.LogError("[anthropic] {Message}", limitMsg);
+        LogMaxIterationsExceeded(limitMsg);
         output.TryWrite($"[{DateTime.UtcNow:o}] [error] {limitMsg}");
         return new ExecutorResult(1, ErrorMessage: limitMsg);
     }
@@ -398,9 +394,9 @@ public sealed class AnthropicAgentExecutor(
 
     private static string BuildRequest(
         string modelId, string systemPrompt, List<JsonNode> messages, bool includeTools,
-        ThinkingLevel thinkingLevel = ThinkingLevel.Off)
+        ThinkingLevel thinkingLevel = default)
     {
-        var budget = thinkingLevel.BudgetTokens();
+        var budget = thinkingLevel.BudgetTokens;
         var maxTokens = budget > 0 ? DefaultMaxTokens + budget : DefaultMaxTokens;
 
         var obj = new JsonObject
@@ -456,4 +452,44 @@ public sealed class AnthropicAgentExecutor(
         /// <summary>Accumulated partial_json deltas — finalised after message_stop.</summary>
         public StringBuilder InputJson { get; init; } = new();
     }
+
+    // -------------------------------------------------------------------------
+    // Logger messages
+    // -------------------------------------------------------------------------
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[anthropic-health] Probe failed: {Message}")]
+    private partial void LogHealthProbeFailed(Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[anthropic] {Message}")]
+    private partial void LogMissingApiKey(string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[anthropic] Starting session — model={Model} tools={Tools}")]
+    private partial void LogSessionStarting(string model, string tools);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[anthropic] {Message}")]
+    private partial void LogConnectFailed(Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[anthropic] {Message} Body={Body}")]
+    private partial void LogRateLimited(string message, string body);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[anthropic] {Message}")]
+    private partial void LogHttpError(string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[anthropic] Streaming response — iteration {N}")]
+    private partial void LogStreamingResponse(int n);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[anthropic] Session complete — {Chars} chars | iterations: {N}")]
+    private partial void LogSessionComplete(int chars, int n);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[anthropic] Tool calls requested — count={Count} iteration={N}")]
+    private partial void LogToolCallsRequested(int count, int n);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[anthropic] Executing tool — {Tool}({Args})")]
+    private partial void LogExecutingTool(string tool, string args);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[anthropic] Tool result — {Chars} chars")]
+    private partial void LogToolResult(int chars);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[anthropic] {Message}")]
+    private partial void LogMaxIterationsExceeded(string message);
 }

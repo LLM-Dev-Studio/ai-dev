@@ -3,7 +3,7 @@ namespace AiDev.Services;
 /// <summary>
 /// Runs consistency checks during startup and emits results to logs and telemetry.
 /// </summary>
-public class ConsistencyCheckHostedService(
+public partial class ConsistencyCheckHostedService(
     ConsistencyCheckService consistencyCheckService,
     ILogger<ConsistencyCheckHostedService> logger) : IHostedService
 {
@@ -21,14 +21,19 @@ public class ConsistencyCheckHostedService(
             activity?.SetTag("consistency.projects", report.Projects.Count);
             activity?.SetTag("consistency.warnings", report.WarningCount);
             activity?.SetTag("consistency.errors", report.ErrorCount);
-            logger.LogInformation("[consistency] Startup scan complete: {Projects} projects, {Warnings} warnings, {Errors} errors",
-                report.Projects.Count, report.WarningCount, report.ErrorCount);
+            LogStartupScanComplete(report.Projects.Count, report.WarningCount, report.ErrorCount);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            logger.LogWarning("[consistency] Startup scan timed out after {TimeoutSeconds}s", StartupTimeout.TotalSeconds);
+            LogStartupScanTimedOut(StartupTimeout.TotalSeconds);
         }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[consistency] Startup scan complete: {Projects} projects, {Warnings} warnings, {Errors} errors")]
+    private partial void LogStartupScanComplete(int projects, int warnings, int errors);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[consistency] Startup scan timed out after {TimeoutSeconds}s")]
+    private partial void LogStartupScanTimedOut(double timeoutSeconds);
 }

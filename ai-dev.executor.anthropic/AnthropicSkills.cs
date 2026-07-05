@@ -25,9 +25,9 @@ public static class AnthropicSkills
     internal static IReadOnlyList<ExecutorSkill> Resolve(IReadOnlyList<string> enabledSkills)
     {
         if (enabledSkills.Count == 0)
-            return All.Where(s => s.DefaultEnabled).ToList();
+            return [.. All.Where(s => s.DefaultEnabled)];
 
         var keys = enabledSkills.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return All.Where(s => keys.Contains(s.Key)).ToList();
+        return [.. All.Where(s => keys.Contains(s.Key))];
     }
 }

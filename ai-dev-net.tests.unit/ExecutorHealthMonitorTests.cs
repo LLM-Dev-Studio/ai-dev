@@ -9,12 +9,12 @@ public sealed class ExecutorHealthMonitorTests
     [Fact]
     public async Task RefreshAsync_WhenExecutorReturnsHealth_UpdatesCacheAndMetadata()
     {
-        var executor = new TestExecutor("exec-a", _ => Task.FromResult(new ExecutorHealthResult(true, "ok")));
+        var executor = new TestExecutor(AgentExecutorName.Claude,_ => Task.FromResult(new ExecutorHealthResult(true, "ok")));
         var monitor = CreateMonitor(executor);
 
         await monitor.RefreshAsync(TestContext.Current.CancellationToken);
 
-        var result = monitor.GetHealth("exec-a");
+        var result = monitor.GetHealth(AgentExecutorName.Claude);
         result.IsHealthy.ShouldBeTrue();
         result.Message.ShouldBe("ok");
         result.CheckedAt.ShouldNotBeNull();
@@ -25,7 +25,7 @@ public sealed class ExecutorHealthMonitorTests
     [Fact]
     public async Task RefreshAsync_WhenCalled_RaisesChangedAndSupportsUnsubscribe()
     {
-        var executor = new TestExecutor("exec-a", _ => Task.FromResult(new ExecutorHealthResult(true, "ok")));
+        var executor = new TestExecutor(AgentExecutorName.Claude,_ => Task.FromResult(new ExecutorHealthResult(true, "ok")));
         var monitor = CreateMonitor(executor);
         var count = 0;
 
@@ -44,9 +44,9 @@ public sealed class ExecutorHealthMonitorTests
     public async Task RefreshAsync_WhenHealthTransitions_RaisesTransitioned()
     {
         var healthy = true;
-        var executor = new TestExecutor("exec-a", _ => Task.FromResult(new ExecutorHealthResult(healthy, healthy ? "up" : "down")));
+        var executor = new TestExecutor(AgentExecutorName.Claude,_ => Task.FromResult(new ExecutorHealthResult(healthy, healthy ? "up" : "down")));
         var monitor = CreateMonitor(executor);
-        var transitions = new ConcurrentQueue<(string Name, bool From, bool To)>();
+        var transitions = new ConcurrentQueue<(AgentExecutorName Name, bool From, bool To)>();
 
         using var subscription = monitor.SubscribeTransitioned((name, previous, current) =>
             transitions.Enqueue((name, previous.IsHealthy, current.IsHealthy)));
@@ -58,7 +58,7 @@ public sealed class ExecutorHealthMonitorTests
 
         transitions.Count.ShouldBe(1);
         transitions.TryDequeue(out var transition).ShouldBeTrue();
-        transition.Name.ShouldBe("exec-a");
+        transition.Name.ShouldBe(AgentExecutorName.Claude);
         transition.From.ShouldBeTrue();
         transition.To.ShouldBeFalse();
     }
@@ -67,7 +67,7 @@ public sealed class ExecutorHealthMonitorTests
     public async Task RefreshAsync_WhenTransitionSubscriptionDisposed_DoesNotRaiseTransitioned()
     {
         var healthy = true;
-        var executor = new TestExecutor("exec-a", _ => Task.FromResult(new ExecutorHealthResult(healthy, healthy ? "up" : "down")));
+        var executor = new TestExecutor(AgentExecutorName.Claude,_ => Task.FromResult(new ExecutorHealthResult(healthy, healthy ? "up" : "down")));
         var monitor = CreateMonitor(executor);
         var count = 0;
 
@@ -87,18 +87,18 @@ public sealed class ExecutorHealthMonitorTests
 
     private sealed class TestExecutor : IAgentExecutor
     {
-        private readonly string _name;
+        private readonly AgentExecutorName _name;
         private readonly Func<CancellationToken, Task<ExecutorHealthResult>> _checkHealthAsync;
 
-        public TestExecutor(string name, Func<CancellationToken, Task<ExecutorHealthResult>> checkHealthAsync)
+        public TestExecutor(AgentExecutorName name, Func<CancellationToken, Task<ExecutorHealthResult>> checkHealthAsync)
         {
             _name = name;
             _checkHealthAsync = checkHealthAsync;
         }
 
-        public string Name => _name;
+        public AgentExecutorName Name => _name;
 
-        public string DisplayName => _name;
+        public string DisplayName => _name.DisplayName;
 
         public IReadOnlyList<ExecutorSkill> AvailableSkills => [];
 

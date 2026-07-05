@@ -20,18 +20,24 @@ public class ProductionReadinessIntegrationTests : IDisposable
     private readonly WorkspacePaths _paths;
     private readonly AtomicFileWriter _fileWriter = new();
     private readonly ProjectMutationCoordinator _coordinator = new();
+    private readonly string _templatesDir;
+    private readonly string _registryPath;
 
     public ProductionReadinessIntegrationTests()
     {
         _rootPath = Path.Combine(Path.GetTempPath(), $"prod-ready-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_rootPath);
-        _paths = new WorkspacePaths(new RootDir(_rootPath));
+        _paths = new WorkspacePaths(new RootDir(Path.Combine(_rootPath, ".ai-dev")));
+        _templatesDir = Path.Combine(Path.GetTempPath(), $"templates-{Guid.NewGuid():N}");
+        _registryPath = Path.Combine(_rootPath, "test-managed-projects.json");
     }
 
     public void Dispose()
     {
         if (Directory.Exists(_rootPath))
             Directory.Delete(_rootPath, recursive: true);
+        if (Directory.Exists(_templatesDir))
+            Directory.Delete(_templatesDir, recursive: true);
     }
 
     [Fact]
@@ -112,7 +118,7 @@ public class ProductionReadinessIntegrationTests : IDisposable
         var service = new DecisionsService(_paths, dispatcher, _fileWriter, _coordinator, NullLogger<DecisionsService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
 
-        var createResult = service.CreateDecision(projectSlug, "overwatch", "Need input", Priority.Normal.Value, null, "Please decide");
+        var createResult = service.CreateDecision(projectSlug, "overwatch", "Need input", Priority.Normal, null, "Please decide");
         createResult.ShouldBeOfType<Ok<Unit>>();
 
         var id = Path.GetFileNameWithoutExtension(Directory.GetFiles(_paths.DecisionsPendingDir(projectSlug), "*.md").Single())!;
@@ -135,38 +141,37 @@ public class ProductionReadinessIntegrationTests : IDisposable
     [Fact]
     public void WorkspaceService_CreateProject_UsesAtomicWritesForArtifacts()
     {
-        var service = new WorkspaceService(_paths, _fileWriter);
+        var service = new WorkspaceService(_paths, _fileWriter, registryFilePath: _registryPath);
 
-        var result = service.CreateProject("demo-project", "Demo Project", "Main app");
+        var result = service.CreateProject(slug: "demo-project", name: "Demo Project", description: "Main app");
 
         result.ShouldBeOfType<Ok<Unit>>();
         File.Exists(_paths.ProjectJsonPath(new ProjectSlug("demo-project"))).ShouldBeTrue();
         File.Exists(_paths.BoardPath(new ProjectSlug("demo-project"))).ShouldBeTrue();
-        File.Exists(_paths.RegistryPath).ShouldBeTrue();
+        File.Exists(_registryPath).ShouldBeTrue();
     }
 
     [Fact]
     public void AgentService_CreateAgent_WritesFilesAtomically()
     {
         var modelRegistry = Substitute.For<IModelRegistry>();
-        modelRegistry.Find(Arg.Any<string>(), Arg.Any<string>()).Returns((ModelDescriptor?)null);
-        modelRegistry.GetModelsForExecutor(Arg.Any<string>()).Returns([]);
+        modelRegistry.Find(Arg.Any<AgentExecutorName>(), Arg.Any<string>()).Returns((ModelDescriptor?)null);
+        modelRegistry.GetModelsForExecutor(Arg.Any<AgentExecutorName>()).Returns([]);
         var service = new AgentService(
             _paths,
-            new AgentTemplatesService(_paths),
+            new AgentTemplatesService(_templatesDir),
             _fileWriter,
             _coordinator,
             modelRegistry,
             NullLogger<AgentService>.Instance);
         var projectSlug = new ProjectSlug("demo-project");
-        var workspaceService = new WorkspaceService(_paths, _fileWriter);
-        workspaceService.CreateProject(projectSlug.Value, "Demo Project", null).ShouldBeOfType<Ok<Unit>>();
+        var workspaceService = new WorkspaceService(_paths, _fileWriter, registryFilePath: _registryPath);
+        workspaceService.CreateProject(slug: projectSlug.Value, name: "Demo Project").ShouldBeOfType<Ok<Unit>>();
 
-        var templateJsonPath = _paths.SafeTemplatePath("generic-standard", ".json")!;
-        var templateMdPath = _paths.SafeTemplatePath("generic-standard", ".md")!;
-        Directory.CreateDirectory(Path.GetDirectoryName(templateJsonPath.Value)!);
-        File.WriteAllText(templateJsonPath.Value, "{\"slug\":\"generic-standard\",\"name\":\"Generic\",\"role\":\"Implement features\",\"model\":\"sonnet\",\"description\":\"Generalist\",\"content\":\"\"}");
-        File.WriteAllText(templateMdPath.Value, "# Generic\n\nYou build features.");
+        Directory.CreateDirectory(_templatesDir);
+        File.WriteAllText(Path.Combine(_templatesDir, "generic-standard.json"),
+            "{\"slug\":\"generic-standard\",\"name\":\"Generic\",\"role\":\"Implement features\",\"model\":\"sonnet\",\"description\":\"Generalist\",\"content\":\"\"}");
+        File.WriteAllText(Path.Combine(_templatesDir, "generic-standard.md"), "# Generic\n\nYou build features.");
 
         var result = service.CreateAgent(projectSlug, "backend-dev", "Backend Dev", "generic-standard");
 
@@ -179,10 +184,10 @@ public class ProductionReadinessIntegrationTests : IDisposable
     public void KbAndPlaybookServices_SaveAtomically()
     {
         var projectSlug = new ProjectSlug("demo-project");
-        var workspaceService = new WorkspaceService(_paths, _fileWriter);
-        workspaceService.CreateProject(projectSlug.Value, "Demo Project", null).ShouldBeOfType<Ok<Unit>>();
+        var workspaceService = new WorkspaceService(_paths, _fileWriter, registryFilePath: _registryPath);
+        workspaceService.CreateProject(slug: projectSlug.Value, name: "Demo Project").ShouldBeOfType<Ok<Unit>>();
 
-        var kbService = new KbService(_paths, _fileWriter, _coordinator);
+        var kbService= new KbService(_paths, _fileWriter, _coordinator);
         var playbookService = new PlaybookService(_paths, _fileWriter, _coordinator);
 
         kbService.Save(projectSlug, "deployment", "# Deployment\n\nSteps").ShouldBeOfType<Ok<Unit>>();

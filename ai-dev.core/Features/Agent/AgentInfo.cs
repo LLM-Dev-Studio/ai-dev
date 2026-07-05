@@ -2,149 +2,81 @@ using AiDev.Executors;
 
 namespace AiDev.Features.Agent;
 
-public sealed class AgentInfo
+/// <summary>
+/// Represents the shared metadata and derived status for an agent.
+/// </summary>
+public abstract record AgentInfo
 {
-    public AgentInfo(
-        AgentSlug slug,
-        string name,
-        string role,
-        string description,
-        string? model = null,
-        AgentStatus? status = null,
-        DateTime? lastRunAt = null,
-        int inboxCount = 0,
-        AgentExecutorName? executor = null,
-        IReadOnlyList<string>? skills = null,
-        string? lastError = null,
-        DateTime? lastErrorAt = null,
-        ThinkingLevel thinkingLevel = ThinkingLevel.Off,
-        AgentExecutorName? failoverExecutor = null,
-        DateTime? failedOverAt = null)
+    /// <summary>Gets the agent slug.</summary>
+    public required AgentSlug             Slug          { get; init; }
+    /// <summary>Gets the agent display name.</summary>
+    public required string                Name          { get; init; }
+    /// <summary>Gets the agent role.</summary>
+    public required string                Role          { get; init; }
+    /// <summary>Gets the agent description.</summary>
+    public required string                Description   { get; init; }
+    /// <summary>Gets the configured model identifier.</summary>
+    public required string                Model         { get; init; }
+    /// <summary>Gets the configured executor.</summary>
+    public required AgentExecutorName     Executor      { get; init; }
+    /// <summary>Gets the enabled skills.</summary>
+    public required IReadOnlyList<string> Skills        { get; init; }
+    /// <summary>Gets the configured thinking level.</summary>
+    public required ThinkingLevel         ThinkingLevel { get; init; }
+    /// <summary>Gets the current inbox count.</summary>
+    public required int                   InboxCount    { get; init; }
+    /// <summary>Gets the optional failover metadata.</summary>
+    public          AgentFailover?        Failover      { get; init; }
+
+    // ── XAML-bindable projections ────────────────────────────────────────────
+    // These delegate to the concrete type so existing bindings need no changes.
+
+    /// <summary>
+    /// Gets the derived runtime status of the agent.
+    /// </summary>
+    public AgentStatus Status => this switch
     {
-        ArgumentNullException.ThrowIfNull(slug);
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("Agent name is required.", nameof(name));
-        if (inboxCount < 0)
-            throw new ArgumentOutOfRangeException(nameof(inboxCount));
-
-        Slug = slug;
-        Name = name;
-        Role = role ?? string.Empty;
-        Description = description ?? string.Empty;
-        Model = string.IsNullOrWhiteSpace(model) ? "sonnet" : model;
-        Status = status ?? AgentStatus.Idle;
-        LastRunAt = lastRunAt;
-        InboxCount = inboxCount;
-        Executor = executor ?? AgentExecutorName.Default;
-        Skills = skills is null ? [] : [.. skills];
-        LastError = string.IsNullOrWhiteSpace(lastError) ? null : lastError;
-        LastErrorAt = lastErrorAt;
-        ThinkingLevel = thinkingLevel;
-        FailoverExecutor = failoverExecutor;
-        FailedOverAt = failoverExecutor == null ? null : failedOverAt;
-    }
-
-    public AgentSlug Slug { get; }
-    public string Name { get; private set; }
-    public string Role { get; private set; }
-    public string Model { get; private set; }
-    public AgentStatus Status { get; private set; }
-    public string Description { get; private set; }
-    public DateTime? LastRunAt { get; private set; }
-    public int InboxCount { get; private set; }
-    public AgentExecutorName Executor { get; private set; }
-    public string? LastError { get; private set; }
-    public DateTime? LastErrorAt { get; private set; }
-    public ThinkingLevel ThinkingLevel { get; private set; }
+        AgentInfoRunning => AgentStatus.Running,
+        AgentInfoFailed  => AgentStatus.Error,
+        _                => AgentStatus.Idle,
+    };
 
     /// <summary>
-    /// Skill keys enabled for this agent (e.g. ["git-read", "git-write"]).
-    /// Empty means the executor uses its own defaults (preserves behaviour for existing agents).
+    /// Gets the timestamp of the most recent run when available.
     /// </summary>
-    public IReadOnlyList<string> Skills { get; private set; }
-
-    /// <summary>
-    /// The executor this agent was automatically failed over to, or null if no failover has occurred.
-    /// Set by AgentRunnerService when it detects an executor failure and switches the agent.
-    /// </summary>
-    public AgentExecutorName? FailoverExecutor { get; private set; }
-
-    /// <summary>
-    /// When the automatic failover occurred, or null if no failover has occurred.
-    /// </summary>
-    public DateTime? FailedOverAt { get; private set; }
-
-    /// <summary>
-    /// Updates editable agent metadata while keeping defaults and null handling consistent.
-    /// </summary>
-    public void UpdateMetadata(string name, string role, string description, string? model, AgentExecutorName? executor, IReadOnlyList<string>? skills, ThinkingLevel thinkingLevel = ThinkingLevel.Off)
+    public DateTime? LastRunAt => this switch
     {
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("Agent name is required.", nameof(name));
-
-        Name = name;
-        Role = role ?? string.Empty;
-        Description = description ?? string.Empty;
-        Model = string.IsNullOrWhiteSpace(model) ? "sonnet" : model;
-        Executor = executor ?? AgentExecutorName.Default;
-        Skills = skills is null ? [] : [.. skills];
-        ThinkingLevel = thinkingLevel;
-    }
+        AgentInfoRunning r => r.StartedAt,
+        AgentInfoFailed  f => f.PreviousRunAt,
+        AgentInfoIdle    i => i.PreviousRunAt,
+        _                  => null,
+    };
 
     /// <summary>
-    /// Marks the agent as actively running and records when that run started.
+    /// Gets the last error message when the agent is failed.
     /// </summary>
-    public void MarkRunning(DateTime startedAt)
-    {
-        Status = AgentStatus.Running;
-        LastRunAt = startedAt;
-    }
-
+    public string?   LastError   => (this as AgentInfoFailed)?.Failure.Error;
     /// <summary>
-    /// Marks the agent as idle after work completes or when loading idle state.
+    /// Gets the timestamp of the last error when the agent is failed.
     /// </summary>
-    public void MarkIdle() => Status = AgentStatus.Idle;
+    public DateTime? LastErrorAt => (this as AgentInfoFailed)?.Failure.OccurredAt;
+}
 
-    /// <summary>
-    /// Marks the agent as faulted without exposing raw status mutation to callers.
-    /// </summary>
-    public void MarkError() => Status = AgentStatus.Error;
+/// <summary>Agent is not currently running. PreviousRunAt records the last session start, if any.</summary>
+public sealed record AgentInfoIdle : AgentInfo
+{
+    public DateTime? PreviousRunAt { get; init; }
+}
 
-    /// <summary>
-    /// Records the last session failure so the UI can guide the user.
-    /// </summary>
-    public void SetLastError(string? error, DateTime? occurredAt)
-    {
-        LastError = string.IsNullOrWhiteSpace(error) ? null : error;
-        LastErrorAt = LastError == null ? null : occurredAt;
-    }
+/// <summary>Agent session is active. StartedAt is always present.</summary>
+public sealed record AgentInfoRunning : AgentInfo
+{
+    public required DateTime StartedAt { get; init; }
+}
 
-    /// <summary>
-    /// Synchronizes inbox count with the current workspace state.
-    /// </summary>
-    public void SetInboxCount(int inboxCount)
-    {
-        if (inboxCount < 0)
-            throw new ArgumentOutOfRangeException(nameof(inboxCount));
-
-        InboxCount = inboxCount;
-    }
-
-    /// <summary>
-    /// Records that this agent was automatically failed over to a fallback executor.
-    /// </summary>
-    public void RecordFailover(AgentExecutorName executor, DateTime at)
-    {
-        FailoverExecutor = executor;
-        FailedOverAt = at;
-    }
-
-    /// <summary>
-    /// Clears any recorded failover state (e.g. after the user manually reassigns the executor).
-    /// </summary>
-    public void ClearFailover()
-    {
-        FailoverExecutor = null;
-        FailedOverAt = null;
-    }
+/// <summary>Agent's last session ended in failure. Failure details are always present.</summary>
+public sealed record AgentInfoFailed : AgentInfo
+{
+    public required AgentFailure Failure       { get; init; }
+    public          DateTime?    PreviousRunAt { get; init; }
 }

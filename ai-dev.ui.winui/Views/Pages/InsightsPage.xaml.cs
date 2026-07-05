@@ -5,10 +5,19 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace AiDev.WinUI.Views.Pages;
 
+/// <summary>
+/// Displays AI-generated insight summaries for agent sessions.
+/// </summary>
 public sealed partial class InsightsPage : Page
 {
+    /// <summary>
+    /// Gets the page view model.
+    /// </summary>
     public InsightsViewModel ViewModel { get; }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InsightsPage"/> class.
+    /// </summary>
     public InsightsPage()
     {
         InitializeComponent();

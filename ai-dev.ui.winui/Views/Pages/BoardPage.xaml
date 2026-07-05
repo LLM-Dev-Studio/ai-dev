@@ -26,13 +26,19 @@
             </Grid.RowDefinitions>
 
             <!-- Header -->
-            <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                <TextBlock Text="Board" Style="{StaticResource TitleTextBlockStyle}" />
-                <TextBlock Text="Track tasks across your workflow"
-                           Style="{StaticResource BodyTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           Margin="0,4,0,0" />
-            </StackPanel>
+            <Grid Grid.Row="0" Margin="0,0,0,20">
+                <StackPanel>
+                    <TextBlock Text="Board" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock Text="Track tasks across your workflow"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Margin="0,4,0,0" />
+                </StackPanel>
+                <Button HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        Command="{Binding RefreshCommand}"
+                        Content="&#x21BB; Refresh"
+                        Padding="10,6" />
+            </Grid>
 
             <ProgressRing Grid.Row="1"
                           IsActive="{Binding IsLoading}"
@@ -76,6 +82,7 @@
                                                     Padding="8,4" />
                                             <Button Content="+ Add"
                                                     Tag="{Binding Column.Id}"
+                                                    Visibility="{Binding IsBacklog, Converter={StaticResource BoolToVisible}}"
                                                     Click="AddTask_Click"
                                                     Padding="8,4" />
                                         </StackPanel>

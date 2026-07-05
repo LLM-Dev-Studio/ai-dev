@@ -63,14 +63,15 @@
   <!-- Publish Properties -->
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
-    <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
+    <PublishReadyToRun Condition="'$(Configuration)' != 'Debug' and '$(PublishDir)' != ''">True</PublishReadyToRun>
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
-    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
+    <PublishTrimmed Condition="'$(Configuration)' != 'Debug' and '$(PublishDir)' != ''">True</PublishTrimmed>
     <AssemblyTitle>AI Dev Studio</AssemblyTitle>
     <DefaultLanguage>en-AU</DefaultLanguage>
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ai-dev-net.ServiceDefaults\ai-dev-net.ServiceDefaults.csproj" />
     <ProjectReference Include="..\ai-dev.core\ai-dev.core.csproj" />
     <ProjectReference Include="..\ai-dev.core.local\ai-dev.core.local.csproj" />
     <ProjectReference Include="..\ai-dev.executor.claude\ai-dev.executor.claude.csproj" />

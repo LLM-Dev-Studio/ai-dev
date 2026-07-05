@@ -1,4 +1,4 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.2.2">
+<Project Sdk="Aspire.AppHost.Sdk/13.3.0">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -9,9 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ai-dev-net\ai-dev.ui.web.csproj" />
     <ProjectReference Include="..\ai-dev.mcp\ai-dev.mcp.csproj" />
     <ProjectReference Include="..\ai-dev.ui.winui\ai-dev.ui.winui.csproj" />
+    <ProjectReference Include="..\ai-dev.api\ai-dev.api.csproj" />
   </ItemGroup>
 
 </Project>

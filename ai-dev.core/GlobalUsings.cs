@@ -1,3 +1,5 @@
+global using AiDev.Extensions;
+global using AiDev.Features.Workspace;
 global using AiDev.Models;
 global using AiDev.Models.Types;
 global using AiDev.Services;

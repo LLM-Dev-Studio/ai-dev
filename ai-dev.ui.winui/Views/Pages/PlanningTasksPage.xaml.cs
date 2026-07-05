@@ -50,31 +50,17 @@ public sealed partial class PlanningTasksPage : Page
     {
         var phase = ViewModel.CurrentPhase;
 
-        // Phase accent bar colour
-        var accentColor = phase switch
-        {
-            SessionPhase.Phase1BusinessDiscovery     => Windows.UI.Color.FromArgb(255, 0,   120, 212), // #0078D4 blue
-            SessionPhase.Phase2SolutionShaping       => Windows.UI.Color.FromArgb(255, 16,  124, 16),  // #107C10 green
-            SessionPhase.Phase3PlanningDecomposition => Windows.UI.Color.FromArgb(255, 134, 0,   77),  // #86004D purple
-            _ => Windows.UI.Color.FromArgb(255, 100, 100, 100),
-        };
+        // Phase accent bar colour (UI-only mapping; cannot live on the core type)
+        Windows.UI.Color accentColor;
+        if (phase == SessionPhase.Phase1BusinessDiscovery)          accentColor = Windows.UI.Color.FromArgb(255, 0,   120, 212); // #0078D4 blue
+        else if (phase == SessionPhase.Phase2SolutionShaping)       accentColor = Windows.UI.Color.FromArgb(255, 16,  124, 16);  // #107C10 green
+        else if (phase == SessionPhase.Phase3PlanningDecomposition) accentColor = Windows.UI.Color.FromArgb(255, 134, 0,   77);  // #86004D purple
+        else                                                         accentColor = Windows.UI.Color.FromArgb(255, 100, 100, 100);
         PhaseAccentBar.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(accentColor);
 
         // Phase title + role badge
-        PhaseTitleText.Text = phase switch
-        {
-            SessionPhase.Phase1BusinessDiscovery     => "Phase 1 — Business Discovery",
-            SessionPhase.Phase2SolutionShaping       => "Phase 2 — Solution Shaping",
-            SessionPhase.Phase3PlanningDecomposition => "Phase 3 — Planning & Decomposition",
-            _ => "",
-        };
-        PhaseRoleBadge.Text = phase switch
-        {
-            SessionPhase.Phase1BusinessDiscovery     => "Role: Business Analyst",
-            SessionPhase.Phase2SolutionShaping       => "Role: Solution Architect",
-            SessionPhase.Phase3PlanningDecomposition => "Role: Planning Assistant",
-            _ => "",
-        };
+        PhaseTitleText.Text = phase.SidebarTitle;
+        PhaseRoleBadge.Text = phase.RoleBadge;
 
         // Phase 2 placeholder when locked
         if (phase == SessionPhase.Phase2SolutionShaping && !ViewModel.Phase1Locked)
@@ -122,7 +108,7 @@ public sealed partial class PlanningTasksPage : Page
 
     private void RecentSession_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: string sessionId })
+        if (sender is Button { Tag: SessionId sessionId })
         {
             ViewModel.LoadExistingSessionCommand.Execute(sessionId);
             UpdatePhaseVisuals();
@@ -214,13 +200,7 @@ public sealed partial class PlanningTasksPage : Page
 
         picker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
         picker.FileTypeChoices.Add("YAML files", [".yaml"]);
-        picker.SuggestedFileName = ViewModel.CurrentPhase switch
-        {
-            SessionPhase.Phase1BusinessDiscovery     => "business",
-            SessionPhase.Phase2SolutionShaping       => "solution",
-            SessionPhase.Phase3PlanningDecomposition => "plan",
-            _ => "dsl",
-        };
+        picker.SuggestedFileName = ViewModel.CurrentPhase.ExportBaseName;
 
         StorageFile? file = await picker.PickSaveFileAsync();
         if (file == null) return;

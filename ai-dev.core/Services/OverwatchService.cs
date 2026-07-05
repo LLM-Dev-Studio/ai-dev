@@ -17,13 +17,14 @@ namespace AiDev.Services;
 ///     moves columns so a progressing task is never counted as stalled.
 ///   - Stalled tasks with no assignee raise a decision for human intervention.
 /// </summary>
-public class OverwatchService(
+public partial class OverwatchService(
     WorkspaceService workspace,
-    BoardService boardService,
+    IBoardService boardService,
     IAgentRunnerService runner,
+    IAgentInboxService inbox,
     AgentService agentService,
     ExecutorHealthMonitor executorHealth,
-    DecisionsService decisionsService,
+    IDecisionsService decisionsService,
     ILogger<OverwatchService> logger)
     : IHostedService, IDisposable
 {
@@ -39,9 +40,7 @@ public class OverwatchService(
     public Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        logger.LogInformation(
-            "[overwatch] Starting — stall: {Stall}m, cooldown: {Cooldown}m, interval: {Interval}m",
-            StallThreshold.TotalMinutes, NudgeCooldown.TotalMinutes, ScanInterval.TotalMinutes);
+        LogStarting(StallThreshold.TotalMinutes, NudgeCooldown.TotalMinutes, ScanInterval.TotalMinutes);
 
         _scanCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _scanLoop = RunScanLoopAsync(_scanCts.Token);
@@ -51,7 +50,7 @@ public class OverwatchService(
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation("[overwatch] Stopping");
+        LogStopping();
         _scanCts?.Cancel();
         if (_scanLoop != null)
         {
@@ -63,8 +62,9 @@ public class OverwatchService(
 
     public void Dispose()
     {
-        _scanCts?.Cancel();
-        _scanCts?.Dispose();
+        var cts = Interlocked.Exchange(ref _scanCts, null);
+        try { cts?.Cancel(); } catch (ObjectDisposedException) { }
+        cts?.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -99,7 +99,7 @@ public class OverwatchService(
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                logger.LogError(ex, "[overwatch] Error scanning project {Project}", project.Slug);
+                LogScanProjectError(ex, project.Slug);
             }
         }
     }
@@ -160,9 +160,7 @@ public class OverwatchService(
             taskActivity?.SetTag("task.ageMinutes", (int)age.TotalMinutes);
             taskActivity?.SetTag("task.assignee", task.Assignee ?? "unassigned");
 
-            logger.LogWarning(
-                "[overwatch] Task stalled {Age}m in [{Column}]: \"{Title}\" — assignee: {Assignee}",
-                (int)age.TotalMinutes, column.Title, task.Title, task.Assignee ?? "none");
+            LogTaskStalled((int)age.TotalMinutes, column.Title, task.Title, task.Assignee ?? "none");
 
             if (!string.IsNullOrEmpty(task.Assignee))
             {
@@ -181,9 +179,7 @@ public class OverwatchService(
         }
 
         if (nudged + escalated > 0)
-            logger.LogInformation(
-                "[overwatch] {Project}: {Nudged} nudged, {Escalated} escalated, {Skipped} in cooldown",
-                projectSlug, nudged, escalated, skipped);
+            LogScanSummary(projectSlug, nudged, escalated, skipped);
 
         activity?.SetTag("overwatch.nudged", nudged);
         activity?.SetTag("overwatch.escalated", escalated);
@@ -198,30 +194,25 @@ public class OverwatchService(
     {
         if (!AgentSlug.TryParse(task.Assignee, out var assigneeSlug))
         {
-            logger.LogWarning("[overwatch] Task \"{Title}\" has invalid assignee slug: {Assignee}",
-                task.Title, task.Assignee);
+            LogInvalidAssigneeSlug(task.Title, task.Assignee);
             return "invalid-assignee-slug";
         }
 
         // Don't nudge if the agent is already running — it'll pick up work when it next runs
         if (runner.IsRunning(projectSlug, assigneeSlug))
         {
-            logger.LogInformation(
-                "[overwatch] Agent {Agent} is currently running — skipping nudge for \"{Title}\"",
-                assigneeSlug, task.Title);
+            LogSkippingNudgeAgentRunning(assigneeSlug, task.Title);
             return "skip-agent-running";
         }
 
         // If the agent's executor is unhealthy, warn the human rather than nudging —
         // the agent would fail immediately on launch anyway.
         var agentInfo = agentService.LoadAgent(projectSlug, assigneeSlug);
-        var executorName = agentInfo?.Executor ?? IAgentExecutor.Default;
+        var executorName = agentInfo?.Executor ?? AgentExecutorName.Default;
         var health = executorHealth.GetHealth(executorName);
         if (!health.IsHealthy)
         {
-            logger.LogWarning(
-                "[overwatch] Executor '{Executor}' for agent {Agent} is unhealthy — raising decision for \"{Title}\"",
-                executorName, assigneeSlug, task.Title);
+            LogExecutorUnhealthy(executorName, assigneeSlug, task.Title);
             return RaiseExecutorOfflineDecision(projectSlug, task, assigneeSlug, executorName, health.Message);
         }
 
@@ -234,25 +225,23 @@ public class OverwatchService(
             {(string.IsNullOrEmpty(task.Description) ? "" : $"**Description:** {task.Description}\n\n")}Please action this task and move it forward. If you are blocked, raise a decision or message the relevant agent explaining the blocker.
             """;
 
-        var writeResult = runner.WriteInboxMessage(
+        var writeResult = inbox.WriteInboxMessage(
             projectSlug,
             assigneeSlug,
             from: "overwatch",
             re: $"Stalled task: {task.Title}",
             type: "overwatch-nudge",
-            priority: task.Priority.IsUrgent ? task.Priority.Value : Priority.High.Value,
+            priority: task.Priority.IsUrgent ? task.Priority : Priority.High,
             body: body,
             taskId: task.Id);
 
         if (writeResult is Err<Unit> writeErr)
         {
-            logger.LogError("[overwatch] Failed to nudge {Agent} for \"{Title}\": {Error}",
-                task.Assignee, task.Title, writeErr.Error.Message);
+            LogNudgeFailed(task.Assignee, task.Title, writeErr.Error.Message);
             return "nudge-failed";
         }
 
-        logger.LogInformation("[overwatch] Nudged {Agent} for stalled task \"{Title}\" ({Age})",
-            task.Assignee, task.Title, ageStr);
+        LogNudged(task.Assignee, task.Title, ageStr);
         boardService.SetTaskNudged(projectSlug, task.Id);
         return "nudged";
     }
@@ -272,25 +261,23 @@ public class OverwatchService(
             projectSlug,
             from: "overwatch",
             subject: $"Unassigned stalled task: {task.Title}",
-            priority: task.Priority.IsUrgent ? task.Priority.Value : Priority.High.Value,
+            priority: task.Priority.IsUrgent ? task.Priority : Priority.High,
             blocks: task.Id,
             body: body);
 
         if (decisionResult is Err<Unit> decisionErr)
         {
-            logger.LogError("[overwatch] Failed to raise decision for \"{Title}\": {Error}",
-                task.Title, decisionErr.Error.Message);
+            LogRaiseDecisionFailed(task.Title, decisionErr.Error.Message);
             return "decision-failed";
         }
 
-        logger.LogInformation("[overwatch] Raised decision for unassigned stalled task \"{Title}\" ({Age})",
-            task.Title, ageStr);
+        LogDecisionRaised(task.Title, ageStr);
         boardService.SetTaskNudged(projectSlug, task.Id);
         return "decision-raised";
     }
 
     private string RaiseExecutorOfflineDecision(ProjectSlug projectSlug, BoardTask task,
-        AgentSlug agentSlug, string executorName, string healthMessage)
+        AgentSlug agentSlug, AgentExecutorName executorName, string healthMessage)
     {
         var body = $"""
             Agent **{agentSlug}** uses the **{executorName}** executor, which is currently unavailable.
@@ -309,20 +296,17 @@ public class OverwatchService(
             projectSlug,
             from: "overwatch",
             subject: $"Executor offline — {agentSlug} ({executorName}) cannot process \"{task.Title}\"",
-            priority: task.Priority.IsUrgent ? task.Priority.Value : Priority.High.Value,
+            priority: task.Priority.IsUrgent ? task.Priority : Priority.High,
             blocks: task.Id,
             body: body);
 
         if (decisionResult is Err<Unit> decisionErr)
         {
-            logger.LogError("[overwatch] Failed to raise executor offline decision for \"{Title}\": {Error}",
-                task.Title, decisionErr.Error.Message);
+            LogRaiseExecutorOfflineDecisionFailed(task.Title, decisionErr.Error.Message);
             return "decision-failed";
         }
 
-        logger.LogInformation(
-            "[overwatch] Raised executor offline decision for agent {Agent} ({Executor}), task \"{Title}\"",
-            agentSlug, executorName, task.Title);
+        LogExecutorOfflineDecisionRaised(agentSlug, executorName, task.Title);
         boardService.SetTaskNudged(projectSlug, task.Id);
         return "decision-raised";
     }
@@ -331,4 +315,46 @@ public class OverwatchService(
         age.TotalHours >= 1
             ? $"{(int)age.TotalHours}h {age.Minutes}m"
             : $"{(int)age.TotalMinutes}m";
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[overwatch] Starting — stall: {Stall}m, cooldown: {Cooldown}m, interval: {Interval}m")]
+    private partial void LogStarting(double stall, double cooldown, double interval);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[overwatch] Stopping")]
+    private partial void LogStopping();
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[overwatch] Error scanning project {Project}")]
+    private partial void LogScanProjectError(Exception ex, ProjectSlug project);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[overwatch] Task stalled {Age}m in [{Column}]: \"{Title}\" — assignee: {Assignee}")]
+    private partial void LogTaskStalled(int age, string column, string title, string assignee);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[overwatch] {Project}: {Nudged} nudged, {Escalated} escalated, {Skipped} in cooldown")]
+    private partial void LogScanSummary(ProjectSlug project, int nudged, int escalated, int skipped);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[overwatch] Task \"{Title}\" has invalid assignee slug: {Assignee}")]
+    private partial void LogInvalidAssigneeSlug(string title, string? assignee);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[overwatch] Agent {Agent} is currently running — skipping nudge for \"{Title}\"")]
+    private partial void LogSkippingNudgeAgentRunning(AgentSlug agent, string title);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[overwatch] Executor '{Executor}' for agent {Agent} is unhealthy — raising decision for \"{Title}\"")]
+    private partial void LogExecutorUnhealthy(AgentExecutorName executor, AgentSlug agent, string title);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[overwatch] Failed to nudge {Agent} for \"{Title}\": {Error}")]
+    private partial void LogNudgeFailed(string? agent, string title, string error);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[overwatch] Nudged {Agent} for stalled task \"{Title}\" ({Age})")]
+    private partial void LogNudged(string? agent, string title, string age);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[overwatch] Failed to raise decision for \"{Title}\": {Error}")]
+    private partial void LogRaiseDecisionFailed(string title, string error);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[overwatch] Raised decision for unassigned stalled task \"{Title}\" ({Age})")]
+    private partial void LogDecisionRaised(string title, string age);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[overwatch] Failed to raise executor offline decision for \"{Title}\": {Error}")]
+    private partial void LogRaiseExecutorOfflineDecisionFailed(string title, string error);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[overwatch] Raised executor offline decision for agent {Agent} ({Executor}), task \"{Title}\"")]
+    private partial void LogExecutorOfflineDecisionRaised(AgentSlug agent, AgentExecutorName executor, string title);
 }

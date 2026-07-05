@@ -7,6 +7,9 @@ namespace AiDev.Models.Types;
 [JsonConverter(typeof(AgentSlugJsonConverter))]
 public sealed partial record AgentSlug : IParsable<AgentSlug>
 {
+    /// <summary>
+    /// Gets the validated slug value.
+    /// </summary>
     public string Value { get; }
 
     public AgentSlug(string value)
@@ -18,6 +21,12 @@ public sealed partial record AgentSlug : IParsable<AgentSlug>
         Value = value;
     }
 
+    /// <summary>
+    /// Attempts to parse a validated agent slug.
+    /// </summary>
+    /// <param name="value">The raw slug value.</param>
+    /// <param name="slug">The parsed slug when successful.</param>
+    /// <returns><see langword="true"/> when parsing succeeds; otherwise, <see langword="false"/>.</returns>
     public static bool TryParse(string? value, [NotNullWhen(true)] out AgentSlug? slug)
     {
         if (!IsValid(value)) { slug = null; return false; }
@@ -44,16 +53,4 @@ public sealed partial record AgentSlug : IParsable<AgentSlug>
 
     [GeneratedRegex(@"^[a-z0-9][a-z0-9\-]*[a-z0-9]$")]
     private static partial Regex SlugPattern();
-}
-
-internal sealed class AgentSlugJsonConverter : JsonConverter<AgentSlug>
-{
-    public override AgentSlug? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        var value = reader.GetString();
-        return AgentSlug.TryParse(value, out var slug) ? slug : null;
-    }
-
-    public override void Write(Utf8JsonWriter writer, AgentSlug value, JsonSerializerOptions options)
-        => writer.WriteStringValue(value.Value);
 }

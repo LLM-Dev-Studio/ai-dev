@@ -7,9 +7,10 @@ namespace AiDev.Features.Decision;
 /// Chat history is persisted as append-only JSONL at decisions/chats/{decisionId}.jsonl.
 /// Human messages are routed into the agent's inbox; agent replies arrive via outbox.
 /// </summary>
-public class DecisionChatService(
+public partial class DecisionChatService(
     WorkspacePaths paths,
     IAgentRunnerService runner,
+    IAgentInboxService inbox,
     ProjectStateChangedNotifier projectStateNotifier,
     ILogger<DecisionChatService> logger)
 {
@@ -17,7 +18,7 @@ public class DecisionChatService(
     // Read
     // -------------------------------------------------------------------------
 
-    public IReadOnlyList<DecisionChatMessage> GetMessages(ProjectSlug projectSlug, string decisionId)
+    public IReadOnlyList<DecisionChatMessage> GetMessages(ProjectSlug projectSlug, DecisionId decisionId)
     {
         var chatPath = ChatPath(projectSlug, decisionId);
         if (!File.Exists(chatPath)) return [];
@@ -29,11 +30,11 @@ public class DecisionChatService(
         }
         catch (IOException ex)
         {
-            logger.LogDebug(ex, "[decision-chat] Failed to read chat for {DecisionId}", decisionId);
+            LogReadChatFailed(ex, decisionId);
         }
         catch (UnauthorizedAccessException ex)
         {
-            logger.LogWarning(ex, "[decision-chat] Failed to read chat for {DecisionId}", decisionId);
+            LogReadChatUnauthorized(ex, decisionId);
         }
 
         return [];
@@ -46,7 +47,7 @@ public class DecisionChatService(
     /// <summary>
     /// Sends a human message: appends to JSONL, writes to agent's inbox, auto-launches agent.
     /// </summary>
-    public string? SendHumanMessage(ProjectSlug projectSlug, string decisionId, string agentSlug, string content)
+    public string? SendHumanMessage(ProjectSlug projectSlug, DecisionId decisionId, AgentSlug agentSlug, string content)
     {
         if (string.IsNullOrWhiteSpace(content)) return "Message cannot be empty.";
 
@@ -65,23 +66,23 @@ public class DecisionChatService(
         var body = $"The human has replied to your decision request (decision-id: {decisionId}):\n\n{content.Trim()}\n\n" +
                    $"Please respond via write_outbox with type: decision-reply and decision-id: {decisionId}.";
 
-        var inboxResult = runner.WriteInboxMessage(
-            projectSlug, new(agentSlug),
+        var inboxResult = inbox.WriteInboxMessage(
+            projectSlug, agentSlug,
             from: "human",
             re: $"Re: decision {decisionId}",
             type: "decision-chat",
-            priority: "high",
+            priority: Priority.High,
             body: body,
             decisionId: decisionId);
 
         if (inboxResult is Err<Unit> inboxErr)
         {
-            logger.LogWarning("[decision-chat] Inbox write failed for {DecisionId}: {Error}", decisionId, inboxErr.Error.Message);
+            LogInboxWriteFailed(decisionId, inboxErr.Error.Message);
             return $"Failed to deliver message to agent: {inboxErr.Error.Message}";
         }
 
         // Auto-launch the agent so it processes the message.
-        runner.LaunchAgent(projectSlug, new(agentSlug));
+        runner.LaunchAgent(projectSlug, agentSlug);
 
         return null;
     }
@@ -94,9 +95,9 @@ public class DecisionChatService(
     /// Scans the agent's outbox for decision-reply messages matching this decision,
     /// appends them to the JSONL, archives the outbox files, and fires the notifier.
     /// </summary>
-    public bool FlushAgentReplies(ProjectSlug projectSlug, string decisionId, string agentSlug)
+    public bool FlushAgentReplies(ProjectSlug projectSlug, DecisionId decisionId, AgentSlug agentSlug)
     {
-        var outboxDir = paths.AgentOutboxDir(projectSlug, new(agentSlug));
+        var outboxDir = paths.AgentOutboxDir(projectSlug, agentSlug);
         if (!Directory.Exists(outboxDir)) return false;
 
         // Use a per-decision claiming folder so concurrent pollers can't double-process files.
@@ -115,7 +116,7 @@ public class DecisionChatService(
                 var (fields, body) = FrontmatterParser.Parse(text);
 
                 if (!fields.TryGetValue("type", out var type) || type != "decision-reply") continue;
-                if (!fields.TryGetValue("decision-id", out var msgDecisionId) || msgDecisionId != decisionId) continue;
+                if (!fields.TryGetValue("decision-id", out var msgDecisionId) || msgDecisionId != decisionId.Value) continue;
 
                 // Atomically claim the file by moving it to the claiming folder.
                 // If another poller already claimed it, File.Move throws and we skip.
@@ -123,7 +124,7 @@ public class DecisionChatService(
                 try { File.Move(file, claimedPath); }
                 catch { continue; } // another poller claimed it first
 
-                var from = fields.TryGetValue("from", out var f) ? f : agentSlug;
+                var from = fields.TryGetValue("from", out var f) ? f : agentSlug.Value;
                 var timestamp = fields.TryGetValue("date", out var d)
                     && DateTime.TryParse(d, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt : DateTime.UtcNow;
 
@@ -138,7 +139,7 @@ public class DecisionChatService(
                 var appendError = AppendMessage(projectSlug, decisionId, msg);
                 if (appendError != null)
                 {
-                    logger.LogWarning("[decision-chat] Failed to append agent reply: {Error}", appendError);
+                    LogAppendAgentReplyFailed(appendError);
                     // Move back to outbox so it can be retried.
                     try { File.Move(claimedPath, file); } catch { /* best-effort */ }
                     claimedPath = null;
@@ -154,7 +155,7 @@ public class DecisionChatService(
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "[decision-chat] Error processing outbox file {File}", file);
+                LogOutboxFileProcessingError(ex, file);
                 // Return claimed file to outbox on unexpected error.
                 if (claimedPath != null && File.Exists(claimedPath))
                     try { File.Move(claimedPath, file); } catch { /* best-effort */ }
@@ -170,7 +171,7 @@ public class DecisionChatService(
     // Helpers
     // -------------------------------------------------------------------------
 
-    private string? AppendMessage(ProjectSlug projectSlug, string decisionId, DecisionChatMessage msg)
+    private string? AppendMessage(ProjectSlug projectSlug, DecisionId decisionId, DecisionChatMessage msg)
     {
         try
         {
@@ -182,15 +183,15 @@ public class DecisionChatService(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "[decision-chat] Failed to append message to {DecisionId}", decisionId);
+            LogAppendMessageFailed(ex, decisionId);
             return ex.Message;
         }
     }
 
-    private string ChatPath(ProjectSlug projectSlug, string decisionId) =>
+    private string ChatPath(ProjectSlug projectSlug, DecisionId decisionId) =>
         Path.Combine(paths.DecisionChatsDir(projectSlug), $"{decisionId}.jsonl");
 
-    private IReadOnlyList<DecisionChatMessage> ParseMessages(string json, string decisionId)
+    private IReadOnlyList<DecisionChatMessage> ParseMessages(string json, DecisionId decisionId)
     {
         if (string.IsNullOrWhiteSpace(json))
             return [];
@@ -215,12 +216,32 @@ public class DecisionChatService(
             }
             catch (JsonException ex)
             {
-                logger.LogWarning(ex, "[decision-chat] Failed to parse chat history for {DecisionId}; returning {MessageCount} message(s)",
-                    decisionId, messages.Count);
+                LogParseChatHistoryFailed(ex, decisionId, messages.Count);
                 break;
             }
         }
 
         return messages;
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[decision-chat] Failed to read chat for {DecisionId}")]
+    private partial void LogReadChatFailed(Exception ex, DecisionId decisionId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[decision-chat] Failed to read chat for {DecisionId}")]
+    private partial void LogReadChatUnauthorized(Exception ex, DecisionId decisionId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[decision-chat] Inbox write failed for {DecisionId}: {Error}")]
+    private partial void LogInboxWriteFailed(DecisionId decisionId, string error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[decision-chat] Failed to append agent reply: {Error}")]
+    private partial void LogAppendAgentReplyFailed(string error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[decision-chat] Error processing outbox file {File}")]
+    private partial void LogOutboxFileProcessingError(Exception ex, string file);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[decision-chat] Failed to append message to {DecisionId}")]
+    private partial void LogAppendMessageFailed(Exception ex, DecisionId decisionId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[decision-chat] Failed to parse chat history for {DecisionId}; returning {MessageCount} message(s)")]
+    private partial void LogParseChatHistoryFailed(Exception ex, DecisionId decisionId, int messageCount);
 }

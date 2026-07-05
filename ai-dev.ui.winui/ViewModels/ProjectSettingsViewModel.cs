@@ -18,7 +18,6 @@ public partial class ProjectSettingsViewModel : ObservableObject
     // Project detail form
     [ObservableProperty] public partial string EditName { get; set; } = "";
     [ObservableProperty] public partial string EditDescription { get; set; } = "";
-    [ObservableProperty] public partial string EditCodebasePath { get; set; } = "";
     [ObservableProperty] public partial string DetailsError { get; set; } = "";
     [ObservableProperty] public partial bool DetailsSaved { get; set; }
     [ObservableProperty] public partial bool SavingDetails { get; set; }
@@ -68,7 +67,6 @@ public partial class ProjectSettingsViewModel : ObservableObject
         {
             EditName = project.Name;
             EditDescription = project.Description;
-            EditCodebasePath = project.CodebasePath ?? "";
         }
         RefreshAgents();
         RefreshExecutors();
@@ -84,8 +82,7 @@ public partial class ProjectSettingsViewModel : ObservableObject
         DetailsSaved = false;
         if (string.IsNullOrWhiteSpace(EditName)) { DetailsError = "Name is required."; return; }
         SavingDetails = true;
-        var result = _workspaceService.UpdateProject(CurrentSlug, EditName, EditDescription,
-            string.IsNullOrWhiteSpace(EditCodebasePath) ? null : EditCodebasePath);
+        var result = _workspaceService.UpdateProject(CurrentSlug, EditName, EditDescription);
         SavingDetails = false;
         if (result is Err<Unit> err) { DetailsError = err.Error.Message; return; }
         // Sync the shell title
@@ -175,7 +172,7 @@ public partial class ProjectSettingsViewModel : ObservableObject
         BulkTargetModelOverride = modelOverride ?? "";
         try
         {
-            var executorModels = _modelRegistry.GetModelsForExecutor(targetExecutor.Value);
+            var executorModels = _modelRegistry.GetModelsForExecutor(targetExecutor);
             ModelDescriptor? overrideModel = null;
 
             if (!string.IsNullOrWhiteSpace(modelOverride))
@@ -243,7 +240,7 @@ public partial class ProjectSettingsViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(executorValue)) return [];
 
         return [..
-            _modelRegistry.GetModelsForExecutor(executorValue)
+            (AgentExecutorName.TryParse(executorValue, out var parsedEx) ? _modelRegistry.GetModelsForExecutor(parsedEx) : [])
                 .Select(model => model.Id)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(model => model, StringComparer.OrdinalIgnoreCase)];
@@ -262,8 +259,7 @@ public partial class ProjectSettingsViewModel : ObservableObject
 
         foreach (var entry in _executorHealthMonitor.GetExecutorHealth().Where(e => e.Health.IsHealthy))
         {
-            if (AgentExecutorName.TryParse(entry.Executor.Name, out var executorName))
-                AvailableExecutors.Add(executorName.Value);
+            AvailableExecutors.Add(entry.Executor.Name.Value);
         }
 
         if (AvailableExecutors.Count == 0)

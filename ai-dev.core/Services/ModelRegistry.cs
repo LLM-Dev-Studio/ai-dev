@@ -17,7 +17,7 @@ public sealed class ModelRegistry : IModelRegistry, IDisposable
     private readonly IDisposable _healthChangedSubscription;
 
     // Snapshot rebuilt on every Changed event.
-    private volatile IReadOnlyDictionary<string, IReadOnlyList<ModelDescriptor>> _byExecutor;
+    private volatile IReadOnlyDictionary<AgentExecutorName, IReadOnlyList<ModelDescriptor>> _byExecutor;
 
     public ModelRegistry(IEnumerable<IAgentExecutor> executors, ExecutorHealthMonitor healthMonitor)
     {
@@ -28,10 +28,10 @@ public sealed class ModelRegistry : IModelRegistry, IDisposable
         _healthChangedSubscription = _healthMonitor.SubscribeChanged(Refresh);
     }
 
-    public IReadOnlyList<ModelDescriptor> GetModelsForExecutor(string executorName)
+    public IReadOnlyList<ModelDescriptor> GetModelsForExecutor(AgentExecutorName executorName)
         => _byExecutor.TryGetValue(executorName, out var list) ? list : [];
 
-    public ModelDescriptor? Find(string executorName, string modelId)
+    public ModelDescriptor? Find(AgentExecutorName executorName, string modelId)
         => GetModelsForExecutor(executorName)
             .FirstOrDefault(m => string.Equals(m.Id, modelId, StringComparison.OrdinalIgnoreCase));
 
@@ -44,9 +44,9 @@ public sealed class ModelRegistry : IModelRegistry, IDisposable
 
     private void Refresh() => _byExecutor = Build();
 
-    private IReadOnlyDictionary<string, IReadOnlyList<ModelDescriptor>> Build()
+    private IReadOnlyDictionary<AgentExecutorName, IReadOnlyList<ModelDescriptor>> Build()
     {
-        var dict = new Dictionary<string, IReadOnlyList<ModelDescriptor>>(StringComparer.OrdinalIgnoreCase);
+        var dict = new Dictionary<AgentExecutorName, IReadOnlyList<ModelDescriptor>>();
 
         foreach (var executor in _executors)
         {

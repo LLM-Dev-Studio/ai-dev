@@ -17,10 +17,10 @@ public class ExecutorHealthMonitor(
     private static readonly TimeSpan HealthCheckTimeout = TimeSpan.FromSeconds(8);
 
     private readonly IReadOnlyList<IAgentExecutor> _executors = [.. executors];
-    private readonly ConcurrentDictionary<string, ExecutorHealthResult> _cache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<AgentExecutorName, ExecutorHealthResult> _cache = new();
 
     private event Action? Changed;
-    private event Action<string, ExecutorHealthResult, ExecutorHealthResult>? Transitioned;
+    private event Action<AgentExecutorName, ExecutorHealthResult, ExecutorHealthResult>? Transitioned;
 
     public DateTimeOffset? LastChecked { get; private set; }
 
@@ -33,7 +33,7 @@ public class ExecutorHealthMonitor(
     }
 
     /// <summary>Subscribes to health transition notifications and returns a disposable subscription.</summary>
-    public IDisposable SubscribeTransitioned(Action<string, ExecutorHealthResult, ExecutorHealthResult> handler)
+    public IDisposable SubscribeTransitioned(Action<AgentExecutorName, ExecutorHealthResult, ExecutorHealthResult> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
         Transitioned += handler;
@@ -41,14 +41,14 @@ public class ExecutorHealthMonitor(
     }
 
     /// <summary>Returns the cached health result for the named executor, or an "unknown" result if not yet polled.</summary>
-    public ExecutorHealthResult GetHealth(string executorName)
+    public ExecutorHealthResult GetHealth(AgentExecutorName executorName)
         => _cache.TryGetValue(executorName, out var result)
             ? result
             : new ExecutorHealthResult(false, "Not yet checked");
 
     /// <summary>Returns a snapshot of all cached health results keyed by executor name.</summary>
-    public IReadOnlyDictionary<string, ExecutorHealthResult> GetAllHealth()
-        => new Dictionary<string, ExecutorHealthResult>(_cache, StringComparer.Ordinal);
+    public IReadOnlyDictionary<AgentExecutorName, ExecutorHealthResult> GetAllHealth()
+        => new Dictionary<AgentExecutorName, ExecutorHealthResult>(_cache);
 
     /// <summary>Returns all registered executors with their current health, for UI rendering.</summary>
     public IReadOnlyList<(IAgentExecutor Executor, ExecutorHealthResult Health)> GetExecutorHealth()
@@ -136,7 +136,7 @@ public class ExecutorHealthMonitor(
         }
     }
 
-    private void SetResult(string executorName, ExecutorHealthResult current)
+    private void SetResult(AgentExecutorName executorName, ExecutorHealthResult current)
     {
         var hadPrevious = _cache.TryGetValue(executorName, out var previous);
         _cache[executorName] = current;

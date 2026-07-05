@@ -9,20 +9,20 @@ namespace AiDev.Services;
 /// <summary>
 /// Computes a single project state snapshot so different UIs use the same source of truth.
 /// </summary>
-public class ProjectStateSnapshotService(
+public partial class ProjectStateSnapshotService(
     MessagesService messagesService,
-    DecisionsService decisionsService,
-    BoardService boardService,
+    IDecisionsService decisionsService,
+    IBoardService boardService,
     AgentService agentService,
     AgentRunnerService agentRunnerService,
     ILogger<ProjectStateSnapshotService> logger)
 {
     public ProjectStateSnapshot GetSnapshot(ProjectSlug projectSlug)
     {
-        var unreadMessages = SafeCount(() => messagesService.ListMessages(projectSlug).Count(m => !m.IsProcessed), logger, "unread-messages");
-        var pendingDecisions = SafeCount(() => decisionsService.ListDecisions(projectSlug, "pending").Count, logger, "pending-decisions");
+        var unreadMessages = SafeCount(() => messagesService.ListMessages(projectSlug).Count(m => !m.IsProcessed), "unread-messages");
+        var pendingDecisions = SafeCount(() => decisionsService.ListDecisions(projectSlug, DecisionStatus.Pending).Count, "pending-decisions");
 
-        var board = SafeGet(() => boardService.LoadBoard(projectSlug), logger, "board");
+        var board = SafeGet(() => boardService.LoadBoard(projectSlug), "board");
         var openBoardTasks = 0;
         if (board != null)
         {
@@ -31,7 +31,7 @@ public class ProjectStateSnapshotService(
             openBoardTasks = board.Tasks.Keys.Count(taskId => !doneIds.Contains(taskId));
         }
 
-        var agents = SafeGet(() => agentService.ListAgents(projectSlug), logger, "agents") ?? [];
+        var agents = SafeGet(() => agentService.ListAgents(projectSlug), "agents") ?? [];
         var runningAgents = agents.Count(agent => agentRunnerService.IsRunning(projectSlug, agent.Slug));
         var agentsWithPendingInbox = agents.Count(agent => agent.InboxCount > 0);
 
@@ -44,7 +44,7 @@ public class ProjectStateSnapshotService(
             AgentsWithPendingInboxCount: agentsWithPendingInbox);
     }
 
-    private static int SafeCount(Func<int> countFactory, ILogger logger, string context)
+    private int SafeCount(Func<int> countFactory, string context)
     {
         try
         {
@@ -52,12 +52,12 @@ public class ProjectStateSnapshotService(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[snapshot] SafeCount failed for {Context}", context);
+            LogSafeCountFailed(ex, context);
             return 0;
         }
     }
 
-    private static T? SafeGet<T>(Func<T> factory, ILogger logger, string context)
+    private T? SafeGet<T>(Func<T> factory, string context)
     {
         try
         {
@@ -65,8 +65,14 @@ public class ProjectStateSnapshotService(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "[snapshot] SafeGet failed for {Context}", context);
+            LogSafeGetFailed(ex, context);
             return default;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[snapshot] SafeCount failed for {Context}")]
+    private partial void LogSafeCountFailed(Exception ex, string context);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[snapshot] SafeGet failed for {Context}")]
+    private partial void LogSafeGetFailed(Exception ex, string context);
 }

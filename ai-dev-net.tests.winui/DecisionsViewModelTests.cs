@@ -58,7 +58,7 @@ public sealed class DecisionsViewModelTests : IDisposable
         await viewModel.SelectDecisionAsync(decision);
 
         viewModel.SelectedDecision.ShouldNotBeNull();
-        viewModel.SelectedDecision.Id.ShouldBe("decision-1");
+        viewModel.SelectedDecision.Id.Value.ShouldBe("decision-1");
         viewModel.ChatMessages.Count.ShouldBe(1);
         viewModel.ChatMessages[0].Content.ShouldBe("Use Option A");
     }
@@ -69,7 +69,7 @@ public sealed class DecisionsViewModelTests : IDisposable
         var (viewModel, decisionsService, _) = CreateViewModel();
         var projectSlug = new ProjectSlug("demo-project");
 
-        var createResult = decisionsService.CreateDecision(projectSlug, "pm-standard", "Need direction", Priority.Normal.Value, null, "Please choose.");
+        var createResult = decisionsService.CreateDecision(projectSlug, "pm-standard", "Need direction", Priority.Normal, null, "Please choose.");
         createResult.ShouldBeOfType<Ok<Unit>>();
 
         var decisionId = Path.GetFileNameWithoutExtension(Directory.GetFiles(_paths.DecisionsPendingDir(projectSlug), "*.md").Single())!;
@@ -104,7 +104,7 @@ public sealed class DecisionsViewModelTests : IDisposable
         var (viewModel, decisionsService, mainViewModel) = CreateViewModel();
         var projectSlug = new ProjectSlug("demo-project");
 
-        var createResult = decisionsService.CreateDecision(projectSlug, "pm-standard", "Need direction", Priority.Normal.Value, null, "Please choose.");
+        var createResult = decisionsService.CreateDecision(projectSlug, "pm-standard", "Need direction", Priority.Normal, null, "Please choose.");
         createResult.ShouldBeOfType<Ok<Unit>>();
 
         var decisionId = Path.GetFileNameWithoutExtension(Directory.GetFiles(_paths.DecisionsPendingDir(projectSlug), "*.md").Single())!;
@@ -146,7 +146,7 @@ public sealed class DecisionsViewModelTests : IDisposable
         };
 
         var runner = Substitute.For<IAgentRunnerService>();
-        var chatService = new DecisionChatService(_paths, runner, _projectStateNotifier, NullLogger<DecisionChatService>.Instance);
+        var chatService = new DecisionChatService(_paths, runner, Substitute.For<IAgentInboxService>(), _projectStateNotifier, NullLogger<DecisionChatService>.Instance);
         var uiDispatcher = new ImmediateDispatcher();
 
         var viewModel = new DecisionsViewModel(decisionsService, chatService, mainViewModel, uiDispatcher);
@@ -157,10 +157,8 @@ public sealed class DecisionsViewModelTests : IDisposable
     {
         var method = typeof(DecisionsViewModel).GetMethod("PollSelectedDecisionAsync", BindingFlags.Instance | BindingFlags.NonPublic);
         method.ShouldNotBeNull();
-        var task = method!.Invoke(viewModel, null) as Task;
-        task.ShouldNotBeNull();
-        var nonNullTask = task;
-        await nonNullTask!;
+        var nonNullTask = (method!.Invoke(viewModel, null) as Task).ShouldNotBeNull();
+        await nonNullTask;
     }
 
     private sealed class ImmediateDispatcher : IUiDispatcher

@@ -15,7 +15,7 @@ namespace AiDev.Executors;
 /// Anthropic Messages API implementation of <see cref="IPlanningLlmClient"/>.
 /// Used when the analyst agent is configured with the "anthropic" executor.
 /// </summary>
-public sealed class AnthropicPlanningLlmClient(
+public sealed partial class AnthropicPlanningLlmClient(
     IHttpClientFactory httpClientFactory,
     StudioSettingsService settingsService,
     ILogger<AnthropicPlanningLlmClient> logger) : IPlanningLlmClient
@@ -23,7 +23,7 @@ public sealed class AnthropicPlanningLlmClient(
     private const string AnthropicApiUrl = "https://api.anthropic.com/v1/messages";
     private const int MaxTokens = 8192;
 
-    public string ExecutorName => AgentExecutorName.AnthropicValue;
+    public AgentExecutorName ExecutorName => AgentExecutorName.Anthropic;
 
     public async Task<PlanningLlmResponse> ChatAsync(
         string modelId,
@@ -62,15 +62,14 @@ public sealed class AnthropicPlanningLlmClient(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "[planning-llm] Failed to call Anthropic API");
+            LogApiCallFailed(ex);
             throw;
         }
 
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            logger.LogError("[planning-llm] Anthropic returned HTTP {Status}: {Body}",
-                (int)response.StatusCode, body);
+            LogHttpError((int)response.StatusCode, body);
             throw new HttpRequestException(
                 $"Anthropic API returned HTTP {(int)response.StatusCode}: {body}");
         }
@@ -94,9 +93,22 @@ public sealed class AnthropicPlanningLlmClient(
             if (usage.TryGetProperty("output_tokens", out var ot)) outputTokens = ot.GetInt32();
         }
 
-        logger.LogDebug("[planning-llm] tokens: {Input} in / {Output} out", inputTokens, outputTokens);
+        LogTokenUsage(inputTokens, outputTokens);
         return new PlanningLlmResponse(content, inputTokens, outputTokens);
     }
+
+    // -------------------------------------------------------------------------
+    // Logger messages
+    // -------------------------------------------------------------------------
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[planning-llm] Failed to call Anthropic API")]
+    private partial void LogApiCallFailed(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[planning-llm] Anthropic returned HTTP {Status}: {Body}")]
+    private partial void LogHttpError(int status, string body);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[planning-llm] tokens: {Input} in / {Output} out")]
+    private partial void LogTokenUsage(int input, int output);
 
     private static JsonArray BuildMessages(IReadOnlyList<ConversationMessage> history, string newUserMessage)
     {

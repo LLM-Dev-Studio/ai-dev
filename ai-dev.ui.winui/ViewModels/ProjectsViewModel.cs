@@ -54,9 +54,9 @@ public partial class ProjectsViewModel : ObservableObject
         try
         {
             var result = _workspaceService.CreateProject(
+                codebasePath?.Trim() ?? "",
                 slug, name,
-                description.Trim() is { Length: > 0 } d ? d : null,
-                string.IsNullOrWhiteSpace(codebasePath) ? null : codebasePath.Trim());
+                description.Trim() is { Length: > 0 } d ? d : null);
 
             if (result is Err<Unit> err)
                 return $"[{err.Error.Code}] {err.Error.Message}";

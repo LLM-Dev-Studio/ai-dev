@@ -1,3 +1,5 @@
+using AiDev.Services;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -14,7 +16,8 @@ public partial class AgentDashboardViewModel : ObservableObject, IDisposable
     private readonly AgentTemplatesService _templatesService;
     private readonly MainViewModel _mainViewModel;
     private readonly DispatcherQueue _dispatcher;
-    private Timer? _pollTimer;
+    private readonly ProjectStateChangedNotifier _notifier;
+    private readonly Action<ProjectStateChangedEvent> _onStateChanged;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
     [ObservableProperty] public partial bool HasFailoverAlerts { get; set; }
@@ -29,13 +32,17 @@ public partial class AgentDashboardViewModel : ObservableObject, IDisposable
         AgentService agentService,
         AgentRunnerService agentRunnerService,
         AgentTemplatesService templatesService,
-        MainViewModel mainViewModel)
+        MainViewModel mainViewModel,
+        ProjectStateChangedNotifier notifier)
     {
         _agentService = agentService;
         _agentRunnerService = agentRunnerService;
         _templatesService = templatesService;
         _mainViewModel = mainViewModel;
+        _notifier = notifier;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
+        _onStateChanged = OnStateChanged;
+        _notifier.Changed += _onStateChanged;
     }
 
     private ProjectSlug? CurrentSlug => _mainViewModel.ActiveProject?.Slug;
@@ -54,27 +61,16 @@ public partial class AgentDashboardViewModel : ObservableObject, IDisposable
 
             // Detect agents that have automatically failed over to a backup executor
             FailoverAlerts.Clear();
-            foreach (var a in agents.Where(a => a.FailoverExecutor != null))
+            foreach (var a in agents.Where(a => a.Failover != null))
             {
-                var when = a.FailedOverAt.HasValue ? a.FailedOverAt.Value.ToString("HH:mm") : "recently";
-                FailoverAlerts.Add($"{a.Name} failed over to {a.FailoverExecutor!.Value} at {when}");
+                var when = a.Failover!.OccurredAt.ToString("HH:mm");
+                FailoverAlerts.Add($"{a.Name} failed over to {a.Failover.Executor.Value} at {when}");
             }
             HasFailoverAlerts = FailoverAlerts.Count > 0;
 
             var templates = _templatesService.ListTemplates();
             Templates.Clear();
             foreach (var t in templates) Templates.Add(t);
-
-            // Poll every 2 s to update live run state on cards
-            _pollTimer ??= new Timer(_ =>
-            {
-                _dispatcher.TryEnqueue(() =>
-                {
-                    if (CurrentSlug is null) return;
-                    foreach (var card in Agents)
-                        card.IsRunning = _agentRunnerService.IsRunning(CurrentSlug, card.Agent.Slug);
-                });
-            }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
 
             return Task.CompletedTask;
         }
@@ -118,7 +114,7 @@ public partial class AgentDashboardViewModel : ObservableObject, IDisposable
             return "Name is required.";
 
         var resolvedSlug = string.IsNullOrWhiteSpace(slug)
-            ? new string(name.Trim().ToLowerInvariant().Replace(" ", "-").Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray()).Trim('-')
+            ? new string([.. name.Trim().ToLowerInvariant().Replace(" ", "-").Where(c => char.IsLetterOrDigit(c) || c == '-')]).Trim('-')
             : slug.Trim();
 
         if (string.IsNullOrWhiteSpace(resolvedSlug))
@@ -132,9 +128,20 @@ public partial class AgentDashboardViewModel : ObservableObject, IDisposable
         return null;
     }
 
+    private void OnStateChanged(ProjectStateChangedEvent e)
+    {
+        if (e.ProjectSlug != CurrentSlug) return;
+        if (!e.Kind.HasFlag(ProjectStateChangeKind.Agents)) return;
+        _dispatcher.TryEnqueue(() =>
+        {
+            if (CurrentSlug is null) return;
+            foreach (var card in Agents)
+                card.IsRunning = _agentRunnerService.IsRunning(CurrentSlug, card.Agent.Slug);
+        });
+    }
+
     public void Dispose()
     {
-        _pollTimer?.Dispose();
-        _pollTimer = null;
+        _notifier.Changed -= _onStateChanged;
     }
 }

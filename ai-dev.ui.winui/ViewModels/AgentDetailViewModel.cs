@@ -1,5 +1,6 @@
 using AiDev.Executors;
 using AiDev.Features.Agent;
+using AiDev.Services;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -13,13 +14,15 @@ namespace AiDev.WinUI.ViewModels;
 public partial class AgentDetailViewModel : ObservableObject, IDisposable
 {
     private readonly AgentService _agentService;
-    private readonly AgentRunnerService _agentRunnerService;
+    private readonly IAgentRunnerService _agentRunnerService;
+    private readonly AgentTranscriptService _transcriptService;
     private readonly MessagesService _messagesService;
     private readonly ExecutorHealthMonitor _healthMonitor;
     private readonly IModelRegistry _modelRegistry;
     private readonly MainViewModel _mainViewModel;
     private readonly DispatcherQueue _dispatcher;
-    private Timer? _pollTimer;
+    private readonly ProjectStateChangedNotifier _notifier;
+    private readonly Action<ProjectStateChangedEvent> _onStateChanged;
 
     // ── Core state ──────────────────────────────────────────────────────────
     [ObservableProperty] public partial AgentInfo? Agent { get; set; }
@@ -35,7 +38,7 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string EditDescription { get; set; } = "";
     [ObservableProperty] public partial string EditModel { get; set; } = "";
     [ObservableProperty] public partial string EditExecutor { get; set; } = "";
-    [ObservableProperty] public partial ThinkingLevel EditThinkingLevel { get; set; } = ThinkingLevel.Off;
+    [ObservableProperty] public partial ThinkingLevel EditThinkingLevel { get; set; }
     [ObservableProperty] public partial bool ModelSupportsThinking { get; set; }
     [ObservableProperty] public partial bool HasSkills { get; set; }
 
@@ -56,19 +59,25 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
 
     public AgentDetailViewModel(
         AgentService agentService,
-        AgentRunnerService agentRunnerService,
+        IAgentRunnerService agentRunnerService,
+        AgentTranscriptService transcriptService,
         MessagesService messagesService,
         ExecutorHealthMonitor healthMonitor,
         IModelRegistry modelRegistry,
-        MainViewModel mainViewModel)
+        MainViewModel mainViewModel,
+        ProjectStateChangedNotifier notifier)
     {
         _agentService = agentService;
         _agentRunnerService = agentRunnerService;
+        _transcriptService = transcriptService;
         _messagesService = messagesService;
         _healthMonitor = healthMonitor;
         _modelRegistry = modelRegistry;
         _mainViewModel = mainViewModel;
+        _notifier = notifier;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
+        _onStateChanged = OnStateChanged;
+        _notifier.Changed += _onStateChanged;
     }
 
     private ProjectSlug? CurrentSlug => _mainViewModel.ActiveProject?.Slug;
@@ -88,7 +97,7 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
             EditExecutor = Agent.Executor.Value;
             EditThinkingLevel = Agent.ThinkingLevel;
             ClaudeContent = _agentService.GetClaudeMd(CurrentSlug, agentSlug);
-            LastSessionUsage = _agentRunnerService.GetLastSessionUsage(CurrentSlug, agentSlug);
+            LastSessionUsage = _transcriptService.GetLastSessionUsage(CurrentSlug, agentSlug);
             IsRunning = _agentRunnerService.IsRunning(CurrentSlug, agentSlug);
 
             PopulateExecutorList();
@@ -96,23 +105,6 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
             PopulateSkillsList();
             UpdateModelCapabilities();
             RefreshInbox(agentSlug);
-
-            // Poll every 2 s for live run-state changes
-            _pollTimer?.Dispose();
-            _pollTimer = new Timer(_ =>
-            {
-                _dispatcher.TryEnqueue(() =>
-                {
-                    if (Agent is null) return;
-                    var running = _agentRunnerService.IsRunning(CurrentSlug!, Agent.Slug);
-                    if (running != IsRunning)
-                    {
-                        IsRunning = running;
-                        Agent = _agentService.LoadAgent(CurrentSlug!, Agent.Slug);
-                        if (Agent is not null) RefreshInbox(Agent.Slug);
-                    }
-                });
-            }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
         }
         finally
         {
@@ -142,8 +134,9 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
         if (string.IsNullOrWhiteSpace(EditExecutor))
             return;
 
-        foreach (var model in _modelRegistry.GetModelsForExecutor(EditExecutor))
-            AvailableModels.Add(model.Id);
+        if (AgentExecutorName.TryParse(EditExecutor, out var editExecutor))
+            foreach (var model in _modelRegistry.GetModelsForExecutor(editExecutor))
+                AvailableModels.Add(model.Id);
 
         if (AvailableModels.Count > 0 && !AvailableModels.Contains(EditModel, StringComparer.OrdinalIgnoreCase))
             EditModel = AvailableModels[0];
@@ -160,7 +153,7 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
         }
 
         var health = _healthMonitor.GetExecutorHealth()
-            .FirstOrDefault(e => e.Executor.Name == EditExecutor);
+            .FirstOrDefault(e => e.Executor.Name.Value == EditExecutor);
 
         if (health.Executor != null)
         {
@@ -181,7 +174,9 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
 
     private void UpdateModelCapabilities()
     {
-        var descriptor = _modelRegistry.Find(EditExecutor, EditModel);
+        var descriptor = AgentExecutorName.TryParse(EditExecutor, out var capExecutor)
+            ? _modelRegistry.Find(capExecutor, EditModel)
+            : null;
         ModelSupportsThinking = descriptor?.Capabilities.HasFlag(ModelCapabilities.Reasoning) == true;
     }
 
@@ -262,9 +257,30 @@ public partial class AgentDetailViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void ViewTranscript() => NavigateToTranscript?.Invoke();
 
+    private void OnStateChanged(ProjectStateChangedEvent e)
+    {
+        if (e.ProjectSlug != CurrentSlug) return;
+        _dispatcher.TryEnqueue(() =>
+        {
+            if (Agent is null || CurrentSlug is null) return;
+            if (e.Kind.HasFlag(ProjectStateChangeKind.Agents))
+            {
+                var running = _agentRunnerService.IsRunning(CurrentSlug, Agent.Slug);
+                if (running != IsRunning)
+                {
+                    IsRunning = running;
+                    Agent = _agentService.LoadAgent(CurrentSlug, Agent.Slug);
+                    if (Agent is not null) RefreshInbox(Agent.Slug);
+                    return;
+                }
+            }
+            if (e.Kind.HasFlag(ProjectStateChangeKind.Messages))
+                RefreshInbox(Agent.Slug);
+        });
+    }
+
     public void Dispose()
     {
-        _pollTimer?.Dispose();
-        _pollTimer = null;
+        _notifier.Changed -= _onStateChanged;
     }
 }

@@ -1,4 +1,5 @@
 using AiDev.Core.Local.Extensions;
+using AiDev.Features.Workspace;
 using AiDev.WinUI.ViewModels;
 
 using Microsoft.Extensions.Configuration;
@@ -23,12 +24,14 @@ public partial class App : Application
     {
         try
         {
-            _host = Host.CreateDefaultBuilder()
-                .ConfigureAppConfiguration(cfg =>
-                    cfg.AddJsonFile("appsettings.json", optional: true))
-                .ConfigureServices((ctx, services) =>
-                    ConfigureServices(ctx.Configuration, services))
-                .Build();
+            var builder = Host.CreateApplicationBuilder();
+            builder.Configuration.AddJsonFile("appsettings.json", optional: true);
+            builder.Configuration.AddJsonFile(
+                Path.Combine(AppContext.BaseDirectory, FilePathConstants.StudioSettingsFileName),
+                optional: true, reloadOnChange: false);
+            builder.AddServiceDefaults();
+            ConfigureServices(builder.Configuration, builder.Services);
+            _host = builder.Build();
 
             await _host.StartAsync();
 
@@ -44,12 +47,16 @@ public partial class App : Application
 
     private static void ConfigureServices(IConfiguration configuration, IServiceCollection services)
     {
-        var configuredPath = configuration["WorkspacesPath"];
-        var workspaceRoot = !string.IsNullOrWhiteSpace(configuredPath)
-            ? Path.GetFullPath(configuredPath)
-            : DiscoverWorkspacesPath();
+        // Activate the last-used project from the global registry (if any) before DI is built,
+        // so that the lazy WorkspacePaths singleton resolves correctly on first access.
+        var holder = new ActiveWorkspaceHolder();
+        var lastActive = configuration["ActiveProjectPath"]
+            ?? ReadLastActiveFromRegistry();
+        if (!string.IsNullOrWhiteSpace(lastActive) && Directory.Exists(lastActive))
+            holder.Activate(lastActive);
 
-        services.AddSingleton<WorkspacePaths>(new WorkspacePaths(new RootDir(workspaceRoot)));
+        services.AddSingleton(holder);
+        services.AddSingleton<WorkspacePaths>(sp => sp.GetRequiredService<ActiveWorkspaceHolder>().Paths);
 
         // Core domain services
         services.AddAiDevCore();
@@ -93,18 +100,17 @@ public partial class App : Application
         services.AddTransient<PlanningTasksViewModel>();
     }
 
-    /// <summary>
-    /// Walk up from the executable directory looking for a <c>workspaces</c> folder.
-    /// </summary>
-    private static string DiscoverWorkspacesPath()
+    private static string? ReadLastActiveFromRegistry()
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        for (int i = 0; i < 8 && dir is not null; i++, dir = dir.Parent)
+        try
         {
-            var candidate = Path.Combine(dir.FullName, "workspaces");
-            if (Directory.Exists(candidate))
-                return candidate;
+            if (!File.Exists(GlobalPaths.ManagedProjectsFile)) return null;
+            var json = File.ReadAllText(GlobalPaths.ManagedProjectsFile);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("lastActivePath", out var prop))
+                return prop.GetString();
         }
-        return Path.Combine(AppContext.BaseDirectory, "workspaces");
+        catch { }
+        return null;
     }
 }

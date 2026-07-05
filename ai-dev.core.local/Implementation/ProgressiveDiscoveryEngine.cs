@@ -1,4 +1,5 @@
 using AiDev.Core.Local.Contracts;
+using Microsoft.Extensions.Logging;
 using System.Text;
 
 namespace AiDev.Core.Local.Implementation;
@@ -12,10 +13,16 @@ internal sealed class ProgressiveDiscoveryEngine : IProgressiveDiscoveryEngine
     private const decimal HighConfidenceRatio = 0.5m;
 
     private readonly string _root;
+    private readonly ILogger<ProgressiveDiscoveryEngine>? _logger;
 
-    public ProgressiveDiscoveryEngine(WorkspacePaths paths) : this(paths.Root.Value) { }
+    public ProgressiveDiscoveryEngine(WorkspacePaths paths, ILogger<ProgressiveDiscoveryEngine>? logger = null)
+        : this(paths.Root.Value, logger) { }
 
-    internal ProgressiveDiscoveryEngine(string root) => _root = root;
+    internal ProgressiveDiscoveryEngine(string root, ILogger<ProgressiveDiscoveryEngine>? logger = null)
+    {
+        _root = root;
+        _logger = logger;
+    }
 
     public async Task<Result<DiscoveryBatch>> DiscoverAsync(
         DiscoveryRequest request,
@@ -33,7 +40,7 @@ internal sealed class ProgressiveDiscoveryEngine : IProgressiveDiscoveryEngine
 
         // Phase 2 + 3 — targeted slice reads and evidence synthesis
         var terms = ExtractTerms(request.Query);
-        var slices = await BuildSlicesAsync(request, candidates, terms, ct);
+        var slices = await BuildSlicesAsync(request, candidates, terms, ct, _logger);
 
         // Phase 4 — confidence and recommendation
         var confidence = CalculateConfidence(slices.Count, candidates.Count);
@@ -70,7 +77,7 @@ internal sealed class ProgressiveDiscoveryEngine : IProgressiveDiscoveryEngine
         foreach (var file in files)
         {
             ct.ThrowIfCancellationRequested();
-            if (await FileContainsAnyTermAsync(file, terms, ct))
+            if (await FileContainsAnyTermAsync(file, terms, ct, _logger))
                 matching.Add(file);
         }
 
@@ -82,7 +89,8 @@ internal sealed class ProgressiveDiscoveryEngine : IProgressiveDiscoveryEngine
         DiscoveryRequest request,
         List<string> candidates,
         string[] terms,
-        CancellationToken ct)
+        CancellationToken ct,
+        ILogger? logger)
     {
         var slices = new List<DiscoverySlice>();
 
@@ -91,7 +99,7 @@ internal sealed class ProgressiveDiscoveryEngine : IProgressiveDiscoveryEngine
             if (slices.Count >= request.MaxSlices) break;
             ct.ThrowIfCancellationRequested();
 
-            var slice = await TryBuildSliceAsync(file, terms, ct);
+            var slice = await TryBuildSliceAsync(file, terms, ct, logger);
             if (slice is not null) slices.Add(slice);
         }
 
@@ -101,11 +109,16 @@ internal sealed class ProgressiveDiscoveryEngine : IProgressiveDiscoveryEngine
     private static async Task<DiscoverySlice?> TryBuildSliceAsync(
         string filePath,
         string[] terms,
-        CancellationToken ct)
+        CancellationToken ct,
+        ILogger? logger)
     {
         string[] lines;
         try { lines = await File.ReadAllLinesAsync(filePath, ct); }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "[discovery] Failed to read {File} — skipping", filePath);
+            return null;
+        }
 
         var matchLine = -1;
         for (var i = 0; i < lines.Length; i++)
@@ -167,15 +180,15 @@ internal sealed class ProgressiveDiscoveryEngine : IProgressiveDiscoveryEngine
     }
 
     private static string[] ExtractTerms(string query)
-        => query.Split([' ', '.', ':', '/', '\\'], StringSplitOptions.RemoveEmptyEntries)
+        => [.. query.Split([' ', '.', ':', '/', '\\'], StringSplitOptions.RemoveEmptyEntries)
             .Where(t => t.Length >= 3)
-            .Take(5)
-            .ToArray();
+            .Take(5)];
 
     private static async Task<bool> FileContainsAnyTermAsync(
         string filePath,
         string[] terms,
-        CancellationToken ct)
+        CancellationToken ct,
+        ILogger? logger)
     {
         try
         {
@@ -188,7 +201,11 @@ internal sealed class ProgressiveDiscoveryEngine : IProgressiveDiscoveryEngine
             }
             return false;
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "[discovery] Failed to scan {File} — skipping", filePath);
+            return false;
+        }
     }
 
     private static bool IsIgnored(string path)

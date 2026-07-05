@@ -1,8 +1,11 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
+using AiDev.Models.Types;
 using AiDev.Services;
 using Microsoft.Extensions.Logging;
 
@@ -22,12 +25,12 @@ namespace AiDev.Executors;
 /// Tool implementations live in <see cref="WorkspaceTools"/> and delegate directly
 /// to the MCP server implementation without the protocol overhead.
 /// </summary>
-public class OllamaAgentExecutor(
+public partial class OllamaAgentExecutor(
     IHttpClientFactory httpClientFactory,
     StudioSettingsService settingsService,
     ILogger<OllamaAgentExecutor> logger) : IAgentExecutor
 {
-    public string Name        => "ollama";
+    public AgentExecutorName Name => AgentExecutorName.Ollama;
     public string DisplayName => "Ollama";
 
     public IReadOnlyList<ExecutorSkill> AvailableSkills { get; } =
@@ -49,6 +52,13 @@ public class OllamaAgentExecutor(
     // Prevents runaway loops if the model repeatedly calls tools.
     private const int MaxToolIterations = 30;
 
+    // Ollama's own default num_ctx is 2048. We ask for up to this ceiling when the model
+    // advertises a larger context via /api/show, subject to TokenBudget's output reservation.
+    private const int DefaultMaxOutputTokens = 4096;
+
+    // Cache of context-window sizes per model id, populated lazily from /api/show.
+    private readonly ConcurrentDictionary<string, int> _contextWindows = new(StringComparer.OrdinalIgnoreCase);
+
     // -------------------------------------------------------------------------
     // Health check
     // -------------------------------------------------------------------------
@@ -66,19 +76,36 @@ public class OllamaAgentExecutor(
             if (!response.IsSuccessStatusCode)
                 return new ExecutorHealthResult(false, $"Ollama returned HTTP {(int)response.StatusCode}");
 
-            List<ModelDescriptor> discovered = [];
+            List<string> names = [];
             try
             {
                 var doc = await response.Content.ReadFromJsonAsync<JsonDocument>(ct).ConfigureAwait(false);
-                discovered = doc?.RootElement.GetProperty("models")
+                names = doc?.RootElement.GetProperty("models")
                     .EnumerateArray()
                     .Select(m => m.GetProperty("name").GetString() ?? string.Empty)
                     .Where(n => n.Length > 0)
-                    .Select(name => new ModelDescriptor(name, name, "ollama",
-                        ModelCapabilities.Streaming | ModelCapabilities.ToolCalling))
                     .ToList() ?? [];
             }
             catch { /* model list is best-effort */ }
+
+            // Fetch context_length for each model in parallel via /api/show.
+            // /api/tags doesn't include context length, but /api/show does (per model).
+            var contextLookups = names.Select(n => FetchContextLengthAsync(baseUrl, n, ct)).ToArray();
+            var contextLengths = await Task.WhenAll(contextLookups).ConfigureAwait(false);
+
+            var discovered = new List<ModelDescriptor>(names.Count);
+            for (int i = 0; i < names.Count; i++)
+            {
+                var name = names[i];
+                var ctxLen = contextLengths[i];
+                if (ctxLen > 0)
+                    _contextWindows[name] = ctxLen;
+
+                discovered.Add(new ModelDescriptor(
+                    name, name, AgentExecutorName.Ollama,
+                    ModelCapabilities.Streaming | ModelCapabilities.ToolCalling,
+                    ContextWindow: ctxLen));
+            }
 
             var message = discovered.Count > 0
                 ? $"{discovered.Count} model(s) available"
@@ -89,8 +116,56 @@ public class OllamaAgentExecutor(
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "[ollama-health] Probe failed: {Message}", ex.Message);
+            LogHealthProbeFailed(ex, ex.Message);
             return new ExecutorHealthResult(false, $"Connection refused: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Query Ollama's /api/show endpoint for a model's context length. The field name is
+    /// architecture-specific (e.g. "llama.context_length", "qwen2.context_length"), so we
+    /// scan model_info for any property ending in ".context_length". Returns 0 when the
+    /// lookup fails — callers treat that as "unknown" and skip preflight checks.
+    /// </summary>
+    private async Task<int> FetchContextLengthAsync(string baseUrl, string modelName, CancellationToken ct)
+    {
+        try
+        {
+            var http = httpClientFactory.CreateClient("ollama-health");
+            var body = new StringContent(
+                JsonSerializer.Serialize(new { name = modelName }),
+                Encoding.UTF8,
+                "application/json");
+
+            using var response = await http.PostAsync($"{baseUrl}/api/show", body, ct).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return 0;
+
+            using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>(ct).ConfigureAwait(false);
+            if (doc is null) return 0;
+
+            if (!doc.RootElement.TryGetProperty("model_info", out var info) ||
+                info.ValueKind != JsonValueKind.Object)
+                return 0;
+
+            foreach (var prop in info.EnumerateObject())
+            {
+                if (!prop.Name.EndsWith(".context_length", StringComparison.Ordinal))
+                    continue;
+
+                if (prop.Value.ValueKind == JsonValueKind.Number && prop.Value.TryGetInt32(out var n))
+                    return n;
+                if (prop.Value.ValueKind == JsonValueKind.String
+                    && int.TryParse(prop.Value.GetString(), out var parsed))
+                    return parsed;
+            }
+
+            return 0;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            LogApiShowFailed(ex, modelName);
+            return 0;
         }
     }
 
@@ -109,14 +184,14 @@ public class OllamaAgentExecutor(
         activity?.SetTag("agent.trigger.reason", context.Trigger?.Reason);
         activity?.SetTag("message.file", context.Trigger?.MessageFile);
 
-        var systemPrompt = BuildSystemPrompt(context.WorkingDir);
-        var rawBaseUrl   = settingsService.GetSettings().OllamaBaseUrl.TrimEnd('/');
+        var settings   = settingsService.GetSettings();
+        var rawBaseUrl = settings.OllamaBaseUrl.TrimEnd('/');
 
         if (!Uri.TryCreate(rawBaseUrl, UriKind.Absolute, out var parsedUri)
             || (parsedUri.Scheme != Uri.UriSchemeHttp && parsedUri.Scheme != Uri.UriSchemeHttps))
         {
             var msg = $"OllamaBaseUrl '{rawBaseUrl}' is not a valid http/https URL. Aborting.";
-            logger.LogError("[ollama] {Message}", msg);
+            LogInvalidBaseUrl(msg);
             output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
             return new ExecutorResult(1, ErrorMessage: msg);
         }
@@ -128,26 +203,47 @@ public class OllamaAgentExecutor(
         if (enableTools && OllamaToolSupport.IsKnownUnsupportedModel(context.ModelId))
         {
             var msg = OllamaToolSupport.GetUnsupportedToolsMessage(context.ModelId);
-            logger.LogWarning("[ollama] {Message}", msg);
+            LogUnsupportedModelWarning(msg);
             output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
             return new ExecutorResult(1, PreserveInbox: true, ErrorMessage: msg);
         }
 
-        logger.LogInformation(
-            "[ollama] Starting session — model={Model} endpoint={Uri} tools={Tools}",
-            context.ModelId, requestUri, enableTools ? "enabled" : "disabled");
-        logger.LogInformation(
-            "[ollama] Trigger source={Source} reason={Reason} project={Project} task={TaskId} decision={DecisionId} message={MessageFile}",
+        LogStartingSession(context.ModelId, requestUri, enableTools ? "enabled" : "disabled");
+        LogTriggerDetails(
             context.Trigger?.Source,
             context.Trigger?.Reason,
-            context.Trigger?.ProjectSlug,
-            context.Trigger?.TaskId,
-            context.Trigger?.DecisionId,
+            context.Trigger?.ProjectSlug?.ToString(),
+            context.Trigger?.TaskId?.ToString(),
+            context.Trigger?.DecisionId?.ToString(),
             context.Trigger?.MessageFile);
         output.TryWrite($"[{DateTime.UtcNow:o}] [ollama] model={context.ModelId} endpoint={requestUri}");
 
         if (enableTools)
             output.TryWrite($"[{DateTime.UtcNow:o}] [ollama] workspace tools enabled — root={workspaceRoot}");
+
+        // Resolve context window (from health-check cache, or probe on demand).
+        var contextWindow = await ResolveContextWindowAsync(rawBaseUrl, context.ModelId, context.CancellationToken)
+            .ConfigureAwait(false);
+        var maxOutputTokens = TokenBudget.RecommendMaxOutputTokens(
+            contextWindow, floor: 512, ceiling: DefaultMaxOutputTokens);
+        var toolsJson = enableTools ? OllamaToolSchemas.GetToolsArray().ToJsonString() : null;
+
+        var systemPrompt = SystemPromptLoader.Load(
+            context.WorkingDir, contextWindow, settings.CompactPromptThreshold, logger);
+        var promptTier = contextWindow > 0 && contextWindow < settings.CompactPromptThreshold ? "compact" : "full";
+
+        if (contextWindow > 0)
+            output.TryWrite(
+                $"[{DateTime.UtcNow:o}] [ollama] context_window={contextWindow} max_output_tokens={maxOutputTokens} prompt_tier={promptTier}");
+
+        if (!TokenBudget.CanFitCompact(contextWindow, systemPrompt, maxOutputTokens))
+        {
+            var minRequired = TokenBudget.EstimateTokens(systemPrompt) + maxOutputTokens + TokenBudget.SafetyMargin;
+            var refusal = SystemPromptLoader.BuildRefusalMessage(context.ModelId, contextWindow, minRequired);
+            LogPromptTooLarge(refusal);
+            output.TryWrite($"[{DateTime.UtcNow:o}] {refusal}");
+            return new ExecutorResult(1, ErrorMessage: refusal);
+        }
 
         // Build mutable message history for the tool execution loop.
         var messages = new List<JsonNode>
@@ -162,6 +258,26 @@ public class OllamaAgentExecutor(
 
         while (iteration++ < MaxToolIterations)
         {
+            // Preflight: estimate the token budget before each request. The messages list
+            // grows with tool_call/tool_result pairs, so an overflow can appear mid-session.
+            var preflight = TokenBudget.Preflight(
+                contextWindow:   contextWindow,
+                maxOutputTokens: maxOutputTokens,
+                messageContents: messages.Select(ExtractMessageContent),
+                toolsJson:       toolsJson,
+                modelId:         context.ModelId,
+                executorName:    DisplayName);
+
+            if (preflight is PreflightResult.Exceeded exceeded)
+            {
+                var msg = iteration == 1
+                    ? exceeded.Error
+                    : exceeded.Error + $" (after {iteration - 1} tool iteration(s))";
+                LogPreflightExceeded(msg);
+                output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
+                return new ExecutorResult(1, Usage: totalUsage, ErrorMessage: msg);
+            }
+
             // Serialize the current message list into a fresh JsonArray
             // (JsonNode instances can only belong to one parent, so we deep-clone).
             var requestObj = new JsonObject
@@ -170,6 +286,18 @@ public class OllamaAgentExecutor(
                 ["messages"] = new JsonArray(messages.Select(m => m.DeepClone()).ToArray()),
                 ["stream"]   = true,
             };
+
+            // Ollama's default num_ctx is 2048 regardless of what the model was trained for.
+            // Tell it explicitly to allocate the context window we discovered via /api/show,
+            // so we don't silently truncate large prompts.
+            if (contextWindow > 0)
+            {
+                requestObj["options"] = new JsonObject
+                {
+                    ["num_ctx"]     = contextWindow,
+                    ["num_predict"] = maxOutputTokens,
+                };
+            }
 
             if (enableTools)
                 requestObj["tools"] = OllamaToolSchemas.GetToolsArray();
@@ -192,7 +320,7 @@ public class OllamaAgentExecutor(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 var msg = $"Failed to connect to Ollama at {requestUri}: {ex.Message}";
-                logger.LogError(ex, "[ollama] {Message}", msg);
+                LogHttpConnectFailed(ex, msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, ErrorMessage: msg);
             }
@@ -202,19 +330,18 @@ public class OllamaAgentExecutor(
                 var body = await response.Content.ReadAsStringAsync(context.CancellationToken).ConfigureAwait(false);
                 if (enableTools && OllamaToolSupport.TryGetUnsupportedToolsMessage(context.ModelId, body, out var unsupportedToolsMessage))
                 {
-                    logger.LogWarning("[ollama] Request rejected because workspace tools are unsupported for model {Model}: {Body}",
-                        context.ModelId, body);
+                    LogToolsUnsupportedForModel(context.ModelId, body);
                     output.TryWrite($"[{DateTime.UtcNow:o}] [error] {unsupportedToolsMessage}");
                     return new ExecutorResult(1, PreserveInbox: true, ErrorMessage: unsupportedToolsMessage);
                 }
 
                 var msg  = $"Ollama returned HTTP {(int)response.StatusCode}: {body}";
-                logger.LogError("[ollama] {Message}", msg);
+                LogHttpErrorResponse(msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, ErrorMessage: msg);
             }
 
-            logger.LogInformation("[ollama] Streaming response — iteration {N}", iteration);
+            LogStreamingResponse(iteration);
 
             // --- Stream the response body ---
             await using var stream = await response.Content.ReadAsStreamAsync(context.CancellationToken).ConfigureAwait(false);
@@ -233,7 +360,7 @@ public class OllamaAgentExecutor(
                 try { chunk = JsonSerializer.Deserialize<OllamaChatChunk>(line, OllamaJsonOptions); }
                 catch (JsonException ex)
                 {
-                    logger.LogWarning(ex, "[ollama] Failed to parse chunk: {Line}", line);
+                    LogChunkParseFailed(ex, line);
                     continue;
                 }
 
@@ -274,7 +401,7 @@ public class OllamaAgentExecutor(
 
             if (toolCalls is { Count: > 0 } && enableTools && workspaceRoot != null)
             {
-                logger.LogInformation("[ollama] Tool calls requested — count={Count} iteration={N}", toolCalls.Count, iteration);
+                LogToolCallsRequested(toolCalls.Count, iteration);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [ollama] tool calls: {toolCalls.Count} (iteration {iteration})");
 
                 // Accumulate token usage from this tool-calling iteration before continuing.
@@ -307,13 +434,13 @@ public class OllamaAgentExecutor(
                     var argsPreview = ArgsPreview(toolArgs);
 
                     output.TryWrite($"[{DateTime.UtcNow:o}] [tool:call] {toolName}({argsPreview})");
-                    logger.LogInformation("[ollama] Executing tool — {Tool}({Args})", toolName, argsPreview);
+                    LogExecutingTool(toolName, argsPreview);
 
                     var result = WorkspaceTools.Execute(workspaceRoot, toolName, toolArgs);
 
                     var resultPreview = result.Length > 120 ? result[..120].Replace('\n', ' ') + "…" : result.Replace('\n', ' ');
                     output.TryWrite($"[{DateTime.UtcNow:o}] [tool:result] {resultPreview}");
-                    logger.LogInformation("[ollama] Tool result — {Chars} chars", result.Length);
+                    LogToolResult(result.Length);
 
                     messages.Add(new JsonObject { ["role"] = "tool", ["content"] = result });
                 }
@@ -326,7 +453,7 @@ public class OllamaAgentExecutor(
 
             // Stream ended without done=true; emit whatever was collected.
             if (finalChunk == null)
-                logger.LogWarning("[ollama] Stream ended without done=true");
+                LogStreamEndedWithoutDone();
 
             var promptTokens = finalChunk?.PromptEvalCount ?? 0;
             var outputTokens = finalChunk?.EvalCount       ?? 0;
@@ -334,9 +461,7 @@ public class OllamaAgentExecutor(
                 ? finalChunk.TotalDuration.Value / 1_000_000.0
                 : 0;
 
-            logger.LogInformation(
-                "[ollama] Session complete — {Chars} chars | tokens: {In} in / {Out} out | {Ms:F0} ms | iterations: {N}",
-                responseText.Length, promptTokens, outputTokens, durationMs, iteration);
+            LogSessionComplete(responseText.Length, promptTokens, outputTokens, durationMs, iteration);
 
             if (promptTokens > 0 || outputTokens > 0)
                 output.TryWrite(
@@ -355,7 +480,7 @@ public class OllamaAgentExecutor(
 
         // Reached MaxToolIterations without a final response.
         var limitMsg = $"Exceeded maximum tool-call iterations ({MaxToolIterations}). Aborting session.";
-        logger.LogError("[ollama] {Message}", limitMsg);
+        LogMaxIterationsExceeded(limitMsg);
         output.TryWrite($"[{DateTime.UtcNow:o}] [error] {limitMsg}");
         return new ExecutorResult(1, ErrorMessage: limitMsg);
     }
@@ -371,12 +496,43 @@ public class OllamaAgentExecutor(
     private static string DeriveWorkspaceRoot(string workingDir) =>
         Path.GetFullPath(Path.Combine(workingDir, "../.."));
 
-    private static string BuildSystemPrompt(string workingDir)
+    /// <summary>
+    /// Extract a best-effort string representation of a message's billable content
+    /// for token estimation. Includes the content field plus any tool_call arguments.
+    /// </summary>
+    private static string ExtractMessageContent(JsonNode message)
     {
-        var claudeMd = Path.Combine(workingDir, "CLAUDE.md");
-        if (!File.Exists(claudeMd)) return "You are a helpful AI agent.";
-        try { return File.ReadAllText(claudeMd, System.Text.Encoding.UTF8); }
-        catch { return "You are a helpful AI agent."; }
+        if (message is not JsonObject obj) return message.ToJsonString();
+
+        var sb = new StringBuilder();
+
+        if (obj["content"] is JsonNode content)
+        {
+            sb.Append(content is JsonValue v && v.TryGetValue<string>(out var s)
+                ? s
+                : content.ToJsonString());
+        }
+
+        if (obj["tool_calls"] is JsonArray toolCalls)
+            sb.Append(toolCalls.ToJsonString());
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Return the cached context window for a model or probe /api/show on demand.
+    /// Returns 0 when the value cannot be determined — preflight then becomes a no-op.
+    /// </summary>
+    private async Task<int> ResolveContextWindowAsync(string baseUrl, string modelId, CancellationToken ct)
+    {
+        if (_contextWindows.TryGetValue(modelId, out var cached))
+            return cached;
+
+        var resolved = await FetchContextLengthAsync(baseUrl, modelId, ct).ConfigureAwait(false);
+        if (resolved > 0)
+            _contextWindows[modelId] = resolved;
+
+        return resolved;
     }
 
     private static string ArgsPreview(JsonElement args)
@@ -425,4 +581,65 @@ public class OllamaAgentExecutor(
         public string?      Name      { get; set; }
         public JsonElement  Arguments { get; set; }
     }
+
+    // -------------------------------------------------------------------------
+    // Logger message declarations
+    // -------------------------------------------------------------------------
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[ollama-health] Probe failed: {Message}")]
+    private partial void LogHealthProbeFailed(Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[ollama-health] /api/show failed for {Model}")]
+    private partial void LogApiShowFailed(Exception ex, string model);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[ollama] {Message}")]
+    private partial void LogInvalidBaseUrl(string message);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[ollama] {Message}")]
+    private partial void LogUnsupportedModelWarning(string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[ollama] Starting session — model={Model} endpoint={Uri} tools={Tools}")]
+    private partial void LogStartingSession(string model, string uri, string tools);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[ollama] Trigger source={Source} reason={Reason} project={Project} task={TaskId} decision={DecisionId} message={MessageFile}")]
+    private partial void LogTriggerDetails(string? source, string? reason, string? project, string? taskId, string? decisionId, string? messageFile);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[ollama] {Refusal}")]
+    private partial void LogPromptTooLarge(string refusal);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[ollama] {Message}")]
+    private partial void LogPreflightExceeded(string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[ollama] {Message}")]
+    private partial void LogHttpConnectFailed(Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[ollama] Request rejected because workspace tools are unsupported for model {Model}: {Body}")]
+    private partial void LogToolsUnsupportedForModel(string model, string body);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[ollama] {Message}")]
+    private partial void LogHttpErrorResponse(string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[ollama] Streaming response — iteration {N}")]
+    private partial void LogStreamingResponse(int n);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[ollama] Failed to parse chunk: {Line}")]
+    private partial void LogChunkParseFailed(Exception ex, string line);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[ollama] Tool calls requested — count={Count} iteration={N}")]
+    private partial void LogToolCallsRequested(int count, int n);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[ollama] Executing tool — {Tool}({Args})")]
+    private partial void LogExecutingTool(string tool, string args);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[ollama] Tool result — {Chars} chars")]
+    private partial void LogToolResult(int chars);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[ollama] Stream ended without done=true")]
+    private partial void LogStreamEndedWithoutDone();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[ollama] Session complete — {Chars} chars | tokens: {In} in / {Out} out | {Ms:F0} ms | iterations: {N}")]
+    private partial void LogSessionComplete(int chars, int @in, int @out, double ms, int n);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[ollama] {Message}")]
+    private partial void LogMaxIterationsExceeded(string message);
 }

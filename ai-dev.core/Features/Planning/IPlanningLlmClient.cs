@@ -12,7 +12,7 @@ public interface IPlanningLlmClient
     /// The executor name this client handles. Must match the "executor" field in agent.json
     /// (e.g. "anthropic", "claude", "ollama").
     /// </summary>
-    string ExecutorName { get; }
+    AgentExecutorName ExecutorName { get; }
 
     /// <summary>
     /// Sends the accumulated conversation history plus a new user message to the LLM

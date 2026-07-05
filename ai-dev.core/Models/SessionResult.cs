@@ -7,10 +7,11 @@ namespace AiDev.Models;
 /// </summary>
 public record SessionResult(
     string? TaskId,
-    string? Status,           // completed | failed | partial
+    [property: JsonPropertyName("status")] SessionStatus? SessionStatus,
     string? Summary,
     string? PullRequestUrl,
     IReadOnlyList<string> FilesChanged,
-    string? TestOutcome,      // passed | failed | skipped | null
+    TestOutcome? TestOutcome,
     DateTime? CompletedAt,
     IReadOnlyList<string>? Tags = null);
+

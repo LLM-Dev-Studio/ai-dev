@@ -1,13 +1,34 @@
 namespace AiDev.Models.Types;
 
 [JsonConverter(typeof(ColumnIdJsonConverter))]
+/// <summary>
+/// Represents a validated board column identifier.
+/// </summary>
 public sealed partial record ColumnId : IParsable<ColumnId>
 {
+    /// <summary>
+    /// The backlog column identifier.
+    /// </summary>
     public static readonly ColumnId Backlog = new("backlog");
+
+    /// <summary>
+    /// The in-progress column identifier.
+    /// </summary>
     public static readonly ColumnId InProgress = new("in-progress");
+
+    /// <summary>
+    /// The review column identifier.
+    /// </summary>
     public static readonly ColumnId Review = new("review");
+
+    /// <summary>
+    /// The done column identifier.
+    /// </summary>
     public static readonly ColumnId Done = new("done");
 
+    /// <summary>
+    /// Gets the validated column identifier value.
+    /// </summary>
     public string Value { get; }
 
     public ColumnId(string value)
@@ -19,6 +40,11 @@ public sealed partial record ColumnId : IParsable<ColumnId>
         Value = value;
     }
 
+    /// <summary>
+    /// Creates a <see cref="ColumnId"/> from a raw persisted value.
+    /// </summary>
+    /// <param name="value">The raw column identifier value.</param>
+    /// <returns>The parsed column identifier.</returns>
     public static ColumnId From(string? value)
         => value?.ToLowerInvariant() switch
         {
@@ -30,6 +56,12 @@ public sealed partial record ColumnId : IParsable<ColumnId>
             _ => throw new ArgumentException("Column id is required.", nameof(value)),
         };
 
+    /// <summary>
+    /// Attempts to parse a validated column identifier.
+    /// </summary>
+    /// <param name="value">The raw column identifier value.</param>
+    /// <param name="columnId">The parsed identifier when successful.</param>
+    /// <returns><see langword="true"/> when parsing succeeds; otherwise, <see langword="false"/>.</returns>
     public static bool TryParse(string? value, [NotNullWhen(true)] out ColumnId? columnId)
     {
         if (!IsValid(value))
@@ -57,18 +89,4 @@ public sealed partial record ColumnId : IParsable<ColumnId>
 
     [GeneratedRegex(@"^[a-z0-9][a-z0-9\-]*[a-z0-9]$")]
     private static partial Regex ColumnIdPattern();
-}
-
-internal sealed class ColumnIdJsonConverter : JsonConverter<ColumnId>
-{
-    public override ColumnId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        var value = reader.GetString() ?? throw new JsonException("Expected string for ColumnId.");
-        if (!ColumnId.TryParse(value, out var columnId))
-            throw new JsonException($"Invalid ColumnId: '{value}'.");
-        return columnId;
-    }
-
-    public override void Write(Utf8JsonWriter writer, ColumnId value, JsonSerializerOptions options)
-        => writer.WriteStringValue(value.Value);
 }

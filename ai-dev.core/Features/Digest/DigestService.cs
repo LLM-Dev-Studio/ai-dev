@@ -2,9 +2,18 @@ using AiDev.Features.Agent;
 
 namespace AiDev.Features.Digest;
 
+/// <summary>
+/// Builds daily digest summaries for a project.
+/// </summary>
 public class DigestService(WorkspacePaths paths, AgentService agentService)
 {
-    public DigestData GetDigest(ProjectSlug projectSlug, string date)
+    /// <summary>
+    /// Gets the digest data for the specified project and date.
+    /// </summary>
+    /// <param name="projectSlug">The project slug to summarize.</param>
+    /// <param name="date">The date to summarize.</param>
+    /// <returns>The digest data for the requested project and date.</returns>
+    public DigestData GetDigest(ProjectSlug projectSlug, DateOnly date)
     {
         var agentsDir = paths.AgentsDir(projectSlug);
         var pendingDir = paths.DecisionsPendingDir(projectSlug);
@@ -23,7 +32,6 @@ public class DigestService(WorkspacePaths paths, AgentService agentService)
 
                 var agentInfo = agentService.LoadAgent(projectSlug, agentSlug);
                 var name = agentInfo?.Name ?? agentSlug.Value;
-                var executor = agentInfo?.Executor.Value ?? string.Empty;
                 var model = agentInfo?.Model ?? string.Empty;
 
                 var sent = CountFilesForDate(paths.AgentOutboxDir(projectSlug, agentSlug), date);
@@ -32,9 +40,9 @@ public class DigestService(WorkspacePaths paths, AgentService agentService)
 
                 agentActivity.Add(new()
                 {
-                    AgentSlug = agentSlug.Value,
+                    AgentSlug = agentSlug,
                     AgentName = name,
-                    Executor = executor,
+                    Executor = agentInfo?.Executor,
                     Model = model,
                     MessagesSent = sent,
                     MessagesReceived = received,
@@ -48,15 +56,14 @@ public class DigestService(WorkspacePaths paths, AgentService agentService)
             TotalMessages = totalMessages,
             PendingDecisions = pendingCount,
             ResolvedDecisions = resolvedCount,
-            AgentActivity = agentActivity.OrderBy(a => a.AgentName).ToList(),
+            AgentActivity = [.. agentActivity.OrderBy(a => a.AgentName)],
         };
     }
 
-    private static int CountFilesForDate(DirPath dir, string date)
+    private static int CountFilesForDate(DirPath dir, DateOnly date)
     {
         if (!dir.Exists()) return 0;
-        // Files named YYYYMMDD-HHMMSS-*.md — date prefix is first 8 chars of the compact date
-        var prefix = date.Replace("-", ""); // "2026-03-27" → "20260327"
+        var prefix = date.ToString("yyyyMMdd");
         return Directory.GetFiles(dir.Value, "*.md")
             .Count(f => Path.GetFileName(f).StartsWith(prefix));
     }

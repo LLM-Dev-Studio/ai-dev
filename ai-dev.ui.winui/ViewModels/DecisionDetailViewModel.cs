@@ -7,7 +7,7 @@ namespace AiDev.WinUI.ViewModels;
 
 public partial class DecisionDetailViewModel : ObservableObject, IDisposable
 {
-    private readonly DecisionsService _decisionsService;
+    private readonly IDecisionsService _decisionsService;
     private readonly DecisionChatService _chatService;
     private readonly AgentRunnerService _runnerService;
     private readonly MainViewModel _mainViewModel;
@@ -30,7 +30,7 @@ public partial class DecisionDetailViewModel : ObservableObject, IDisposable
     public event Action? NavigateBack;
 
     public DecisionDetailViewModel(
-        DecisionsService decisionsService,
+        IDecisionsService decisionsService,
         DecisionChatService chatService,
         AgentRunnerService runnerService,
         MainViewModel mainViewModel)
@@ -44,7 +44,7 @@ public partial class DecisionDetailViewModel : ObservableObject, IDisposable
 
     private ProjectSlug? CurrentSlug => _mainViewModel.ActiveProject?.Slug;
 
-    public void Load(string decisionId)
+    public void Load(DecisionId decisionId)
     {
         if (CurrentSlug is null) return;
         IsLoading = true;
@@ -71,7 +71,7 @@ public partial class DecisionDetailViewModel : ObservableObject, IDisposable
         finally { IsLoading = false; }
     }
 
-    private void RefreshChat(string decisionId)
+    private void RefreshChat(DecisionId decisionId)
     {
         if (CurrentSlug is null) return;
         var msgs = _chatService.GetMessages(CurrentSlug, decisionId);
@@ -119,7 +119,7 @@ public partial class DecisionDetailViewModel : ObservableObject, IDisposable
         ResolveError = "";
         try
         {
-            var result = await _decisionsService.ResolveDecisionAsync(CurrentSlug, Decision.Id, ResolveResponse.Trim());
+            var result = await _decisionsService.ResolveDecisionAsync(CurrentSlug, Decision.Id, ResolveResponse.Trim(), CancellationToken.None);
             if (result is Err<Unit> err) { ResolveError = err.Error.Message; return; }
             ShowResolveDialog = false;
             _pollTimer?.Dispose();

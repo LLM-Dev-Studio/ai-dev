@@ -7,7 +7,7 @@ namespace AiDev.Features.Agent;
 /// Assembles the effective prompt for an agent session by injecting KB context
 /// and playbook instructions ahead of the base prompt.
 /// </summary>
-public class AgentPromptBuilder(
+public partial class AgentPromptBuilder(
     KbService kbService,
     PlaybookService playbookService,
     ILogger<AgentPromptBuilder> logger)
@@ -25,7 +25,7 @@ public class AgentPromptBuilder(
         if (!string.IsNullOrEmpty(kbContext))
         {
             effectivePrompt = kbContext + "\n\n---\n\n" + effectivePrompt;
-            logger.LogInformation("[runner] Injected KB context into prompt for {Key}", key);
+            LogKbContextInjected(key);
         }
 
         var playbookSlug = ExtractPlaybookSlug(inboxDir, inboxSnapshot);
@@ -35,16 +35,25 @@ public class AgentPromptBuilder(
             if (!string.IsNullOrEmpty(playbookContext))
             {
                 effectivePrompt = playbookContext + "\n\n---\n\n" + effectivePrompt;
-                logger.LogInformation("[runner] Injected playbook '{Slug}' into prompt for {Key}", playbookSlug, key);
+                LogPlaybookInjected(playbookSlug, key);
             }
             else
             {
-                logger.LogWarning("[runner] Playbook '{Slug}' specified in inbox message not found for {Key}", playbookSlug, key);
+                LogPlaybookNotFound(playbookSlug, key);
             }
         }
 
         return effectivePrompt;
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Injected KB context into prompt for {Key}")]
+    private partial void LogKbContextInjected(string key);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[runner] Injected playbook '{Slug}' into prompt for {Key}")]
+    private partial void LogPlaybookInjected(string slug, string key);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[runner] Playbook '{Slug}' specified in inbox message not found for {Key}")]
+    private partial void LogPlaybookNotFound(string slug, string key);
 
     private static string? ExtractPlaybookSlug(string inboxDir, string[] snapshot)
     {

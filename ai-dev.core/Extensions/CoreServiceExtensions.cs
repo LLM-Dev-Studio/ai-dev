@@ -24,6 +24,19 @@ public static class CoreServiceExtensions
     /// </summary>
     public static IServiceCollection AddAiDevCore(this IServiceCollection services)
     {
+        // WorkspacePaths is backed by a root factory that reads the current ActiveWorkspaceHolder
+        // on every access. This means the singleton is safe to construct even before a project is
+        // activated, and automatically follows the active project when it changes.
+        services.AddSingleton<ActiveWorkspaceHolder>();
+        services.AddSingleton<WorkspacePaths>(sp =>
+        {
+            var holder = sp.GetRequiredService<ActiveWorkspaceHolder>();
+            return new WorkspacePaths(() =>
+                holder.HasActiveProject
+                    ? holder.Paths.Root
+                    : new RootDir(Path.Combine(Path.GetTempPath(), "ai-dev-no-project")));
+        });
+
         services.AddSingleton<IDomainEventDispatcher, InProcessDomainEventDispatcher>();
         services.AddSingleton<IDomainEventHandler<TaskAssigned>, TaskAssignedHandler>();
         services.AddSingleton<ProjectStateChangedNotifier>();
@@ -32,14 +45,18 @@ public static class CoreServiceExtensions
         services.AddSingleton<ProjectMutationCoordinator>();
         services.AddSingleton<ConsistencyCheckService>();
         services.AddSingleton<SecretsService>();
-        services.AddSingleton<WorkspaceService>();
+        services.AddSingleton<WorkspaceService>(sp => new WorkspaceService(
+            sp.GetRequiredService<WorkspacePaths>(),
+            sp.GetRequiredService<AtomicFileWriter>(),
+            sp.GetService<ActiveWorkspaceHolder>(),
+            logger: sp.GetService<ILogger<WorkspaceService>>()));
         services.AddSingleton<StudioSettingsService>();
         services.AddSingleton<FeatureFlagsService>();
         services.AddSingleton<AgentTemplatesService>();
         services.AddSingleton<AgentService>();
-        services.AddSingleton<BoardService>();
+        services.AddSingleton<IBoardService, BoardService>();
         services.AddSingleton<MessagesService>();
-        services.AddSingleton<DecisionsService>();
+        services.AddSingleton<IDecisionsService, DecisionsService>();
         services.AddSingleton<DecisionChatService>();
         services.AddSingleton<JournalsService>();
         services.AddSingleton<KbService>();
@@ -49,6 +66,10 @@ public static class CoreServiceExtensions
         services.AddSingleton<PromptEnhancerService>();
         services.AddSingleton<InsightsService>();
         services.AddSingleton<AgentPromptBuilder>();
+        services.AddSingleton<IAgentInboxService, AgentInboxService>();
+        services.AddSingleton<AgentTranscriptService>();
+        services.AddSingleton<ModelResolver>();
+        services.AddSingleton<AgentStatusWriter>();
         services.AddSingleton<IPlanningSessionService, PlanningSessionService>();
         services.AddSingleton<IPlanningChatService, PlanningChatService>();
         services.AddSingleton<SessionCompletionProcessor>();

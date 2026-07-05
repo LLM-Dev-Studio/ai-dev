@@ -7,7 +7,7 @@ namespace AiDev.WinUI.ViewModels;
 
 public partial class DecisionsViewModel : ObservableObject
 {
-    private readonly DecisionsService _decisionsService;
+    private readonly IDecisionsService _decisionsService;
     private readonly DecisionChatService _chatService;
     private readonly MainViewModel _mainViewModel;
     private readonly IUiDispatcher _uiDispatcher;
@@ -33,7 +33,7 @@ public partial class DecisionsViewModel : ObservableObject
     public ObservableCollection<DecisionChatMessage> ChatMessages { get; } = [];
 
     public DecisionsViewModel(
-        DecisionsService decisionsService,
+        IDecisionsService decisionsService,
         DecisionChatService chatService,
         MainViewModel mainViewModel,
         IUiDispatcher uiDispatcher)
@@ -53,13 +53,13 @@ public partial class DecisionsViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var pending = _decisionsService.ListDecisions(CurrentSlug, "pending");
+            var pending = _decisionsService.ListDecisions(CurrentSlug, DecisionStatus.Pending);
             Decisions.Clear();
             foreach (var d in pending) Decisions.Add(d);
 
             if (ShowResolved)
             {
-                var resolved = _decisionsService.ListDecisions(CurrentSlug, "resolved");
+                var resolved = _decisionsService.ListDecisions(CurrentSlug, DecisionStatus.Resolved);
                 foreach (var d in resolved) Decisions.Add(d);
             }
             return Task.CompletedTask;
@@ -101,7 +101,7 @@ public partial class DecisionsViewModel : ObservableObject
     {
         if (CurrentSlug is null || SelectedDecision is null) return;
         StopPollingDecision();
-        await _decisionsService.ResolveDecisionAsync(CurrentSlug, SelectedDecision.Id, ReplyText.Trim());
+        await _decisionsService.ResolveDecisionAsync(CurrentSlug, SelectedDecision.Id, ReplyText.Trim(), CancellationToken.None);
         ReplyText = "";
         SelectedDecision = null;
         ChatMessages.Clear();
@@ -149,6 +149,15 @@ public partial class DecisionsViewModel : ObservableObject
             await LoadAsync();
             return;
         }
+
+        // Replace the item in Decisions with the fresh fetch before assigning SelectedDecision.
+        // The ListView's TwoWay SelectedItem binding uses reference equality; setting SelectedDecision
+        // to a new object not present in the collection coerces SelectedItem to null, which fires back
+        // through the binding and clears SelectedDecision — silently breaking subsequent sends.
+        var idx = -1;
+        for (var i = 0; i < Decisions.Count; i++)
+            if (Decisions[i].Id == latest.Id) { idx = i; break; }
+        if (idx >= 0) Decisions[idx] = latest;
 
         SelectedDecision = latest;
         RefreshChat(latest);

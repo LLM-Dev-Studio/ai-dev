@@ -13,7 +13,7 @@ namespace AiDev.Executors;
 /// </summary>
 public sealed class ClaudePlanningLlmClient(ClaudeAgentExecutor executor) : IPlanningLlmClient
 {
-    public string ExecutorName => AgentExecutorName.ClaudeValue;
+    public AgentExecutorName ExecutorName => AgentExecutorName.Claude;
 
     public async Task<PlanningLlmResponse> ChatAsync(
         string modelId,
@@ -23,9 +23,9 @@ public sealed class ClaudePlanningLlmClient(ClaudeAgentExecutor executor) : IPla
         CancellationToken ct = default)
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"ai-planning-{Guid.NewGuid():N}");
-        var workspaceRoot = Path.Combine(tempRoot, "workspaces");
-        const string projectSlug = "_planning";
-        var workingDir = Path.Combine(workspaceRoot, projectSlug, "agents", "planning");
+        var workspaceRoot = new RootDir(Path.Combine(tempRoot, "workspaces"));
+        var projectSlug = new ProjectSlug("planning");
+        var workingDir = new AgentDir(Path.Combine(workspaceRoot.Value, "planning", "agents", "planning"));
 
         try
         {

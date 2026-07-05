@@ -1,11 +1,19 @@
 namespace AiDev.Features.Git;
 
-public partial class GitService
+/// <summary>
+/// Provides read-only Git operations for repository inspection.
+/// </summary>
+public partial class GitService(ILogger<GitService>? logger = null)
 {
     // Only allow hex commit hashes (4–64 chars). Rejects any flag injection.
     private static readonly Regex ValidHashRegex =
         MyGitHashRegex();
 
+    /// <summary>
+    /// Determines whether the specified path is inside a Git working tree.
+    /// </summary>
+    /// <param name="repoPath">The repository path to inspect.</param>
+    /// <returns><see langword="true"/> when the path is a Git repository; otherwise, <see langword="false"/>.</returns>
     public bool IsGitRepo(string repoPath)
     {
         if (!Directory.Exists(repoPath)) return false;
@@ -13,6 +21,12 @@ public partial class GitService
         return result.ExitCode == 0 && result.Output.Trim() == "true";
     }
 
+    /// <summary>
+    /// Gets recent commits from the repository log.
+    /// </summary>
+    /// <param name="repoPath">The repository path to inspect.</param>
+    /// <param name="count">The maximum number of commits to return.</param>
+    /// <returns>The recent commit summaries.</returns>
     public List<GitCommit> GetLog(string repoPath, int count = 50)
     {
         var sep = "\x1f";
@@ -37,6 +51,12 @@ public partial class GitService
         return commits;
     }
 
+    /// <summary>
+    /// Gets detailed information for a specific commit hash.
+    /// </summary>
+    /// <param name="repoPath">The repository path to inspect.</param>
+    /// <param name="hash">The commit hash to retrieve.</param>
+    /// <returns>The commit details, or <see langword="null"/> when the commit cannot be read.</returns>
     public GitCommitDetail? GetCommit(string repoPath, string hash)
     {
         if (!ValidHashRegex.IsMatch(hash)) return null;
@@ -66,7 +86,7 @@ public partial class GitService
         return new GitCommitDetail { Commit = commit, Body = body, Diff = diff };
     }
 
-    private static (int ExitCode, string Output) Run(string workingDir, params string[] args)
+    private (int ExitCode, string Output) Run(string workingDir, params string[] args)
     {
         try
         {
@@ -88,11 +108,15 @@ public partial class GitService
             proc.WaitForExit(10_000);
             return (proc.ExitCode, output);
         }
-        catch
+        catch (Exception ex)
         {
+            if (logger is not null) LogGitCommandFailed(ex, args, workingDir);
             return (-1, string.Empty);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[git] Failed to run git {Args} in {Dir}")]
+    private partial void LogGitCommandFailed(Exception ex, string[] args, string dir);
 
     [GeneratedRegex(@"^[0-9a-f]{4,64}$", RegexOptions.Compiled)]
     private static partial Regex MyGitHashRegex();

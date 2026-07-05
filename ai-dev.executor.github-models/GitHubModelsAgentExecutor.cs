@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
+using AiDev.Models.Types;
 using AiDev.Services;
 
 using Microsoft.Extensions.Logging;
@@ -27,12 +28,12 @@ namespace AiDev.Executors;
 /// Rate limits (HTTP 429) are detected from the response status code and surfaced as
 /// <see cref="ExecutorResult.IsRateLimited"/> = true, suppressing re-launches.
 /// </summary>
-public sealed class GitHubModelsAgentExecutor(
+public sealed partial class GitHubModelsAgentExecutor(
     IHttpClientFactory httpClientFactory,
     StudioSettingsService settingsService,
     ILogger<GitHubModelsAgentExecutor> logger) : IAgentExecutor
 {
-    public string Name        => "github-models";
+    public AgentExecutorName Name => AgentExecutorName.GitHubModels;
     public string DisplayName => "GitHub Models";
 
     public IReadOnlyList<ExecutorSkill> AvailableSkills { get; } = GitHubModelsSkills.All;
@@ -82,7 +83,7 @@ public sealed class GitHubModelsAgentExecutor(
                 // Catalog returns a top-level array: [ { "id": "openai/gpt-4o", "name": "GPT-4o", ... }, ... ]
                 if (doc.RootElement.ValueKind == JsonValueKind.Array)
                 {
-                    discovered = doc.RootElement.EnumerateArray()
+                    discovered = [.. doc.RootElement.EnumerateArray()
                         .Select(m =>
                         {
                             var id   = m.TryGetProperty("id",   out var idProp)   ? idProp.GetString()   ?? string.Empty : string.Empty;
@@ -91,9 +92,8 @@ public sealed class GitHubModelsAgentExecutor(
                         })
                         .Where(t => t.id.Length > 0)
                         .OrderBy(t => t.id, StringComparer.OrdinalIgnoreCase)
-                        .Select(t => new ModelDescriptor(t.id, t.name, "github-models",
-                            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling))
-                        .ToList();
+                        .Select(t => new ModelDescriptor(t.id, t.name, AgentExecutorName.GitHubModels,
+                            ModelCapabilities.Streaming | ModelCapabilities.ToolCalling))];
                 }
             }
             catch { /* model list is best-effort */ }
@@ -107,7 +107,7 @@ public sealed class GitHubModelsAgentExecutor(
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "[github-models-health] Probe failed: {Message}", ex.Message);
+            LogHealthProbeFailed(ex, ex.Message);
             return new ExecutorHealthResult(false, $"Connection failed: {ex.Message}");
         }
     }
@@ -122,7 +122,7 @@ public sealed class GitHubModelsAgentExecutor(
         if (string.IsNullOrWhiteSpace(token))
         {
             const string msg = "GitHubToken not configured in studio settings. Aborting.";
-            logger.LogError("[github-models] {Message}", msg);
+            LogNoTokenConfigured(msg);
             output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
             return new ExecutorResult(1, ErrorMessage: msg);
         }
@@ -131,9 +131,7 @@ public sealed class GitHubModelsAgentExecutor(
         var enableTools   = GitHubModelsSkills.AreWorkspaceToolsEnabled(context.EnabledSkills);
         var workspaceRoot = enableTools ? DeriveWorkspaceRoot(context.WorkingDir) : null;
 
-        logger.LogInformation(
-            "[github-models] Starting session — model={Model} tools={Tools}",
-            context.ModelId, enableTools ? "enabled" : "disabled");
+        LogStartingSession(context.ModelId, enableTools ? "enabled" : "disabled");
 
         output.TryWrite($"[{DateTime.UtcNow:o}] [github-models] model={context.ModelId}");
 
@@ -173,7 +171,7 @@ public sealed class GitHubModelsAgentExecutor(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 var msg = $"Failed to connect to GitHub Models API: {ex.Message}";
-                logger.LogError(ex, "[github-models] {Message}", msg);
+                LogHttpConnectFailed(ex, msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, ErrorMessage: msg);
             }
@@ -189,7 +187,7 @@ public sealed class GitHubModelsAgentExecutor(
                 var retryAfter = response.Headers.RetryAfter?.Delta;
                 var hint       = retryAfter.HasValue ? $" retry-after={retryAfter.Value.TotalSeconds:F0}s" : "";
                 var msg        = $"GitHub Models rate limit reached.{hint}";
-                logger.LogWarning("[github-models] {Message} Body={Body}", msg, body);
+                LogRateLimitReached(msg, body);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [rate-limit] {msg}");
                 return new ExecutorResult(1, IsRateLimited: true, ErrorMessage: msg);
             }
@@ -198,12 +196,12 @@ public sealed class GitHubModelsAgentExecutor(
             {
                 var body = await response.Content.ReadAsStringAsync(context.CancellationToken).ConfigureAwait(false);
                 var msg  = $"GitHub Models returned HTTP {(int)response.StatusCode}: {body}";
-                logger.LogError("[github-models] {Message}", msg);
+                LogHttpErrorResponse(msg);
                 output.TryWrite($"[{DateTime.UtcNow:o}] [error] {msg}");
                 return new ExecutorResult(1, ErrorMessage: msg);
             }
 
-            logger.LogInformation("[github-models] Streaming response — iteration {N}", iteration);
+            LogStreamingResponse(iteration);
 
             // Stream and parse OpenAI SSE response.
             var (finishReason, textContent, toolCalls, sessionUsage) =
@@ -213,20 +211,17 @@ public sealed class GitHubModelsAgentExecutor(
             if (sessionUsage != null)
                 totalUsage = totalUsage == null ? sessionUsage : totalUsage + sessionUsage;
 
-            logger.LogInformation("[github-models] finish_reason={Reason} iteration={N}", finishReason, iteration);
+            LogFinishReason(finishReason, iteration);
 
             // Final response: no tool calls.
             if (toolCalls.Count == 0)
             {
-                logger.LogInformation(
-                    "[github-models] Session complete — {Chars} chars | iterations: {N}",
-                    textContent.Length, iteration);
+                LogSessionComplete(textContent.Length, iteration);
                 return new ExecutorResult(0, Usage: totalUsage);
             }
 
             // Tool calls requested — execute and loop.
-            logger.LogInformation(
-                "[github-models] Tool calls requested — count={Count} iteration={N}", toolCalls.Count, iteration);
+            LogToolCallsRequested(toolCalls.Count, iteration);
             output.TryWrite($"[{DateTime.UtcNow:o}] [github-models] tool calls: {toolCalls.Count} (iteration {iteration})");
 
             // Append assistant message with tool_calls.
@@ -259,7 +254,7 @@ public sealed class GitHubModelsAgentExecutor(
                 var argsJson    = tc.Arguments.ToString();
                 var argsPreview = argsJson.Length > 80 ? argsJson[..80] + "…" : argsJson;
                 output.TryWrite($"[{DateTime.UtcNow:o}] [tool:call] {tc.Name}({argsPreview})");
-                logger.LogInformation("[github-models] Executing tool — {Tool}({Args})", tc.Name, argsPreview);
+                LogExecutingTool(tc.Name, argsPreview);
 
                 JsonElement argsElement;
                 try   { argsElement = JsonDocument.Parse(argsJson).RootElement; }
@@ -273,7 +268,7 @@ public sealed class GitHubModelsAgentExecutor(
                     ? result[..120].Replace('\n', ' ') + "…"
                     : result.Replace('\n', ' ');
                 output.TryWrite($"[{DateTime.UtcNow:o}] [tool:result] {preview}");
-                logger.LogInformation("[github-models] Tool result — {Chars} chars", result.Length);
+                LogToolResult(result.Length);
 
                 messages.Add(new JsonObject
                 {
@@ -285,7 +280,7 @@ public sealed class GitHubModelsAgentExecutor(
         }
 
         var limitMsg = $"Exceeded maximum tool-call iterations ({MaxToolIterations}). Aborting session.";
-        logger.LogError("[github-models] {Message}", limitMsg);
+        LogMaxIterationsExceeded(limitMsg);
         output.TryWrite($"[{DateTime.UtcNow:o}] [error] {limitMsg}");
         return new ExecutorResult(1, ErrorMessage: limitMsg);
     }
@@ -393,7 +388,7 @@ public sealed class GitHubModelsAgentExecutor(
     // -------------------------------------------------------------------------
 
     private static string BuildRequest(string modelId, List<JsonNode> messages, bool includeTools,
-        ThinkingLevel thinkingLevel = ThinkingLevel.Off)
+        ThinkingLevel thinkingLevel = default)
     {
         var obj = new JsonObject
         {
@@ -404,10 +399,9 @@ public sealed class GitHubModelsAgentExecutor(
             ["stream_options"] = new JsonObject { ["include_usage"] = true },
         };
 
-        if (thinkingLevel != ThinkingLevel.Off)
+        if (!thinkingLevel.IsOff)
         {
-            var effort = thinkingLevel.ToReasoningEffort();
-            if (effort != null) obj["reasoning_effort"] = effort;
+            if (thinkingLevel.ReasoningEffort != null) obj["reasoning_effort"] = thinkingLevel.ReasoningEffort;
         }
 
         if (includeTools)
@@ -444,4 +438,47 @@ public sealed class GitHubModelsAgentExecutor(
         public string        Name      { get; set; }   = string.Empty;
         public StringBuilder Arguments { get; }        = new();
     }
+
+    // -------------------------------------------------------------------------
+    // Logger message declarations
+    // -------------------------------------------------------------------------
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "[github-models-health] Probe failed: {Message}")]
+    private partial void LogHealthProbeFailed(Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[github-models] {Message}")]
+    private partial void LogNoTokenConfigured(string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[github-models] Starting session — model={Model} tools={Tools}")]
+    private partial void LogStartingSession(string model, string tools);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[github-models] {Message}")]
+    private partial void LogHttpConnectFailed(Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "[github-models] {Message} Body={Body}")]
+    private partial void LogRateLimitReached(string message, string body);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[github-models] {Message}")]
+    private partial void LogHttpErrorResponse(string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[github-models] Streaming response — iteration {N}")]
+    private partial void LogStreamingResponse(int n);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[github-models] finish_reason={Reason} iteration={N}")]
+    private partial void LogFinishReason(string reason, int n);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[github-models] Session complete — {Chars} chars | iterations: {N}")]
+    private partial void LogSessionComplete(int chars, int n);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[github-models] Tool calls requested — count={Count} iteration={N}")]
+    private partial void LogToolCallsRequested(int count, int n);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[github-models] Executing tool — {Tool}({Args})")]
+    private partial void LogExecutingTool(string tool, string args);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[github-models] Tool result — {Chars} chars")]
+    private partial void LogToolResult(int chars);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[github-models] {Message}")]
+    private partial void LogMaxIterationsExceeded(string message);
 }

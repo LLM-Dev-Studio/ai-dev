@@ -1,0 +1,171 @@
+{
+  "name": "ai-dev-studio",
+  "displayName": "AI Dev Studio",
+  "description": "AI agent orchestration sidebar for AI Dev Studio",
+  "version": "0.1.7",
+  "publisher": "AllanNielsen",
+  "icon": "logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LLM-Dev-Studio/ai-dev"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "extensionKind": [
+    "ui",
+    "workspace"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ai-dev-studio",
+          "title": "AI Dev Studio",
+          "icon": "icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "ai-dev-studio": [
+        {
+          "id": "aidev.agents",
+          "type": "webview",
+          "name": "Agents"
+        },
+        {
+          "id": "aidev.messages",
+          "type": "webview",
+          "name": "Messages"
+        },
+        {
+          "id": "aidev.decisions",
+          "type": "webview",
+          "name": "Decisions"
+        },
+        {
+          "id": "aidev.logs",
+          "type": "webview",
+          "name": "Logs"
+        }
+      ],
+      "debug": [
+        {
+          "id": "aidev.logsDebug",
+          "type": "webview",
+          "name": "AI Dev Logs"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "aidev.restartBackend",
+        "title": "AI Dev: Restart Backend"
+      },
+      {
+        "command": "aidev.openBoard",
+        "title": "AI Dev: Open Board",
+        "icon": "$(project)"
+      },
+      {
+        "command": "aidev.openGlobalTemplatesFolder",
+        "title": "AI Dev: Open Global Templates Folder"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "aidev.openBoard",
+          "when": "view == aidev.agents",
+          "group": "navigation@20"
+        }
+      ],
+      "menubar/view": [
+        {
+          "command": "aidev.openBoard",
+          "group": "2_open@50"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AI Dev Studio",
+      "properties": {
+        "aidev.bootstrap.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically create .ai-dev/project.json and seed default agents when opening a folder that is not initialized."
+        },
+        "aidev.bootstrap.apiPort": {
+          "type": "number",
+          "default": 5191,
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Default API port written into newly created .ai-dev/project.json files."
+        },
+        "aidev.backend.health.maxAttempts": {
+          "type": "number",
+          "default": 120,
+          "minimum": 1,
+          "maximum": 3600,
+          "description": "Maximum backend health check attempts before startup is considered failed."
+        },
+        "aidev.backend.health.retryDelayMs": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 60000,
+          "description": "Delay in milliseconds between backend health checks."
+        },
+        "aidev.templates.globalPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional override path for user-global agent templates. If relative, it resolves from the first workspace folder when available, otherwise from the user home directory."
+        },
+        "aidev.templates.precedence": {
+          "type": "string",
+          "enum": [
+            "global-first",
+            "packaged-first"
+          ],
+          "default": "global-first",
+          "description": "Template source precedence when both global and packaged templates contain the same slug."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test": "jest",
+    "package": "vsce package --no-dependencies",
+    "package:win": "npm run build && node scripts/bundle-backend.mjs win32-x64",
+    "package:mac": "npm run build && node scripts/bundle-backend.mjs darwin-arm64",
+    "package:linux": "npm run build && node scripts/bundle-backend.mjs linux-x64",
+    "package:all": "npm run build && node scripts/bundle-backend.mjs"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.3.2",
+    "esbuild": "^0.25.4",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.3.4",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@microsoft/signalr": "^10.0.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  }
+}

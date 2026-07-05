@@ -1,5 +1,8 @@
 namespace AiDev.Features.Board;
 
+/// <summary>
+/// Represents a project board containing columns, tasks, and pending domain events.
+/// </summary>
 public sealed class Board
 {
     private static readonly DomainError UnknownColumnError = new("BOARD_UNKNOWN_COLUMN", "Column not found.");
@@ -7,12 +10,20 @@ public sealed class Board
     private static readonly DomainError DuplicateTaskError = new("BOARD_DUPLICATE_TASK", "Task already exists on the board.");
     private static readonly DomainError InvalidAssigneeError = new("BOARD_INVALID_ASSIGNEE", "Assignee must be a valid agent slug.");
     private static readonly DomainError OrphanedTaskError = new("BOARD_ORPHANED_TASK", "Task is not assigned to a board column.");
+    private static readonly DomainError DuplicateColumnError = new("BOARD_DUPLICATE_COLUMN", "A column with that id already exists.");
+    private static readonly DomainError ProtectedColumnError = new("BOARD_PROTECTED_COLUMN", "Backlog and Done columns cannot be removed or renamed.");
+    private static readonly DomainError ColumnNotEmptyError = new("BOARD_COLUMN_NOT_EMPTY", "Column must be empty before it can be removed.");
 
     private readonly List<BoardColumn> _columns;
     private readonly Dictionary<TaskId, BoardTask> _tasks;
     [JsonIgnore] private readonly List<DomainEvent> _domainEvents = [];
-    [JsonIgnore] public ProjectSlug ProjectSlug { get; }
 
+    /// <summary>
+    /// Initializes a board for the specified project.
+    /// </summary>
+    /// <param name="projectSlug">The project slug that owns the board.</param>
+    /// <param name="columns">The existing board columns, or <see langword="null"/> to create defaults.</param>
+    /// <param name="tasks">The existing board tasks, or <see langword="null"/> to start empty.</param>
     public Board(ProjectSlug projectSlug, List<BoardColumn>? columns = null, Dictionary<TaskId, BoardTask>? tasks = null)
     {
         ArgumentNullException.ThrowIfNull(projectSlug);
@@ -21,7 +32,19 @@ public sealed class Board
         _tasks = tasks ?? new();
     }
 
+    /// <summary>
+    /// Gets the project slug that owns the board.
+    /// </summary>
+    [JsonIgnore] public ProjectSlug ProjectSlug { get; }
+
+    /// <summary>
+    /// Gets the board columns in display order.
+    /// </summary>
     public IReadOnlyList<BoardColumn> Columns => _columns.AsReadOnly();
+
+    /// <summary>
+    /// Gets the tasks keyed by task identifier.
+    /// </summary>
     public IReadOnlyDictionary<TaskId, BoardTask> Tasks => new System.Collections.ObjectModel.ReadOnlyDictionary<TaskId, BoardTask>(_tasks);
 
     /// <summary>
@@ -144,6 +167,67 @@ public sealed class Board
         }
 
         return new Ok<int>(taskIds.Length);
+    }
+
+    /// <summary>
+    /// Adds a new column at the end of the board (before the Done column).
+    /// </summary>
+    public Result<BoardColumn> AddColumn(ColumnId columnId, string title)
+    {
+        ArgumentNullException.ThrowIfNull(columnId);
+        if (string.IsNullOrWhiteSpace(title))
+            return new Err<BoardColumn>(new DomainError("BOARD_INVALID_COLUMN_TITLE", "Column title is required."));
+        if (_columns.Any(c => c.Id == columnId))
+            return new Err<BoardColumn>(DuplicateColumnError);
+
+        var column = new BoardColumn(columnId, title.Trim());
+
+        // Insert before Done if it exists, otherwise append.
+        var doneIndex = _columns.FindIndex(c => c.Id == ColumnId.Done);
+        if (doneIndex >= 0)
+            _columns.Insert(doneIndex, column);
+        else
+            _columns.Add(column);
+
+        return new Ok<BoardColumn>(column);
+    }
+
+    /// <summary>
+    /// Renames an existing column. Backlog and Done are protected.
+    /// </summary>
+    public Result<Unit> RenameColumn(ColumnId columnId, string newTitle)
+    {
+        ArgumentNullException.ThrowIfNull(columnId);
+        if (string.IsNullOrWhiteSpace(newTitle))
+            return new Err<Unit>(new DomainError("BOARD_INVALID_COLUMN_TITLE", "Column title is required."));
+        if (columnId == ColumnId.Backlog || columnId == ColumnId.Done)
+            return new Err<Unit>(ProtectedColumnError);
+
+        var column = _columns.FirstOrDefault(c => c.Id == columnId);
+        if (column == null)
+            return new Err<Unit>(UnknownColumnError);
+
+        column.Rename(newTitle.Trim());
+        return new Ok<Unit>(Unit.Value);
+    }
+
+    /// <summary>
+    /// Removes a column. Backlog and Done are protected; column must be empty.
+    /// </summary>
+    public Result<Unit> RemoveColumn(ColumnId columnId)
+    {
+        ArgumentNullException.ThrowIfNull(columnId);
+        if (columnId == ColumnId.Backlog || columnId == ColumnId.Done)
+            return new Err<Unit>(ProtectedColumnError);
+
+        var column = _columns.FirstOrDefault(c => c.Id == columnId);
+        if (column == null)
+            return new Err<Unit>(UnknownColumnError);
+        if (column.TaskIds.Count > 0)
+            return new Err<Unit>(ColumnNotEmptyError);
+
+        _columns.Remove(column);
+        return new Ok<Unit>(Unit.Value);
     }
 
     /// <summary>

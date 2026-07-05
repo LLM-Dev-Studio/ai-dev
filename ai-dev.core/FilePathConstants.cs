@@ -3,7 +3,7 @@ namespace AiDev;
 public static class FilePathConstants
 {
     public const string WorkspacesDirName = "workspaces";
-    public const string RegistryFileName = "workspaces.json";
+    public const string ManagedProjectsFileName = "managed-projects.json";
     public const string StudioSettingsFileName = "studio-settings.json";
     public const string FeatureFlagsFileName = "feature-flags.json";
     public const string AgentTemplatesDirName = "agent-templates";

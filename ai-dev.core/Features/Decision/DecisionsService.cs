@@ -1,17 +1,30 @@
 namespace AiDev.Features.Decision;
 
+/// <summary>
+/// Provides creation, lookup, and resolution operations for project decisions.
+/// </summary>
 public class DecisionsService(
     WorkspacePaths paths,
     IDomainEventDispatcher dispatcher,
     AtomicFileWriter fileWriter,
     ProjectMutationCoordinator coordinator,
-    ILogger<DecisionsService> logger)
+    ILogger<DecisionsService> logger) : IDecisionsService
 {
     private const string ResponseSeparator = "\n\n---\n\n## Human Response\n\n";
     private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// Creates a new decision request.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the decision.</param>
+    /// <param name="from">The decision source.</param>
+    /// <param name="subject">The decision subject.</param>
+    /// <param name="priority">The decision priority.</param>
+    /// <param name="blocks">The optional blocker reference.</param>
+    /// <param name="body">The decision body content.</param>
+    /// <returns>The result of the create operation.</returns>
     public Result<Unit> CreateDecision(ProjectSlug projectSlug, string from, string subject,
-        string priority, string? blocks, string body)
+        Priority priority, string? blocks, string body)
     {
         return coordinator.Execute(projectSlug, () =>
         {
@@ -30,7 +43,7 @@ public class DecisionsService(
                 {
                     ["from"] = from,
                     ["date"] = now.ToString("o"),
-                    ["priority"] = priority,
+                    ["priority"] = priority.Value,
                     ["subject"] = subject,
                     ["status"] = "pending",
                 };
@@ -51,9 +64,16 @@ public class DecisionsService(
         });
     }
 
-    public List<DecisionItem> ListDecisions(ProjectSlug projectSlug, string status = "pending")
+    /// <summary>
+    /// Lists decisions for a project filtered by status.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the decisions.</param>
+    /// <param name="status">The optional status filter.</param>
+    /// <returns>The matching decisions.</returns>
+    public List<DecisionItem> ListDecisions(ProjectSlug projectSlug, DecisionStatus? status = null)
     {
-        string[] dirs = status == "resolved"
+        var effectiveStatus = status ?? DecisionStatus.Pending;
+        string[] dirs = effectiveStatus == DecisionStatus.Resolved
             ? [paths.DecisionsResolvedDir(projectSlug)]
             : [paths.DecisionsPendingDir(projectSlug)];
 
@@ -70,9 +90,15 @@ public class DecisionsService(
         return results;
     }
 
-    public DecisionItem? GetDecision(ProjectSlug projectSlug, string id)
+    /// <summary>
+    /// Gets a decision by identifier.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the decision.</param>
+    /// <param name="id">The decision identifier.</param>
+    /// <returns>The decision item, or <see langword="null"/> when not found.</returns>
+    public DecisionItem? GetDecision(ProjectSlug projectSlug, DecisionId id)
     {
-        var filename = $"{id}.md";
+        var filename = $"{id.Value}.md";
         var pendingPath = Path.Combine(paths.DecisionsPendingDir(projectSlug), filename);
         if (File.Exists(pendingPath)) return ParseDecisionFile(pendingPath);
         var resolvedPath = Path.Combine(paths.DecisionsResolvedDir(projectSlug), filename);
@@ -80,20 +106,35 @@ public class DecisionsService(
         return null;
     }
 
-    public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, string id, string response)
+    /// <summary>
+    /// Resolves a decision with a human response.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the decision.</param>
+    /// <param name="id">The decision identifier.</param>
+    /// <param name="response">The response used to resolve the decision.</param>
+    /// <returns>The result of the resolve operation.</returns>
+    public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, DecisionId id, string response)
         => ResolveDecisionAsync(projectSlug, id, response, CancellationToken.None);
 
-    public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, string id, string response, CancellationToken cancellationToken)
+    /// <summary>
+    /// Resolves a decision with a human response.
+    /// </summary>
+    /// <param name="projectSlug">The project that owns the decision.</param>
+    /// <param name="id">The decision identifier.</param>
+    /// <param name="response">The response used to resolve the decision.</param>
+    /// <param name="cancellationToken">The cancellation token for the operation.</param>
+    /// <returns>The result of the resolve operation.</returns>
+    public Task<Result<Unit>> ResolveDecisionAsync(ProjectSlug projectSlug, DecisionId id, string response, CancellationToken cancellationToken)
         => coordinator.ExecuteAsync(projectSlug, async () =>
         {
             using var activity = AiDevTelemetry.ActivitySource.StartActivity("Decision.Resolve", ActivityKind.Internal);
             activity?.SetTag("project.slug", projectSlug.Value);
-            activity?.SetTag("decision.id", id);
+            activity?.SetTag("decision.id", id.Value);
             return await GetPendingDecision(projectSlug, id)
                 .Then(decision => PersistResolvedDecisionAsync(projectSlug, decision, response, cancellationToken)).ConfigureAwait(false);
         }, cancellationToken);
 
-    private Result<DecisionItem> GetPendingDecision(ProjectSlug projectSlug, string id)
+    private Result<DecisionItem> GetPendingDecision(ProjectSlug projectSlug, DecisionId id)
     {
         var decision = GetDecision(projectSlug, id);
         if (decision == null) return new Err<DecisionItem>(new DomainError("DECISION_NOT_FOUND", "Decision not found."));
@@ -177,7 +218,7 @@ public class DecisionsService(
 
             var (fields, body) = FrontmatterParser.Parse(mainContent);
             var filename = Path.GetFileName(path);
-            var id = Path.GetFileNameWithoutExtension(path);
+            var id = new DecisionId(Path.GetFileNameWithoutExtension(path));
 
             var dateStr = fields.GetValueOrDefault("date");
             var resolvedAtStr = fields.GetValueOrDefault("resolvedAt");

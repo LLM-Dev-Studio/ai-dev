@@ -29,6 +29,16 @@
             ],
             "problemMatcher": "$msCompile",
             "group": "build"
+        },
+        {
+            "label": "build-extension",
+            "type": "shell",
+            "command": "npm run build",
+            "options": {
+                "cwd": "${workspaceFolder}/ai-dev-vscode"
+            },
+            "problemMatcher": ["$tsc"],
+            "group": "build"
         }
     ]
 }

@@ -198,20 +198,20 @@ public class SecretsServiceTests
     }
 
     [Fact]
-    public void Secrets_AreSeparatePerProject()
+    public void Secrets_AreSeparatePerWorkspace()
     {
-        var service = CreateService(out _);
-        var project1 = new ProjectSlug("project-1");
-        var project2 = new ProjectSlug("project-2");
+        // Each workspace is a separate .ai-dev root — isolation is at the workspace level.
+        var root1 = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        var root2 = new RootDir(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        var service1 = new SecretsService(new WorkspacePaths(root1), new AtomicFileWriter());
+        var service2 = new SecretsService(new WorkspacePaths(root2), new AtomicFileWriter());
+        var slug = new ProjectSlug("my-project");
 
-        service.SetSecret(project1, "key", "value1");
-        service.SetSecret(project2, "key", "value2");
+        service1.SetSecret(slug, "key", "value1");
+        service2.SetSecret(slug, "key", "value2");
 
-        var secrets1 = service.LoadDecryptedSecrets(project1);
-        var secrets2 = service.LoadDecryptedSecrets(project2);
-
-        secrets1["key"].ShouldBe("value1");
-        secrets2["key"].ShouldBe("value2");
+        service1.LoadDecryptedSecrets(slug)["key"].ShouldBe("value1");
+        service2.LoadDecryptedSecrets(slug)["key"].ShouldBe("value2");
     }
 
     [Fact]

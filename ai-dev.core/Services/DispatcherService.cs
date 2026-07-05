@@ -12,7 +12,7 @@ namespace AiDev.Services;
 ///   2. Periodic poll (every 10 s) — catches anything FSW missed due to buffer overflow,
 ///      OS error, or race conditions. LaunchAgent is idempotent so double-firing is safe.
 /// </summary>
-public class DispatcherService(
+public partial class DispatcherService(
     WorkspacePaths paths,
     WorkspaceService workspace,
     IAgentRunnerService runner,
@@ -38,7 +38,7 @@ public class DispatcherService(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        logger.LogInformation("[dispatcher] Starting");
+        LogStarting();
 
         var projects = workspace.ListProjects();
         foreach (var project in projects)
@@ -56,12 +56,12 @@ public class DispatcherService(
         _pollTimer = new Timer(_ => PollAllProjects(CancellationToken.None), null,
             TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
 
-        logger.LogInformation("[dispatcher] Watching {Count} project(s) with FSW + 10 s poll", projects.Count);
+        LogWatchingProjects(projects.Count);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation("[dispatcher] Stopping");
+        LogStopping();
         Dispose();
         return Task.CompletedTask;
     }
@@ -69,13 +69,10 @@ public class DispatcherService(
     public void Dispose()
     {
         _pollTimer?.Dispose();
-        foreach (var w in _watchers)
+        foreach (var w in _watchers.ToArray())
         {
             try { w.Dispose(); }
-            catch
-            {
-                // ignored
-            }
+            catch { }
         }
         _watchers.Clear();
         GC.SuppressFinalize(this);
@@ -124,14 +121,12 @@ public class DispatcherService(
         };
         w.Created += (_, e) =>
         {
-            logger.LogInformation("[dispatcher] New decision in {Project}: {File}",
-                projectSlug, Path.GetFileName(e.FullPath));
+            LogNewDecision(projectSlug, Path.GetFileName(e.FullPath));
             projectStateNotifier.Notify(projectSlug, ProjectStateChangeKind.Decisions);
         };
         w.Deleted += (_, e) =>
         {
-            logger.LogInformation("[dispatcher] Decision resolved in {Project}: {File}",
-                projectSlug, Path.GetFileName(e.FullPath));
+            LogDecisionResolved(projectSlug, Path.GetFileName(e.FullPath));
             projectStateNotifier.Notify(projectSlug, ProjectStateChangeKind.Decisions);
         };
         _watchers.Add(w);
@@ -158,14 +153,12 @@ public class DispatcherService(
         w.Error += (_, e) => OnWatcherError(w, projectSlug, agentSlug, e.GetException());
 
         _watchers.Add(w);
-        logger.LogInformation("[dispatcher] Watching inbox: {InboxDir}", inboxDir);
+        LogWatchingInbox(inboxDir);
     }
 
     private void OnWatcherError(FileSystemWatcher w, ProjectSlug projectSlug, AgentSlug agentSlug, Exception ex)
     {
-        logger.LogError(ex,
-            "[dispatcher] FSW error for {Project}/{Agent} — restarting watcher and scanning inbox",
-            projectSlug, agentSlug);
+        LogFswError(ex, projectSlug, agentSlug);
 
         // Re-enable the watcher so it resumes raising events
         try
@@ -175,8 +168,7 @@ public class DispatcherService(
         }
         catch (Exception restartEx)
         {
-            logger.LogError(restartEx, "[dispatcher] Failed to restart FSW for {Project}/{Agent}",
-                projectSlug, agentSlug);
+            LogFswRestartFailed(restartEx, projectSlug, agentSlug);
         }
 
         // Scan immediately to catch anything missed while the watcher was in error state
@@ -194,12 +186,19 @@ public class DispatcherService(
         w.Created += (_, e) =>
         {
             if (!AgentSlug.TryParse(Path.GetFileName(e.FullPath), out var agentSlug)) return;
-            logger.LogInformation("[dispatcher] New agent detected: {Project}/{Agent}", projectSlug, agentSlug);
+            LogNewAgentDetected(projectSlug, agentSlug);
             // Brief delay so the agent folder structure is fully written before watching
             _ = Task.Run(async () =>
             {
-                await Task.Delay(500).ConfigureAwait(false);
-                WatchAgentInbox(projectSlug, agentSlug);
+                try
+                {
+                    await Task.Delay(500).ConfigureAwait(false);
+                    WatchAgentInbox(projectSlug, agentSlug);
+                }
+                catch (Exception ex)
+                {
+                    LogNewAgentWatcherFailed(ex, projectSlug, agentSlug);
+                }
             });
         };
         _watchers.Add(w);
@@ -217,11 +216,18 @@ public class DispatcherService(
         {
             _ = Task.Run(async () =>
             {
-                await Task.Delay(1000).ConfigureAwait(false);
-                if (!File.Exists(Path.Combine(e.FullPath, "project.json"))) return;
-                if (!ProjectSlug.TryParse(Path.GetFileName(e.FullPath), out var projectSlug)) return;
-                logger.LogInformation("[dispatcher] New project detected: {Project}", projectSlug);
-                WatchProject(projectSlug);
+                try
+                {
+                    await Task.Delay(1000).ConfigureAwait(false);
+                    if (!File.Exists(Path.Combine(e.FullPath, "project.json"))) return;
+                    if (!ProjectSlug.TryParse(Path.GetFileName(e.FullPath), out var projectSlug)) return;
+                    LogNewProjectDetected(projectSlug);
+                    WatchProject(projectSlug);
+                }
+                catch (Exception ex)
+                {
+                    LogNewProjectWatcherFailed(ex, e.FullPath);
+                }
             });
         };
         _watchers.Add(w);
@@ -250,8 +256,7 @@ public class DispatcherService(
             activity?.SetTag("message.file", fileName);
             activity?.SetTag("dispatch.source", source);
 
-            logger.LogInformation("[dispatcher] [{Source}] Inbox message for {Project}/{Agent}: {File}",
-                source, projectSlug, agentSlug, fileName);
+            LogInboxMessage(source, projectSlug, agentSlug, fileName);
 
             // Notify immediately so UIs refresh badges and agent inbox counts even when
             // this message is deferred because the agent is currently running.
@@ -259,9 +264,7 @@ public class DispatcherService(
 
             if (runner.IsRunning(projectSlug, agentSlug))
             {
-                logger.LogInformation(
-                    "[dispatcher] Agent {Project}/{Agent} already running — session will re-launch on exit if inbox is non-empty",
-                    projectSlug, agentSlug);
+                LogAgentAlreadyRunning(projectSlug, agentSlug);
                 activity?.SetTag("dispatch.outcome", "deferred-already-running");
                 return;
             }
@@ -269,19 +272,17 @@ public class DispatcherService(
             var launched = runner.LaunchAgent(projectSlug, agentSlug, new AgentLaunchTrigger(
                 Source: "dispatcher",
                 Reason: source,
-                ProjectSlug: projectSlug.Value,
+                ProjectSlug: projectSlug,
                 MessageFile: fileName,
                 ParentSpanId: activity?.Id));
             activity?.SetTag("dispatch.outcome", launched ? "launched" : "already-launched");
-            logger.LogInformation("[dispatcher] {Outcome} {Project}/{Agent}",
-                launched ? "Launched" : "Already running —", projectSlug, agentSlug);
+            LogLaunchOutcome(launched ? "Launched" : "Already running —", projectSlug, agentSlug);
 
             projectStateNotifier.Notify(projectSlug, ProjectStateChangeKind.Decisions);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "[dispatcher] OnInboxMessage failed for {Project}/{Agent} ({Source}): {File}",
-                projectSlug, agentSlug, source, fullPath);
+            LogOnInboxMessageFailed(ex, projectSlug, agentSlug, source, fullPath);
         }
     }
 
@@ -318,14 +319,63 @@ public class DispatcherService(
             if (pending.Length == 0) continue;
             if (runner.IsRunning(projectSlug, agentSlug)) continue;
 
-            logger.LogInformation(
-                "[dispatcher] [{Source}] Found {Count} pending message(s) for {Project}/{Agent} — launching",
-                source, pending.Length, projectSlug, agentSlug);
+            LogLaunchingForPendingMessages(source, pending.Length, projectSlug, agentSlug);
 
             runner.LaunchAgent(projectSlug, agentSlug, new AgentLaunchTrigger(
                 Source: "dispatcher",
                 Reason: source,
-                ProjectSlug: projectSlug.Value));
+                ProjectSlug: projectSlug));
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[dispatcher] Starting")]
+    private partial void LogStarting();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[dispatcher] Watching {Count} project(s) with FSW + 10 s poll")]
+    private partial void LogWatchingProjects(int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[dispatcher] Stopping")]
+    private partial void LogStopping();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[dispatcher] New decision in {Project}: {File}")]
+    private partial void LogNewDecision(ProjectSlug project, string file);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[dispatcher] Decision resolved in {Project}: {File}")]
+    private partial void LogDecisionResolved(ProjectSlug project, string file);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[dispatcher] Watching inbox: {InboxDir}")]
+    private partial void LogWatchingInbox(string inboxDir);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[dispatcher] FSW error for {Project}/{Agent} — restarting watcher and scanning inbox")]
+    private partial void LogFswError(Exception ex, ProjectSlug project, AgentSlug agent);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[dispatcher] Failed to restart FSW for {Project}/{Agent}")]
+    private partial void LogFswRestartFailed(Exception ex, ProjectSlug project, AgentSlug agent);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[dispatcher] New agent detected: {Project}/{Agent}")]
+    private partial void LogNewAgentDetected(ProjectSlug project, AgentSlug agent);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[dispatcher] Failed to set up inbox watcher for new agent {Project}/{Agent}")]
+    private partial void LogNewAgentWatcherFailed(Exception ex, ProjectSlug project, AgentSlug agent);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[dispatcher] New project detected: {Project}")]
+    private partial void LogNewProjectDetected(ProjectSlug project);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[dispatcher] Failed to set up watchers for new project at {Path}")]
+    private partial void LogNewProjectWatcherFailed(Exception ex, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[dispatcher] [{Source}] Inbox message for {Project}/{Agent}: {File}")]
+    private partial void LogInboxMessage(string source, ProjectSlug project, AgentSlug agent, string file);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[dispatcher] Agent {Project}/{Agent} already running — session will re-launch on exit if inbox is non-empty")]
+    private partial void LogAgentAlreadyRunning(ProjectSlug project, AgentSlug agent);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[dispatcher] {Outcome} {Project}/{Agent}")]
+    private partial void LogLaunchOutcome(string outcome, ProjectSlug project, AgentSlug agent);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "[dispatcher] OnInboxMessage failed for {Project}/{Agent} ({Source}): {File}")]
+    private partial void LogOnInboxMessageFailed(Exception ex, ProjectSlug project, AgentSlug agent, string source, string file);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "[dispatcher] [{Source}] Found {Count} pending message(s) for {Project}/{Agent} — launching")]
+    private partial void LogLaunchingForPendingMessages(string source, int count, ProjectSlug project, AgentSlug agent);
 }

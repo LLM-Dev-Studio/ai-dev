@@ -1,5 +1,8 @@
 namespace AiDev.Models;
 
+/// <summary>
+/// Represents a message stored in an agent inbox or processed archive.
+/// </summary>
 public sealed class MessageItem
 {
     /// <summary>
@@ -8,10 +11,10 @@ public sealed class MessageItem
     public MessageItem(
         string filename,
         AgentSlug agentSlug,
-        string from,
+        MessageSource from,
         string to,
         string re,
-        string type,
+        MessageType type,
         string body,
         DateTime? date = null,
         Priority? priority = null,
@@ -22,14 +25,10 @@ public sealed class MessageItem
         if (string.IsNullOrWhiteSpace(filename))
             throw new ArgumentException("Filename is required.", nameof(filename));
         ArgumentNullException.ThrowIfNull(agentSlug);
-        if (string.IsNullOrWhiteSpace(from))
-            throw new ArgumentException("From is required.", nameof(from));
         if (string.IsNullOrWhiteSpace(to))
             throw new ArgumentException("To is required.", nameof(to));
         if (string.IsNullOrWhiteSpace(re))
             throw new ArgumentException("Message subject is required.", nameof(re));
-        if (string.IsNullOrWhiteSpace(type))
-            throw new ArgumentException("Message type is required.", nameof(type));
         if (string.IsNullOrWhiteSpace(body))
             throw new ArgumentException("Message body is required.", nameof(body));
 
@@ -47,17 +46,64 @@ public sealed class MessageItem
         Playbook = NormalizeOptional(playbook);
     }
 
+    /// <summary>
+    /// Gets the backing filename for the message.
+    /// </summary>
     public string Filename { get; }
+
+    /// <summary>
+    /// Gets the agent slug that owns the message.
+    /// </summary>
     public AgentSlug AgentSlug { get; }
-    public string From { get; }
+
+    /// <summary>
+    /// Gets the message source.
+    /// </summary>
+    public MessageSource From { get; }
+
+    /// <summary>
+    /// Gets the message recipient.
+    /// </summary>
     public string To { get; }
+
+    /// <summary>
+    /// Gets the message timestamp.
+    /// </summary>
     public DateTime? Date { get; }
+
+    /// <summary>
+    /// Gets the message priority.
+    /// </summary>
     public Priority Priority { get; }
+
+    /// <summary>
+    /// Gets the message subject.
+    /// </summary>
     public string Re { get; }
-    public string Type { get; }
+
+    /// <summary>
+    /// Gets the message type.
+    /// </summary>
+    public MessageType Type { get; }
+
+    /// <summary>
+    /// Gets the message body.
+    /// </summary>
     public string Body { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the message has been processed.
+    /// </summary>
     public bool IsProcessed { get; }
+
+    /// <summary>
+    /// Gets the optional associated task identifier.
+    /// </summary>
     public TaskId? TaskId { get; }
+
+    /// <summary>
+    /// Gets the optional associated playbook slug.
+    /// </summary>
     public string? Playbook { get; }
 
     private static Priority NormalizePriority(Priority? priority)
