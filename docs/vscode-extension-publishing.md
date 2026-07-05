@@ -46,7 +46,7 @@ Share the `.vsix` file with a developer, then they install it one of two ways:
 
 **Terminal:**
 ```bash
-code --install-extension ai-dev-studio-win32-x64-0.1.1.vsix
+code --install-extension ai-dev-studio-win32-x64-0.1.x.vsix
 ```
 
 The extension auto-starts the bundled backend when it detects a `.ai-dev/project.json`
@@ -86,9 +86,9 @@ Build all three platform VSIXs, then publish each:
 ```bash
 npm run package:all
 
-npx vsce publish --packagePath ai-dev-studio-win32-x64-0.1.1.vsix
-npx vsce publish --packagePath ai-dev-studio-darwin-arm64-0.1.1.vsix
-npx vsce publish --packagePath ai-dev-studio-linux-x64-0.1.1.vsix
+npx vsce publish --packagePath ai-dev-studio-win32-x64-0.1.x.vsix
+npx vsce publish --packagePath ai-dev-studio-darwin-arm64-0.1.x.vsix
+npx vsce publish --packagePath ai-dev-studio-linux-x64-0.1.x.vsix
 ```
 
 Or build and publish in one step (requires `vsce login` first):

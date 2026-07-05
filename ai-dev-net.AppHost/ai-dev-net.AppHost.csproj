@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="MessagePack" Version="3.1.7" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ai-dev.mcp\ai-dev.mcp.csproj" />
     <ProjectReference Include="..\ai-dev.ui.winui\ai-dev.ui.winui.csproj" />
     <ProjectReference Include="..\ai-dev.api\ai-dev.api.csproj" />
