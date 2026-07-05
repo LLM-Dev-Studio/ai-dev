@@ -1,0 +1,3 @@
+{"id":"0b7a1af5","decisionId":"20260510-124826-model-too-small-for-project-manager","from":"human","isHuman":true,"content":"I updated the context size on lm studio load","timestamp":"2026-05-11T01:27:16.1816306Z"}
+{"id":"d377af48","decisionId":"20260510-124826-model-too-small-for-project-manager","from":"human","isHuman":true,"content":"done","timestamp":"2026-05-11T02:08:51.5570913Z"}
+{"id":"02c97808","decisionId":"20260510-124826-model-too-small-for-project-manager","from":"human","isHuman":true,"content":"switched to claude cli","timestamp":"2026-05-12T05:51:30.895698Z"}

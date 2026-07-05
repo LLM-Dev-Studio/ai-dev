@@ -8,6 +8,7 @@
     <IsPackable>false</IsPackable>
     <OutputType>Exe</OutputType>
     <Platforms>x64</Platforms>
+    <Platform>x64</Platform>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
@@ -23,7 +24,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ai-dev.core\ai-dev.core.csproj" />
-    <ProjectReference Include="..\ai-dev.ui.winui\ai-dev.ui.winui.csproj" />
+    <ProjectReference Include="..\ai-dev.ui.winui\ai-dev.ui.winui.csproj">
+      <SetPlatform>Platform=x64</SetPlatform>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
