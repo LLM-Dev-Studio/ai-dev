@@ -1,0 +1,10 @@
+{
+  "slug": "qa-standard",
+  "name": "QA Engineer",
+  "role": "qa",
+  "model": "claude-sonnet-4-6",
+  "executor": "claude",
+  "status": "idle",
+  "description": "Reviews and tests completed work. Approves or rejects implementations with detailed findings.",
+  "skills": []
+}

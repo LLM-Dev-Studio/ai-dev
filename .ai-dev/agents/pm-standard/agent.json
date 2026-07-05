@@ -1,0 +1,13 @@
+{
+  "slug": "pm-standard",
+  "name": "Project Manager",
+  "role": "project-manager",
+  "model": "claude-sonnet-4-6",
+  "executor": "claude",
+  "status": "idle",
+  "description": "Receives briefs, decomposes work into tasks, coordinates agents, and tracks board progress.",
+  "skills": [
+    "mcp-workspace"
+  ],
+  "lastRunAt": "2026-05-12T05:52:48.9953741Z"
+}

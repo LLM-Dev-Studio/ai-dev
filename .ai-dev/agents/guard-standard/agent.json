@@ -1,0 +1,10 @@
+{
+  "slug": "guard-standard",
+  "name": "Guard",
+  "role": "guard",
+  "model": "claude-sonnet-4-6",
+  "executor": "claude",
+  "status": "idle",
+  "description": "Reviews code for security vulnerabilities, audits dependencies, and enforces secure-by-default practices.",
+  "skills": []
+}

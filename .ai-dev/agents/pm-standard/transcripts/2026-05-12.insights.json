@@ -1,0 +1,23 @@
+{
+  "taskClassification": "investigation",
+  "sessionSizeRating": "small",
+  "issues": [
+    {
+      "description": "Initial model failed due to context window configuration error, wasting time.",
+      "impact": "medium"
+    },
+    {
+      "description": "Agent repeatedly failed to start due to missing MCP server connection, escalating unnecessarily.",
+      "impact": "high"
+    },
+    {
+      "description": "Agent lacked ability to diagnose or fix environment configuration, only reporting errors.",
+      "impact": "high"
+    }
+  ],
+  "knowledgeGaps": [
+    "MCP server configuration and startup procedures",
+    "Environment diagnostic capabilities for tool availability"
+  ],
+  "improvedPromptSuggestion": "Check if the \u0027ads-workspace\u0027 MCP server is running and configured in .claude/settings.json. If not, provide instructions to start it or fix the config before attempting session protocol."
+}

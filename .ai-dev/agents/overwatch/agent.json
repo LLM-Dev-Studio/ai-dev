@@ -1,0 +1,11 @@
+{
+  "slug": "overwatch",
+  "name": "Overwatch",
+  "role": "monitor",
+  "status": "idle",
+  "description": "Monitors all agents for stalls, errors, and idle tasks; nudges or escalates as needed.",
+  "lastRunAt": "2026-05-10T11:18:53.5749064Z",
+  "model": "claude-sonnet-4-6",
+  "executor": "claude",
+  "skills": []
+}
