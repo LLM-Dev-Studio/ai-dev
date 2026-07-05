@@ -29,12 +29,22 @@ public sealed class BoardColumn
     /// <summary>
     /// Gets the display title of the column.
     /// </summary>
-    public string Title { get; }
+    public string Title { get; private set; }
 
     /// <summary>
     /// Gets the task identifiers currently assigned to the column.
     /// </summary>
     public IReadOnlyList<TaskId> TaskIds => _taskIds.AsReadOnly();
+
+    /// <summary>
+    /// Updates the display title of the column.
+    /// </summary>
+    public void Rename(string newTitle)
+    {
+        if (string.IsNullOrWhiteSpace(newTitle))
+            throw new ArgumentException("Column title is required.", nameof(newTitle));
+        Title = newTitle;
+    }
 
     /// <summary>
     /// Adds a task id to the column if it is not already present.

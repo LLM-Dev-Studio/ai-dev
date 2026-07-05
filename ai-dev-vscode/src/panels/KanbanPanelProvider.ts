@@ -4,7 +4,7 @@ import { BasePanelProvider } from './BasePanelProvider';
 import { StudioApiClient } from '../StudioApiClient';
 import { StudioSignalRClient } from '../StudioSignalRClient';
 import { GitHubBoardClient } from '../GitHubBoardClient';
-import type { BoardData, GitHubRepoInfo } from '../types';
+import type { AgentSummary, BoardData, GitHubRepoInfo } from '../types';
 import type { FromKanbanWebview } from '../webviews/shared/protocol';
 
 const SCOPES_ISSUES_ONLY = ['repo'];
@@ -168,8 +168,8 @@ export class KanbanPanelProvider extends BasePanelProvider {
 
     this.send({ type: 'loading' });
     try {
-      const board = await this.loadLocalBoard();
-      this.send({ type: 'board', data: board });
+      const [board, agents] = await Promise.all([this.loadLocalBoard(), this.loadAgents()]);
+      this.send({ type: 'board', data: board, agents });
       view.badge = board.columns.length > 0
         ? { value: Object.keys(board.tasks).length, tooltip: 'Board task count' }
         : undefined;
@@ -193,9 +193,9 @@ export class KanbanPanelProvider extends BasePanelProvider {
         return;
       }
 
-      const board = await client.getBoard();
+      const [board, agents] = await Promise.all([client.getBoard(), this.loadAgents()]);
       this.currentBoard = board;
-      this.send({ type: 'board', data: board, githubRepo: `${this.gitHubRepo.owner}/${this.gitHubRepo.repo}` });
+      this.send({ type: 'board', data: board, agents, githubRepo: `${this.gitHubRepo.owner}/${this.gitHubRepo.repo}` });
       view.badge = { value: Object.keys(board.tasks).length, tooltip: 'GitHub Issues' };
     } catch (e) {
       this.send({ type: 'error', message: `Failed to load GitHub Issues: ${e}` });
@@ -210,8 +210,8 @@ export class KanbanPanelProvider extends BasePanelProvider {
 
     this.send({ type: 'loading' });
     try {
-      const board = await this.loadLocalBoard();
-      this.send({ type: 'board', data: board });
+      const [board, agents] = await Promise.all([this.loadLocalBoard(), this.loadAgents()]);
+      this.send({ type: 'board', data: board, agents });
       panel.title = `AI Dev Board (${Object.keys(board.tasks).length})`;
     } catch (e) {
       this.send({ type: 'error', message: `Failed to load board: ${e}` });
@@ -233,9 +233,9 @@ export class KanbanPanelProvider extends BasePanelProvider {
         return;
       }
 
-      const board = await client.getBoard();
+      const [board, agents] = await Promise.all([client.getBoard(), this.loadAgents()]);
       this.currentBoard = board;
-      this.send({ type: 'board', data: board, githubRepo: `${this.gitHubRepo.owner}/${this.gitHubRepo.repo}` });
+      this.send({ type: 'board', data: board, agents, githubRepo: `${this.gitHubRepo.owner}/${this.gitHubRepo.repo}` });
       panel.title = `AI Dev Board — ${this.gitHubRepo.owner}/${this.gitHubRepo.repo} (${Object.keys(board.tasks).length})`;
     } catch (e) {
       this.send({ type: 'error', message: `Failed to load GitHub Issues: ${e}` });
@@ -324,6 +324,15 @@ export class KanbanPanelProvider extends BasePanelProvider {
     const board = await this.api.getBoard(this.projectSlug);
     this.currentBoard = board;
     return board;
+  }
+
+  private async loadAgents(): Promise<AgentSummary[]> {
+    if (!this.api || !this.projectSlug) return [];
+    try {
+      return await this.api.listAgents(this.projectSlug);
+    } catch {
+      return [];
+    }
   }
 
   private async handleAction(msg: Exclude<FromKanbanWebview, { type: 'ready' } | { type: 'githubSignIn' }>): Promise<void> {
@@ -431,6 +440,21 @@ export class KanbanPanelProvider extends BasePanelProvider {
 
     if (msg.type === 'deleteTask') {
       await this.api.deleteBoardTask(this.projectSlug, msg.taskId);
+      return;
+    }
+
+    if (msg.type === 'addColumn') {
+      await this.api.addBoardColumn(this.projectSlug, msg.id, msg.title);
+      return;
+    }
+
+    if (msg.type === 'renameColumn') {
+      await this.api.renameBoardColumn(this.projectSlug, msg.columnId, msg.title);
+      return;
+    }
+
+    if (msg.type === 'deleteColumn') {
+      await this.api.removeBoardColumn(this.projectSlug, msg.columnId);
     }
   }
 

@@ -51,6 +51,24 @@ public interface IBoardService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Adds a new column to the board.
+    /// </summary>
+    Task<Result<BoardColumn>> AddColumnAsync(ProjectSlug projectSlug, string columnId, string title,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Renames an existing column on the board.
+    /// </summary>
+    Task<Result<Unit>> RenameColumnAsync(ProjectSlug projectSlug, ColumnId columnId, string newTitle,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes an empty column from the board.
+    /// </summary>
+    Task<Result<Unit>> RemoveColumnAsync(ProjectSlug projectSlug, ColumnId columnId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns the allowed tag strings for a project from allowed-tags.json, or null if no allowlist is configured.
     /// </summary>
     List<string>? GetAllowedTags(ProjectSlug projectSlug);

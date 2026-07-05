@@ -20,7 +20,7 @@ export type ToDecisionsWebview =
 export type ToKanbanWebview =
   | { type: 'loading' }
   | { type: 'error'; message: string }
-  | { type: 'board'; data: BoardData; githubRepo?: string }
+  | { type: 'board'; data: BoardData; agents: AgentSummary[]; githubRepo?: string }
   | { type: 'github-sign-in-required'; owner: string; repo: string };
 
 // Webview → extension host
@@ -61,7 +61,10 @@ export type FromKanbanWebview =
       tags?: string[];
     }
   | { type: 'moveTask'; taskId: string; toColumnId: string }
-  | { type: 'deleteTask'; taskId: string };
+  | { type: 'deleteTask'; taskId: string }
+  | { type: 'addColumn'; id: string; title: string }
+  | { type: 'renameColumn'; columnId: string; title: string }
+  | { type: 'deleteColumn'; columnId: string };
 
 export type EditableBoardTask = Pick<
   BoardTaskItem,
